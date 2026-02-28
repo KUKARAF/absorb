@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Outer wrapper: padding creates space between widget cell and the card -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingStart="5dp"
+    android:paddingEnd="5dp"
+    android:paddingTop="35dp"
+    android:paddingBottom="35dp">
+
+    <!-- The card -->
+    <RelativeLayout
+        android:id="@+id/widget_root"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/widget_background"
+        android:clipToOutline="true">
+
+        <!-- Blurred cover background (behind everything) -->
+        <ImageView
+            android:id="@+id/widget_bg_blur"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitXY"
+            android:visibility="gone" />
+
+        <!-- Cover art: fixed square, small left margin, centered vertically -->
+        <ImageView
+            android:id="@+id/widget_cover"
+            android:layout_width="105dp"
+            android:layout_height="105dp"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:layout_marginStart="6dp"
+            android:scaleType="centerCrop"
+            android:src="@mipmap/ic_launcher"
+            android:contentDescription="Cover art" />
+
+        <!-- Title aligned with top of cover -->
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_toEndOf="@id/widget_cover"
+            android:layout_alignTop="@id/widget_cover"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="Absorb"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium" />
+
+        <!-- Controls aligned with bottom of cover -->
+        <LinearLayout
+            android:id="@+id/widget_controls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_toEndOf="@id/widget_cover"
+            android:layout_alignBottom="@id/widget_cover"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:visibility="gone">
+
+            <ImageButton
+                android:id="@+id/widget_skip_back"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:src="@drawable/ic_widget_skip_back"
+                android:background="@android:color/transparent"
+                android:contentDescription="Skip backward"
+                android:scaleType="centerInside" />
+
+            <ImageButton
+                android:id="@+id/widget_play_pause"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:src="@drawable/ic_widget_play"
+                android:background="@android:color/transparent"
+                android:contentDescription="Play or pause"
+                android:scaleType="centerInside" />
+
+            <ImageButton
+                android:id="@+id/widget_skip_forward"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:src="@drawable/ic_widget_skip_forward"
+                android:background="@android:color/transparent"
+                android:contentDescription="Skip forward"
+                android:scaleType="centerInside" />
+
+        </LinearLayout>
+
+        <!-- Progress bar just above controls -->
+        <ProgressBar
+            android:id="@+id/widget_progress"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:layout_toEndOf="@id/widget_cover"
+            android:layout_above="@id/widget_controls"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginBottom="2dp"
+            android:max="1000"
+            android:progress="0"
+            android:progressDrawable="@drawable/widget_progress_bar"
+            android:visibility="invisible" />
+
+        <!-- Author centered between title and progress bar -->
+        <TextView
+            android:id="@+id/widget_author"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_toEndOf="@id/widget_cover"
+            android:layout_below="@id/widget_title"
+            android:layout_above="@id/widget_progress"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:gravity="center_vertical"
+            android:text="Not playing"
+            android:textColor="#99FFFFFF"
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+    </RelativeLayout>
+
+</FrameLayout>

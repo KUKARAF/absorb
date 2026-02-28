@@ -68,6 +68,9 @@ dependencies:
   # Log sharing
   share_plus: ^10.0.0
 
+  # Homescreen widget
+  home_widget: ^0.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

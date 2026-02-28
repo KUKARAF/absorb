@@ -18,6 +18,7 @@ import 'services/sleep_timer_service.dart';
 import 'services/user_account_service.dart';
 import 'services/android_auto_service.dart';
 import 'services/chromecast_service.dart';
+import 'services/home_widget_service.dart';
 import 'services/log_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/app_shell.dart';
@@ -322,6 +323,8 @@ class _AuthGateState extends State<AuthGate> {
       // Pre-populate Android Auto browse tree in background.
       // Do not block app startup on Android Auto server refresh.
       Future.microtask(() => AndroidAutoService().refresh());
+      // Initialize homescreen widget
+      await HomeWidgetService().init();
     } catch (e) {
       debugPrint('Service init failed: $e');
     }
