@@ -437,21 +437,30 @@ class DownloadService extends ChangeNotifier {
       );
       notifyListeners();
       // Ensure queue processor is running
-      if (!_processingQueue) _processQueue();
+      if (!_processingQueue) unawaited(_processQueue());
       return null;
     }
 
     await _executeDownload(
-      api: api, itemId: itemId, title: title,
-      author: author, coverUrl: coverUrl, episodeId: episodeId,
+      api: api,
+      itemId: itemId,
+      title: title,
+      author: author,
+      coverUrl: coverUrl,
+      episodeId: episodeId,
     );
     // Process any queued downloads
-    if (_queue.isNotEmpty && !_processingQueue) _processQueue();
+    if (_queue.isNotEmpty && !_processingQueue) {
+      unawaited(_processQueue());
+    }
     return null;
   }
 
   Future<void> _processQueue() async {
     _processingQueue = true;
+    while (_activeDownloadId != null) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
     while (_queue.isNotEmpty) {
       final next = _queue.removeAt(0);
       // Skip if cancelled/removed while waiting
@@ -486,7 +495,11 @@ class DownloadService extends ChangeNotifier {
 
     // Show persistent download notification via foreground service
     final notif = DownloadNotificationService();
-    await notif.startForeground(title: title, author: author);
+    try {
+      await notif.startForeground(title: title, author: author);
+    } catch (e) {
+      debugPrint('[Download] startForeground non-fatal error: $e');
+    }
 
     try {
       // For episodes, itemId is a composite key like 'podcastId-episodeId'.
@@ -539,6 +552,23 @@ class DownloadService extends ChangeNotifier {
       int _lastNotifPercent = -1;
       DateTime _lastUIUpdate = DateTime.now();
 
+      Future<void> _showProgressSafe(
+        DownloadNotificationService notif,
+        String title,
+        String? author,
+        double progress,
+      ) async {
+        try {
+          await notif.showProgress(
+            title: title,
+            author: author,
+            progress: progress,
+          );
+        } catch (e) {
+          debugPrint('[Download] showProgress non-fatal error: $e');
+        }
+      }
+
       void _updateProgress() {
         final overall = trackProgress.reduce((a, b) => a + b) / audioTracks.length;
         final now = DateTime.now();
@@ -559,7 +589,7 @@ class DownloadService extends ChangeNotifier {
         final pct = (overall * 50).round();
         if (pct != _lastNotifPercent) {
           _lastNotifPercent = pct;
-          notif.showProgress(title: title, author: author, progress: overall);
+          unawaited(_showProgressSafe(notif, title, author, overall));
         }
       }
 
@@ -681,7 +711,11 @@ class DownloadService extends ChangeNotifier {
           coverUrl: coverUrl,
         );
         // Show error notification
-        await notif.showError(title: title, message: 'Download failed: $title');
+        try {
+          await notif.showError(title: title, message: 'Download failed: $title');
+        } catch (notifErr) {
+          debugPrint('[Download] showError non-fatal error: $notifErr');
+        }
       }
     }
 
@@ -689,7 +723,6 @@ class DownloadService extends ChangeNotifier {
     _httpClient = null;
 
     notifyListeners();
-    return null;
   }
 
   Future<void> deleteDownload(String itemId) async {
@@ -720,7 +753,11 @@ class DownloadService extends ChangeNotifier {
       _httpClient?.close();
       _httpClient = null;
       _activeDownloadId = null;
-      DownloadNotificationService().dismiss();
+      unawaited(
+        DownloadNotificationService().dismiss().catchError((Object e) {
+          debugPrint('[Download] dismiss non-fatal error: $e');
+        }),
+      );
     }
     // Remove from queue if it was waiting
     _queue.removeWhere((q) => q.itemId == itemId);
