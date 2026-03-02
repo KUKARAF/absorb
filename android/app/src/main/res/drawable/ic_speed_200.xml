@@ -4,7 +4,7 @@
     android:viewportWidth="24"
     android:viewportHeight="24"
     android:tint="?attr/colorControlNormal">
-  <!-- "2.0x" rounded sans-serif -->
+  <!-- "2.0x" rounded sans-serif — lines only -->
   <group
       android:scaleX="1.4"
       android:scaleY="1.4"
@@ -12,13 +12,13 @@
       android:pivotY="12">
     <!-- 2 -->
     <path android:fillColor="@android:color/white"
-        android:pathData="M7.6,9.2 C7.6,8.7 8.0,8.5 8.4,8.5 L9.2,8.5 C9.6,8.5 9.8,8.7 9.8,9.2 L9.8,11.5 C9.8,11.9 9.5,12.2 9.1,12.2 L8.3,12.2 L8.3,14.6 L9.8,14.6 L9.8,15.3 L7.6,15.3 L7.6,11.8 C7.6,11.5 7.8,11.5 8.1,11.5 L9.1,11.5 L9.1,9.2 L8.3,9.2 Z"/>
+        android:pathData="M7.6,8.7 L9.8,8.7 L9.8,12.2 L8.3,12.2 L8.3,14.6 L9.8,14.6 L9.8,15.3 L7.6,15.3 L7.6,11.5 L9.1,11.5 L9.1,9.4 L7.6,9.4 Z"/>
     <!-- dot -->
     <path android:fillColor="@android:color/white"
-        android:pathData="M10.4,14.6 a0.45,0.45 0 1,1 0.9,0 a0.45,0.45 0 1,1 -0.9,0"/>
-    <!-- 0 -->
+        android:pathData="M10.4,14.5 L11.1,14.5 L11.1,15.3 L10.4,15.3 Z"/>
+    <!-- 0: top, bottom, left wall, right wall -->
     <path android:fillColor="@android:color/white"
-        android:pathData="M11.8,9.2 C11.8,8.7 12.2,8.5 12.6,8.5 C13.0,8.5 13.4,8.7 13.4,9.2 L13.4,14.8 C13.4,15.3 13.0,15.5 12.6,15.5 C12.2,15.5 11.8,15.3 11.8,14.8 Z M12.5,9.2 L12.5,14.8 C12.5,14.9 12.55,15.0 12.6,15.0 C12.65,15.0 12.7,14.9 12.7,14.8 L12.7,9.2 C12.7,9.1 12.65,9.0 12.6,9.0 C12.55,9.0 12.5,9.1 12.5,9.2 Z"/>
+        android:pathData="M11.6,8.7 L13.6,8.7 L13.6,9.4 L11.6,9.4 Z M11.6,14.6 L13.6,14.6 L13.6,15.3 L11.6,15.3 Z M11.6,9.4 L12.3,9.4 L12.3,14.6 L11.6,14.6 Z M12.9,9.4 L13.6,9.4 L13.6,14.6 L12.9,14.6 Z"/>
     <!-- x -->
     <path android:fillColor="@android:color/white"
         android:pathData="M15.0,11.0 L13.7,9.3 L14.4,9.3 L15.4,10.5 L16.4,9.3 L17.1,9.3 L15.8,11.0 L17.1,12.8 L16.4,12.8 L15.4,11.5 L14.4,12.8 L13.7,12.8 Z"/>

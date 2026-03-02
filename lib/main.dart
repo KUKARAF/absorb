@@ -288,12 +288,8 @@ class _AuthGateState extends State<AuthGate> {
 
     // Register the audio handler FIRST so Android Auto's MediaBrowserService
     // can connect immediately on cold start (app force-closed → AA launches it).
-    // Timeout prevents a hung audio subsystem from blocking all other services.
     try {
-      await AudioPlayerService.init().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => debugPrint('AudioService init timed out — continuing without it'),
-      );
+      await AudioPlayerService.init();
     } catch (e) {
       debugPrint('AudioService init failed: $e');
     }
