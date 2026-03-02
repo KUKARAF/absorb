@@ -16,6 +16,7 @@ A modern audiobookshelf client for Android with a card-based player experience.
   &nbsp;
   <img src="screenshots/stats.png" width="200">
 </p>
+
 ## Features
 
 - **Card-based player** — full-screen "Absorbing" cards replace the traditional player screen
