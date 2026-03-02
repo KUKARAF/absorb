@@ -54,6 +54,7 @@ void main() async {
     final info = await DeviceInfoPlugin().androidInfo;
     ApiService.deviceManufacturer = info.manufacturer;
     ApiService.deviceModel = info.model;
+    ApiService.deviceSdkInt = info.version.sdkInt;
   } catch (_) {}
 
   // Initialize log service (must be before other services so debugPrint is captured)

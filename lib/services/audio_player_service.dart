@@ -216,23 +216,75 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   // OnePlus/Oppo/Realme (ColorOS) renders notification media buttons in
   // reverse order.  Flip the controls so they end up visually correct.
+  // Only on API < 33 — on 33+ the system media player renders from
+  // MediaSession state and the OEM reversal doesn't apply.
   static bool get _reversedNotificationControls {
+    if (ApiService.deviceSdkInt >= 33) return false;
     final m = ApiService.deviceManufacturer.toLowerCase();
     return m == 'oneplus' || m == 'oppo' || m == 'realme';
   }
 
+  // Speed presets for Android Auto cycling (matches in-app presets)
+  static const _aaSpeedPresets = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5];
+
   PlaybackState _transformEvent(PlaybackEvent event) {
     final playPause = _player.playing ? MediaControl.pause : MediaControl.play;
-    final controls = _reversedNotificationControls
+
+    // Speed action first — Android Auto places the first custom action
+    // inline on the left of transport controls. Use per-speed drawables
+    // so the icon shows the actual speed value (7-segment style digits).
+    final speed = _player.speed;
+    final speedLabel = '${speed.toStringAsFixed(2)}x';
+    String speedIcon;
+    if ((speed - 0.75).abs() < 0.01) {
+      speedIcon = 'drawable/ic_speed_075';
+    } else if ((speed - 1.0).abs() < 0.01) {
+      speedIcon = 'drawable/ic_speed_100';
+    } else if ((speed - 1.25).abs() < 0.01) {
+      speedIcon = 'drawable/ic_speed_125';
+    } else if ((speed - 1.5).abs() < 0.01) {
+      speedIcon = 'drawable/ic_speed_150';
+    } else if ((speed - 1.75).abs() < 0.01) {
+      speedIcon = 'drawable/ic_speed_175';
+    } else if ((speed - 2.0).abs() < 0.01) {
+      speedIcon = 'drawable/ic_speed_200';
+    } else if ((speed - 2.5).abs() < 0.01) {
+      speedIcon = 'drawable/ic_speed_250';
+    } else {
+      speedIcon = 'drawable/ic_speed'; // Generic fallback
+    }
+    final speedAction = MediaControl.custom(
+      androidIcon: speedIcon,
+      label: speedLabel,
+      name: 'cycleSpeed',
+    );
+
+    // Transport controls — OnePlus/Oppo/Realme (API < 33) render
+    // notification buttons in reverse order, so pre-flip for those devices.
+    final transport = _reversedNotificationControls
         ? [MediaControl.fastForward, playPause, MediaControl.rewind]
         : [MediaControl.rewind, playPause, MediaControl.fastForward];
+
+    // Speed goes AFTER transport — on API 33+ audio_service converts
+    // rewind/forward to custom actions, and AA places custom actions in
+    // alternating slots outward from play/pause.  With transport first,
+    // rewind lands left of play (slot 2), forward right (slot 4), and
+    // speed on the far left (slot 1) — giving [speed][rw][play][ff].
+    final controls = <MediaControl>[
+      ...transport,
+      speedAction,
+    ];
+
     return PlaybackState(
       controls: controls,
       systemActions: const {
         MediaAction.seek,
         MediaAction.seekForward,
         MediaAction.seekBackward,
+        MediaAction.skipToQueueItem,
       },
+      // Notification compact: indices into nativeActions (custom actions are
+      // separated out on the platform side, so standard controls are always 0-2).
       androidCompactActionIndices: const [0, 1, 2],
       processingState: const {
         ProcessingState.idle: AudioProcessingState.idle,
@@ -246,8 +298,29 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       bufferedPosition: _player.bufferedPosition,
       // Report actual speed — always
       speed: _player.speed,
-      queueIndex: event.currentIndex,
+      queueIndex: _safeCurrentChapterIndex(),
     );
+  }
+
+  /// Return the index of the chapter containing the current playback position,
+  /// or null if there are no chapters.  Used as queueIndex so Android Auto
+  /// highlights and scrolls to the active chapter in the queue view.
+  int? _safeCurrentChapterIndex() {
+    try {
+      if (_service == null || _service!.chapters.isEmpty) return null;
+      final posSec = _player.position.inMilliseconds / 1000.0;
+      final chapters = _service!.chapters;
+      for (int i = 0; i < chapters.length; i++) {
+        final ch = chapters[i] as Map<String, dynamic>;
+        final start = (ch['start'] as num?)?.toDouble() ?? 0;
+        final end = (ch['end'] as num?)?.toDouble() ?? _service!.totalDuration;
+        if (posSec >= start && posSec < end) return i;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[Handler] _safeCurrentChapterIndex error: $e');
+      return null;
+    }
   }
 
   @override
@@ -397,6 +470,62 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> setSpeed(double speed) => _player.setSpeed(speed);
+
+  @override
+  Future<dynamic> customAction(String name, [Map<String, dynamic>? extras]) async {
+    debugPrint('[Handler] customAction($name)');
+    switch (name) {
+      case 'nextChapter':
+        if (_service != null) await _service!.skipToNextChapter();
+        break;
+      case 'previousChapter':
+        if (_service != null) await _service!.skipToPreviousChapter();
+        break;
+      case 'cycleSpeed':
+        if (_service != null) {
+          final current = _service!.speed;
+          // Find next preset above current speed, or wrap to first
+          final next = _aaSpeedPresets.cast<double>().firstWhere(
+            (s) => s > current + 0.01,
+            orElse: () => _aaSpeedPresets.first,
+          );
+          await _service!.setSpeed(next);
+        }
+        break;
+    }
+  }
+
+  // ─── Chapter queue (for Android Auto queue button) ─────────────────
+
+  /// Populate the MediaSession queue with chapter entries so AA shows
+  /// a chapter list via the queue button on the Now Playing screen.
+  void updateChaptersQueue(List<dynamic> chapters) {
+    if (chapters.isEmpty) {
+      queue.add(const []);
+      return;
+    }
+    final items = chapters.asMap().entries.map((e) {
+      final ch = e.value as Map<String, dynamic>;
+      final start = (ch['start'] as num?)?.toDouble() ?? 0;
+      final end = (ch['end'] as num?)?.toDouble() ?? 0;
+      return MediaItem(
+        id: 'chapter_${e.key}',
+        title: ch['title'] as String? ?? 'Chapter ${e.key + 1}',
+        duration: Duration(milliseconds: ((end - start) * 1000).round()),
+      );
+    }).toList();
+    queue.add(items);
+  }
+
+  @override
+  Future<void> skipToQueueItem(int index) async {
+    debugPrint('[Handler] skipToQueueItem($index)');
+    if (_service == null) return;
+    final chapters = _service!.chapters;
+    if (index < 0 || index >= chapters.length) return;
+    final start = (chapters[index]['start'] as num?)?.toDouble() ?? 0;
+    await _service!.seekTo(Duration(milliseconds: (start * 1000).round()));
+  }
 
   // ─── Android Auto browse tree ──────────────────────────────────────
 
@@ -604,6 +733,7 @@ class AudioPlayerService extends ChangeNotifier {
 
   void updateChapters(List<dynamic> chapters) {
     _chapters = chapters;
+    _handler?.updateChaptersQueue(chapters);
     notifyListeners();
   }
   bool get hasBook => _currentItemId != null;
@@ -837,6 +967,7 @@ class AudioPlayerService extends ChangeNotifier {
     _currentCoverUrl = coverUrl;
     _totalDuration = totalDuration;
     _chapters = chapters;
+    _handler?.updateChaptersQueue(chapters);
     // New book = fresh session — clear any auto sleep dismissal
     SleepTimerService().resetDismiss();
     notifyListeners();
@@ -1452,6 +1583,7 @@ class AudioPlayerService extends ChangeNotifier {
     // Clear state (player already stopped at top of method)
     _clearState();
     _chapters = [];
+    _handler?.updateChaptersQueue(const []);
     _isCompletingBook = false;
     notifyListeners();
   }
@@ -1685,6 +1817,7 @@ class AudioPlayerService extends ChangeNotifier {
     await _player?.stop();
     _clearState();
     _chapters = [];
+    _handler?.updateChaptersQueue(const []);
     // Cancel sleep timer when playback is stopped
     if (SleepTimerService().isActive) {
       SleepTimerService().cancel();
@@ -1704,6 +1837,7 @@ class AudioPlayerService extends ChangeNotifier {
     await _player?.stop();
     _clearState();
     _chapters = [];
+    _handler?.updateChaptersQueue(const []);
   }
 
   @override

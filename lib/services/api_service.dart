@@ -31,6 +31,7 @@ class ApiService {
   static String deviceManufacturer = '';
   static String deviceModel = '';
   static String deviceId = '';
+  static int deviceSdkInt = 0;
 
   /// Generate or load a persistent unique device ID
   static Future<void> initDeviceId() async {

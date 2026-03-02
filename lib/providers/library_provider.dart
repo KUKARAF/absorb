@@ -533,6 +533,7 @@ class LibraryProvider extends ChangeNotifier {
     await ScopedPrefs.setString('last_selected_library', libraryId);
     notifyListeners();
     await loadPersonalizedView(force: true);
+    AndroidAutoService().refresh(force: true);
   }
 
   /// Fetch personalized home sections for the selected library.

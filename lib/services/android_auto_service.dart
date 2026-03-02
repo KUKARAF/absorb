@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'download_service.dart';
 import 'progress_sync_service.dart';
+import 'scoped_prefs.dart';
 
 // ─── Media ID scheme ─────────────────────────────────────────────────
 //
@@ -167,6 +168,9 @@ class AndroidAutoService {
   }
 
   Future<String?> getDefaultLibraryId() async {
+    // Prefer the user's selected library (set in-app) over the server default
+    final selected = await ScopedPrefs.getString('last_selected_library');
+    if (selected != null) return selected;
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('default_library_id');
   }

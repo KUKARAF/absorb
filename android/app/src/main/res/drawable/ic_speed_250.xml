@@ -1,0 +1,17 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+  <!-- "2.5x" in 7-segment style — scaled 1.4x -->
+  <group
+      android:scaleX="1.4"
+      android:scaleY="1.4"
+      android:pivotX="12"
+      android:pivotY="12">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M7.3,8.75 h2.2 v0.75 h-2.2 Z M9.15,9.15 h0.75 v2.65 h-0.75 Z M7.3,14.5 h2.2 v0.75 h-2.2 Z M6.9,12.2 h0.75 v2.65 h-0.75 Z M7.3,11.625 h2.2 v0.75 h-2.2 Z M10.3,14.5 h0.75 v0.75 h-0.75 Z M11.7,8.75 h2.2 v0.75 h-2.2 Z M13.55,12.2 h0.75 v2.65 h-0.75 Z M11.7,14.5 h2.2 v0.75 h-2.2 Z M11.3,9.15 h0.75 v2.65 h-0.75 Z M11.7,11.625 h2.2 v0.75 h-2.2 Z M14.7,10.3 L15.0,10.0 L17.1,13.7 L16.8,14.0 Z M16.8,10.0 L17.1,10.3 L15.0,14.0 L14.7,13.7 Z"/>
+  </group>
+</vector>
