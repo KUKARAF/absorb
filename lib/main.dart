@@ -280,16 +280,18 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _initServices() async {
-    try {
-      await Permission.notification.request();
-    } catch (e) {
-      debugPrint('Permission request failed: $e');
-    }
-
+    // Register the audio handler FIRST so Android Auto's MediaBrowserService
+    // can connect immediately on cold start (app force-closed → AA launches it).
     try {
       await AudioPlayerService.init();
     } catch (e) {
       debugPrint('AudioService init failed: $e');
+    }
+
+    try {
+      await Permission.notification.request();
+    } catch (e) {
+      debugPrint('Permission request failed: $e');
     }
 
     // Initialize Chromecast

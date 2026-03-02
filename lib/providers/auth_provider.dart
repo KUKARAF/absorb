@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/android_auto_service.dart';
 import '../services/audio_player_service.dart';
 import '../services/user_account_service.dart';
 
@@ -269,6 +270,9 @@ class AuthProvider extends ChangeNotifier {
       }
     } catch (_) {}
 
+    // Clear Android Auto browse tree cache so it doesn't show stale data
+    AndroidAutoService().clearCache();
+
     _token = null;
     _serverUrl = null;
     _username = null;
@@ -302,6 +306,9 @@ class AuthProvider extends ChangeNotifier {
         await player.stop();
       }
     } catch (_) {}
+
+    // Clear Android Auto browse tree cache so it refreshes for the new user
+    AndroidAutoService().clearCache();
 
     // Set the new account as active in the account service
     UserAccountService().switchTo(account.serverUrl, account.username);

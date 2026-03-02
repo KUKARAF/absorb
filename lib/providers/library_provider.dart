@@ -299,16 +299,19 @@ class LibraryProvider extends ChangeNotifier {
 
   void updateAuth(AuthProvider auth) {
     final wasAuthenticated = _auth?.isAuthenticated ?? false;
-    final previousUserId = _auth?.userId;
     _auth = auth;
 
     if (auth.isAuthenticated) {
-      final isNewUser = previousUserId != null && previousUserId != auth.userId;
       final isFreshLogin = !wasAuthenticated;
 
-      // Build a key to detect duplicate calls from ProxyProvider re-triggering
+      // Build a key to detect duplicate calls from ProxyProvider re-triggering.
+      // Use the stored string key (not the object reference) to detect user
+      // switches — _auth is the same AuthProvider instance, so comparing
+      // _auth?.userId would always equal auth.userId.
       final authKey = '${auth.userId}@${auth.serverUrl}';
-      final isDuplicate = authKey == _lastAuthKey && !isNewUser && !isFreshLogin;
+      final isNewUser = _lastAuthKey != null && authKey != _lastAuthKey;
+      final isDuplicate = !isNewUser && !isFreshLogin;
+      debugPrint('[Library] updateAuth: key=$authKey lastKey=$_lastAuthKey isNewUser=$isNewUser isFreshLogin=$isFreshLogin isDuplicate=$isDuplicate');
       _lastAuthKey = authKey;
 
       if (isDuplicate) return; // Skip redundant update
@@ -341,11 +344,13 @@ class LibraryProvider extends ChangeNotifier {
       ChromecastService.setOnBookFinishedCallback(markFinishedLocally);
 
       restoreOfflineMode().then((_) {
+        debugPrint('[Library] restoreOfflineMode done, serverReachable=${auth.serverReachable} api=${_api != null} offline=$isOffline');
         _startConnectivityMonitoring();
         _loadManualAbsorbing();
 
         // If server was unreachable on startup, force offline mode and ping
         if (!auth.serverReachable) {
+          debugPrint('[Library] Server not reachable — going offline');
           _networkOffline = true;
           _buildOfflineSections();
           _isLoading = false;
@@ -359,7 +364,10 @@ class LibraryProvider extends ChangeNotifier {
           ProgressSyncService().flushPendingSync(api: _api!);
           DownloadService().enrichMetadata(_api!);
         }
+        debugPrint('[Library] Calling loadLibraries()');
         loadLibraries();
+      }).catchError((e) {
+        debugPrint('[Library] restoreOfflineMode error: $e');
       });
     } else {
       _lastAuthKey = null;

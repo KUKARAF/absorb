@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:audio_service/audio_service.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
@@ -157,6 +157,19 @@ class AndroidAutoService {
   DateTime? _lastRefresh;
   bool _isRefreshing = false;
 
+  /// Clear all cached browse-tree data and force a fresh server fetch
+  /// on the next access.  Call when the user switches accounts or logs out.
+  void clearCache() {
+    _continueListening = [];
+    _downloaded = [];
+    _recentlyAdded = [];
+    _libraries = [];
+    _lastRefresh = null;
+    _downloadsReady = false;
+    _isRefreshing = false;
+    debugPrint('[AndroidAuto] Cache cleared (user switch/logout)');
+  }
+
   // ── API helpers ──
 
   Future<ApiService?> getApi() async {
@@ -239,12 +252,11 @@ class AndroidAutoService {
 
   /// Build a content:// URI for a locally cached cover image.
   /// Android Auto requires content:// URIs — file:// won't work.
-  static String _localCoverUri(String itemId) =>
+  static String localCoverUri(String itemId) =>
       'content://$_coverAuthority/cover/$itemId';
 
   Future<void> _refreshDownloaded() async {
     final ds = DownloadService();
-    final api = await getApi();
     final items = ds.downloadedItems;
     final entries = <AutoBookEntry>[];
 
@@ -261,19 +273,10 @@ class AndroidAutoService {
 
       final localPos = await ProgressSyncService().getSavedPosition(dl.itemId);
 
-      // Use HTTP cover URLs when online (more reliable in AA browse list),
-      // fall back to local content:// URIs when offline.
-      String? coverUrl;
-      final connectivity = await Connectivity().checkConnectivity();
-      final isOnline = !connectivity.contains(ConnectivityResult.none);
-      if (isOnline && api != null) {
-        coverUrl = api.getCoverUrl(dl.itemId, width: 400);
-      } else {
-        final localCover = await ds.getLocalCoverPath(dl.itemId);
-        if (localCover != null) {
-          coverUrl = _localCoverUri(dl.itemId);
-        }
-      }
+      // Always use content:// URIs — Android Auto on real car head units
+      // cannot load HTTP URLs.  The CoverContentProvider serves local
+      // downloads directly and fetches/caches from the server on demand.
+      final coverUrl = localCoverUri(dl.itemId);
 
       entries.add(AutoBookEntry(
         id: dl.itemId,
@@ -284,7 +287,7 @@ class AndroidAutoService {
         chapters: chapters,
         currentTime: localPos > 0 ? localPos : null,
       ));
-      debugPrint('[AndroidAuto] Download entry: ${dl.title} cover=${coverUrl ?? "null"}');
+      debugPrint('[AndroidAuto] Download entry: ${dl.title} cover=$coverUrl');
     }
 
     _downloaded = entries;
@@ -390,7 +393,7 @@ class AndroidAutoService {
       title: title,
       author: author,
       duration: duration,
-      coverUrl: api.getCoverUrl(id, width: 400),
+      coverUrl: localCoverUri(id),
       chapters: chapters,
       currentTime: currentTime,
     );
@@ -413,7 +416,7 @@ class AndroidAutoService {
       title: title,
       author: author,
       duration: duration,
-      coverUrl: api.getCoverUrl(id, width: 400),
+      coverUrl: localCoverUri(id),
       chapters: chapters,
     );
   }

@@ -214,6 +214,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
   }
 
+
   // OnePlus/Oppo/Realme (ColorOS) renders notification media buttons in
   // reverse order.  Flip the controls so they end up visually correct.
   // Only on API < 33 — on 33+ the system media player renders from
@@ -588,8 +589,35 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     // Try to find in cached entries first
     var entry = _autoService.findEntry(absId);
 
-    // If not in cache (e.g. from series/author drilldown or search),
-    // fetch the item details from server
+    // If not in AA cache, check if the item is downloaded locally.
+    // This handles cold-start scenarios where the AA browse tree hasn't
+    // been populated yet but the user taps a downloaded book.
+    if (entry == null) {
+      final ds = DownloadService();
+      if (ds.isDownloaded(absId)) {
+        debugPrint('[Handler] Book not in AA cache but downloaded locally: $absId');
+        final dl = ds.getInfo(absId);
+        double duration = 0;
+        List<dynamic> chapters = [];
+        if (dl.sessionData != null) {
+          try {
+            final session = jsonDecode(dl.sessionData!) as Map<String, dynamic>;
+            duration = (session['duration'] as num?)?.toDouble() ?? 0;
+            chapters = session['chapters'] as List<dynamic>? ?? [];
+          } catch (_) {}
+        }
+        entry = AutoBookEntry(
+          id: absId,
+          title: dl.title ?? 'Unknown',
+          author: dl.author ?? '',
+          duration: duration,
+          coverUrl: AndroidAutoService.localCoverUri(absId),
+          chapters: chapters,
+        );
+      }
+    }
+
+    // If still not found, fetch the item details from server
     if (entry == null) {
       debugPrint('[Handler] Book not cached, fetching from server: $absId');
       try {
@@ -602,7 +630,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
             title: metadata['title'] as String? ?? 'Unknown',
             author: metadata['authorName'] as String? ?? '',
             duration: (media?['duration'] as num?)?.toDouble() ?? 0,
-            coverUrl: api.getCoverUrl(absId, width: 400),
+            coverUrl: AndroidAutoService.localCoverUri(absId),
             chapters: media?['chapters'] as List<dynamic>? ?? [],
           );
         }

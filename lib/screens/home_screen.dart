@@ -226,7 +226,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final lib = context.watch<LibraryProvider>();
     final allLibraries = lib.libraries;
     final libraryName = lib.selectedLibrary?['name'] as String? ?? 'Library';
-    if (!lib.isLoading) _refreshFilteredCache(lib);
+    if (lib.isLoading) {
+      // Reset cache so stale data isn't shown after a user switch
+      // (where the new user may have the same number of sections).
+      _cachedSections = null;
+      _cachedClItems = null;
+      _lastSectionsLength = -1;
+    } else {
+      _refreshFilteredCache(lib);
+    }
 
     return Scaffold(
       body: Container(
