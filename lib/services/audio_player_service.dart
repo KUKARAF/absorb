@@ -215,12 +215,8 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   }
 
 
-  // OnePlus/Oppo/Realme (ColorOS) renders notification media buttons in
-  // reverse order.  Flip the controls so they end up visually correct.
-  // Only on API < 33 — on 33+ the system media player renders from
-  // MediaSession state and the OEM reversal doesn't apply.
-  static bool get _reversedNotificationControls {
-    if (ApiService.deviceSdkInt >= 33) return false;
+  // OnePlus/Oppo/Realme (ColorOS) rearrange media session buttons.
+  static bool get _isOnePlusFamily {
     final m = ApiService.deviceManufacturer.toLowerCase();
     return m == 'oneplus' || m == 'oppo' || m == 'realme';
   }
@@ -260,21 +256,26 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       name: 'cycleSpeed',
     );
 
-    // Transport controls — OnePlus/Oppo/Realme (API < 33) render
-    // notification buttons in reverse order, so pre-flip for those devices.
-    final transport = _reversedNotificationControls
-        ? [MediaControl.fastForward, playPause, MediaControl.rewind]
-        : [MediaControl.rewind, playPause, MediaControl.fastForward];
-
-    // Speed goes AFTER transport — on API 33+ audio_service converts
-    // rewind/forward to custom actions, and AA places custom actions in
-    // alternating slots outward from play/pause.  With transport first,
-    // rewind lands left of play (slot 2), forward right (slot 4), and
-    // speed on the far left (slot 1) — giving [speed][rw][play][ff].
-    final controls = <MediaControl>[
-      ...transport,
-      speedAction,
-    ];
+    // Build the controls list.  On most devices, AA places custom actions
+    // in alternating slots outward from play/pause, giving the visual order
+    // [speed][rw][play][ff] when transport comes first.
+    //
+    // OnePlus/Oppo/Realme (ColorOS) rearrange media buttons:
+    //   API < 33  — notification renders the entire row in reverse, so
+    //               send the mirror image.
+    //   API >= 33 — MediaSession custom-action slot placement differs,
+    //               so send controls in the desired visual order directly.
+    // Desired visual order on OnePlus:  speed | rw | play/pause | ff
+    final List<MediaControl> controls;
+    if (_isOnePlusFamily) {
+      if (ApiService.deviceSdkInt >= 33) {
+        controls = [speedAction, MediaControl.rewind, playPause, MediaControl.fastForward];
+      } else {
+        controls = [MediaControl.fastForward, playPause, MediaControl.rewind, speedAction];
+      }
+    } else {
+      controls = [MediaControl.rewind, playPause, MediaControl.fastForward, speedAction];
+    }
 
     return PlaybackState(
       controls: controls,
