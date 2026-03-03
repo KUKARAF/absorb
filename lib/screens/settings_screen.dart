@@ -38,7 +38,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _resetSleepOnPause = false;
   bool _sleepFadeOut = true;
   int _shakeAddMinutes = 5;
-  bool _autoContinueSeries = true;
+  bool _autoPlayNextBook = false;
+  bool _autoPlayNextPodcast = false;
   bool _hideEbookOnly = false;
   bool _showGoodreadsButton = false;
   bool _loggingEnabled = false;
@@ -68,7 +69,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final resetOnPause = await PlayerSettings.getResetSleepOnPause();
     final sleepFade = await PlayerSettings.getSleepFadeOut();
     final shakeMins = await PlayerSettings.getShakeAddMinutes();
-    final autoSeries = await PlayerSettings.getAutoContinueSeries();
+    final autoPlayBook = await PlayerSettings.getAutoPlayNextBook();
+    final autoPlayPod = await PlayerSettings.getAutoPlayNextPodcast();
     final hideEbook = await PlayerSettings.getHideEbookOnly();
     final showGoodreads = await PlayerSettings.getShowGoodreadsButton();
     final logging = await PlayerSettings.getLoggingEnabled();
@@ -91,7 +93,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _resetSleepOnPause = resetOnPause;
       _sleepFadeOut = sleepFade;
       _shakeAddMinutes = shakeMins;
-      _autoContinueSeries = autoSeries;
+      _autoPlayNextBook = autoPlayBook;
+      _autoPlayNextPodcast = autoPlayPod;
       _hideEbookOnly = hideEbook;
       _showGoodreadsButton = showGoodreads;
       _loggingEnabled = logging;
@@ -581,14 +584,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     SwitchListTile(
-                      title: const Text('Auto-absorb next in series'),
+                      title: const Text('Auto-play next book in series'),
                       subtitle: Text(
-                        _autoContinueSeries ? 'On — next book in series added to Absorbing' : 'Off',
+                        _autoPlayNextBook ? 'On — next book plays automatically' : 'Off',
                         style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      value: _autoContinueSeries,
+                      value: _autoPlayNextBook,
                       onChanged: _loaded ? (v) {
-                        setState(() => _autoContinueSeries = v);
-                        PlayerSettings.setAutoContinueSeries(v);
+                        setState(() => _autoPlayNextBook = v);
+                        PlayerSettings.setAutoPlayNextBook(v);
+                      } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Auto-play next podcast episode'),
+                      subtitle: Text(
+                        _autoPlayNextPodcast ? 'On — next episode plays automatically' : 'Off',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _autoPlayNextPodcast,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _autoPlayNextPodcast = v);
+                        PlayerSettings.setAutoPlayNextPodcast(v);
                       } : null,
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),

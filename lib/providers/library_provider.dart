@@ -966,12 +966,38 @@ class LibraryProvider extends ChangeNotifier {
     // Done after all sections so the order is correct regardless of which
     // section the item appeared in first. Only move NEW items — ones already
     // in the list keep their position to avoid shuffling.
+    String? newContinueSeriesKey;
     if (_lastFinishedItemId != null && continueSeriesKeys.isNotEmpty) {
       for (final key in continueSeriesKeys) {
         if (!existingIds.contains(key)) {
           _absorbingIdsAdd(key, afterKey: _lastFinishedItemId);
+          newContinueSeriesKey ??= key; // first new item is the next in series
         }
       }
+    }
+
+    // Auto-play the next book in series if the setting is enabled.
+    if (newContinueSeriesKey != null && _api != null) {
+      PlayerSettings.getAutoPlayNextBook().then((autoPlay) {
+        if (!autoPlay) return;
+        final cached = _absorbingItemCache[newContinueSeriesKey];
+        if (cached == null) return;
+        final media = cached['media'] as Map<String, dynamic>? ?? {};
+        final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+        final title = metadata['title'] as String? ?? '';
+        final author = metadata['authorName'] as String? ?? '';
+        final duration = (media['duration'] as num?)?.toDouble() ?? 0;
+        final chapters = media['chapters'] as List<dynamic>? ?? [];
+        AudioPlayerService().playItem(
+          api: _api!,
+          itemId: newContinueSeriesKey!,
+          title: title,
+          author: author,
+          coverUrl: getCoverUrl(newContinueSeriesKey),
+          totalDuration: duration,
+          chapters: chapters,
+        );
+      });
     }
 
     // For podcast libraries, scan _progressMap for additional in-progress
@@ -1298,6 +1324,26 @@ class LibraryProvider extends ChangeNotifier {
       _absorbingItemCache[nextKey] = syntheticEntry;
       await _saveManualAbsorbing();
       notifyListeners();
+
+      // Auto-play the next episode if the setting is enabled.
+      if (await PlayerSettings.getAutoPlayNextPodcast() && _api != null) {
+        final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+        final title = metadata['title'] as String? ?? '';
+        final author = metadata['authorName'] as String? ?? '';
+        final duration = (nextEp['duration'] as num?)?.toDouble()
+            ?? (nextEp['audioFile'] as Map<String, dynamic>?)?['duration'] as double? ?? 0;
+        AudioPlayerService().playItem(
+          api: _api!,
+          itemId: showId,
+          title: title,
+          author: author,
+          coverUrl: getCoverUrl(showId),
+          totalDuration: duration,
+          chapters: [],
+          episodeId: nextEpId,
+          episodeTitle: nextEp['title'] as String?,
+        );
+      }
     } catch (_) {}
   }
 

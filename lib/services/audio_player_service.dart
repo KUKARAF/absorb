@@ -89,8 +89,11 @@ class PlayerSettings {
   static Future<bool> getWifiOnlyDownloads() => _get('wifiOnlyDownloads', false);
   static Future<void> setWifiOnlyDownloads(bool value) => _set('wifiOnlyDownloads', value);
 
-  static Future<bool> getAutoContinueSeries() => _get('autoContinueSeries', true);
-  static Future<void> setAutoContinueSeries(bool value) => _set('autoContinueSeries', value);
+  static Future<bool> getAutoPlayNextBook() => _get('autoPlayNextBook', false);
+  static Future<void> setAutoPlayNextBook(bool value) => _set('autoPlayNextBook', value);
+
+  static Future<bool> getAutoPlayNextPodcast() => _get('autoPlayNextPodcast', false);
+  static Future<void> setAutoPlayNextPodcast(bool value) => _set('autoPlayNextPodcast', value);
 
   // ── Player UI settings (notify listeners on change) ──
 
@@ -214,7 +217,15 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   void bindService(AudioPlayerService service) => _service = service;
 
   AudioPlayerHandler() {
-    _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
+    // Manually subscribe instead of .pipe() so we can handle errors.
+    // Without onError, a stream error (e.g. network timeout during streaming)
+    // would break the audio_service notification pipeline and crash the app.
+    _player.playbackEventStream.map(_transformEvent).listen(
+      playbackState.add,
+      onError: (Object e, StackTrace st) {
+        debugPrint('[Player] playbackEvent error (suppressed): $e');
+      },
+    );
   }
 
 
@@ -707,6 +718,10 @@ class AudioPlayerService extends ChangeNotifier {
   StreamSubscription? _completionSub;
   /// Last known position in seconds — used to detect end→0 position jumps.
   double _lastKnownPositionSec = 0;
+  // ── Stream error retry tracking ──
+  int _streamRetryCount = 0;
+  static const _maxStreamRetries = 3;
+  bool _retryInProgress = false;
   // ── Multi-file track offset tracking ──
   // For ConcatenatingAudioSource, _player.position is track-relative.
   // We store cumulative start offsets so we can compute absolute book position.
@@ -831,6 +846,8 @@ class AudioPlayerService extends ChangeNotifier {
       if (index != null) {
         _currentTrackIndex = index.clamp(0, _trackStartOffsets.length - 2);
       }
+    }, onError: (Object e, StackTrace st) {
+      debugPrint('[Player] Index stream error: $e');
     });
   }
 
@@ -1406,7 +1423,67 @@ class AudioPlayerService extends ChangeNotifier {
     _lastKnownPositionSec = 0;
     _eqSessionSub?.cancel();
     _eqSessionSub = null;
+    _streamRetryCount = 0;
+    _retryInProgress = false;
     notifyListeners();
+  }
+
+  /// Attempt to recover from a stream error by restarting playback from the
+  /// last known position.  Tries up to [_maxStreamRetries] times with
+  /// exponential back-off (1s, 2s, 4s).  If the item has been downloaded in
+  /// the meantime, falls back to local files automatically.
+  Future<void> _attemptStreamRetry(Object error) async {
+    if (_retryInProgress) return;
+    if (_currentItemId == null || _api == null) return;
+    if (_streamRetryCount >= _maxStreamRetries) {
+      debugPrint('[Player] Max retries reached ($_maxStreamRetries) — giving up');
+      return;
+    }
+
+    _retryInProgress = true;
+    _streamRetryCount++;
+    final delay = Duration(seconds: 1 << (_streamRetryCount - 1)); // 1s, 2s, 4s
+    debugPrint('[Player] Stream error — retry $_streamRetryCount/$_maxStreamRetries in ${delay.inSeconds}s');
+
+    await Future<void>.delayed(delay);
+
+    // Snapshot state before retry — playItem will overwrite these
+    final itemId = _currentItemId;
+    final title = _currentTitle ?? '';
+    final author = _currentAuthor ?? '';
+    final coverUrl = _currentCoverUrl;
+    final totalDuration = _totalDuration;
+    final chapters = List<dynamic>.from(_chapters);
+    final episodeId = _currentEpisodeId;
+    final episodeTitle = _currentEpisodeTitle;
+    final api = _api!;
+    final retryPos = _lastKnownPositionSec;
+
+    if (itemId == null) {
+      _retryInProgress = false;
+      return;
+    }
+
+    debugPrint('[Player] Retrying playback at ${retryPos.toStringAsFixed(1)}s');
+    final ok = await playItem(
+      api: api,
+      itemId: itemId,
+      title: title,
+      author: author,
+      coverUrl: coverUrl,
+      totalDuration: totalDuration,
+      chapters: chapters,
+      startTime: retryPos,
+      episodeId: episodeId,
+      episodeTitle: episodeTitle,
+    );
+
+    _retryInProgress = false;
+    if (ok) {
+      debugPrint('[Player] Retry succeeded');
+    } else {
+      debugPrint('[Player] Retry failed');
+    }
   }
 
   int _lastSyncSecond = -1;
@@ -1464,9 +1541,14 @@ class AudioPlayerService extends ChangeNotifier {
         debugPrint('[Player] processingState → completed');
         _onPlaybackComplete();
       }
+    }, onError: (Object e, StackTrace st) {
+      debugPrint('[Player] processingState stream error: $e');
+      _attemptStreamRetry(e);
     });
 
     _syncSub = _player?.positionStream.listen((trackRelativePos) async {
+      // Reset retry counter on successful position updates
+      _streamRetryCount = 0;
       // Convert track-relative position to absolute book position
       final absolutePos = position; // uses the getter which adds track offset
       final sec = absolutePos.inSeconds;
@@ -1556,6 +1638,9 @@ class AudioPlayerService extends ChangeNotifier {
           }
         }
       }
+    }, onError: (Object e, StackTrace st) {
+      debugPrint('[Player] Position stream error: $e');
+      _attemptStreamRetry(e);
     });
   }
 
