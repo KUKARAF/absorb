@@ -117,6 +117,9 @@ class PlayerSettings {
   static Future<bool> getResetSleepOnPause() => _get('resetSleepOnPause', false);
   static Future<void> setResetSleepOnPause(bool value) => _set('resetSleepOnPause', value);
 
+  static Future<bool> getSleepFadeOut() => _get('sleepFadeOut', true);
+  static Future<void> setSleepFadeOut(bool value) => _set('sleepFadeOut', value);
+
   static Future<bool> getHideEbookOnly() => _get('hideEbookOnly', false);
   static Future<void> setHideEbookOnly(bool value) => _set('hideEbookOnly', value, notify: true);
 
@@ -768,6 +771,8 @@ class AudioPlayerService extends ChangeNotifier {
   bool get hasBook => _currentItemId != null;
   bool get isPlaying => _player?.playing ?? false;
   bool get isOfflineMode => _isOfflineMode;
+  double get volume => _player?.volume ?? 1.0;
+  Future<void> setVolume(double v) async => _player?.setVolume(v);
 
   Stream<Duration> get positionStream =>
       _player?.positionStream ?? const Stream.empty();

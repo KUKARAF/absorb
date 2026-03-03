@@ -110,6 +110,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
     _fetchChaptersIfNeeded();
     _startChapterTracking();
     ChromecastService().addListener(_onCastChanged);
+    DownloadService().addListener(_onDownloadChanged);
     PlayerSettings.settingsChanged.addListener(_reloadButtonOrder);
     _reloadButtonOrder();
   }
@@ -119,6 +120,8 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
       if (mounted && o.join(',') != _buttonOrder.join(',')) setState(() => _buttonOrder = o);
     });
   }
+
+  void _onDownloadChanged() { if (mounted) setState(() {}); }
 
   void _onCastChanged() {
     _startChapterTracking();
@@ -237,6 +240,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
   void dispose() {
     PlayerSettings.settingsChanged.removeListener(_reloadButtonOrder);
     ChromecastService().removeListener(_onCastChanged);
+    DownloadService().removeListener(_onDownloadChanged);
     _chapterTrackSub?.cancel();
     _blurredCover?.dispose();
     super.dispose();
@@ -863,6 +867,15 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
 
   void _deleteDownload(String dlKey) {
     DownloadService().deleteDownload(dlKey);
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(const SnackBar(
+          content: Text('Download removed'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ));
+    }
   }
 
   Future<void> _removeFromAbsorbing() async {

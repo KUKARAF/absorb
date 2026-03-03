@@ -20,6 +20,16 @@ class AbsorbingScreen extends StatefulWidget {
     globalKey.currentState?._scrollToActiveCard();
   }
 
+  /// Scroll to the first card (used when re-tapping the Absorbing tab)
+  static void scrollToFirst() {
+    final state = globalKey.currentState;
+    if (state != null && state._pageController.hasClients) {
+      state._pageController.animateToPage(0,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic);
+    }
+  }
+
   @override
   State<AbsorbingScreen> createState() => _AbsorbingScreenState();
 }

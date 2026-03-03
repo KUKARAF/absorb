@@ -55,6 +55,7 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
         Log.d(TAG, "EQ method channel registered")
+
     }
 
     private fun handleInit(result: MethodChannel.Result) {

@@ -106,9 +106,10 @@ class SleepTimerService extends ChangeNotifier {
   static const _shakeThreshold = 25.0; // m/s² — raised from 15 to require a deliberate shake
   static const _shakeCooldown = Duration(seconds: 3);
 
-  // Wind-down warning
+  // Wind-down warning & fade
   bool _warningSent = false;
   static const _warningThreshold = Duration(seconds: 30);
+  double _fadeStartVolume = 1.0; // volume when fade begins
 
   // Reset on pause/play
   bool _wasPlaying = false; // tracks play state transitions
@@ -165,6 +166,10 @@ class SleepTimerService extends ChangeNotifier {
         if (resetOnPause) {
           _timeRemaining = _initialDuration;
           _warningSent = false;
+          if (_isFadingOut) {
+            _isFadingOut = false;
+            _player.setVolume(_fadeStartVolume);
+          }
           debugPrint('[SleepTimer] Reset to ${_initialDuration.inMinutes}m on resume');
           onToast?.call('Sleep timer reset: ${_initialDuration.inMinutes}m');
         }
@@ -175,12 +180,24 @@ class SleepTimerService extends ChangeNotifier {
       if (isPlaying) {
         _timeRemaining -= const Duration(seconds: 1);
 
-        // Wind-down warning vibration at 30 seconds
+        // Wind-down warning at 30 seconds: vibration + optional fade
         if (!_warningSent && _timeRemaining <= _warningThreshold && _timeRemaining.inSeconds > 0) {
           _warningSent = true;
-          _vibrateWarning();
           onToast?.call('Sleep timer ending soon…');
-          debugPrint('[SleepTimer] Warning: ${_timeRemaining.inSeconds}s remaining');
+          final fadeEnabled = await PlayerSettings.getSleepFadeOut();
+          if (fadeEnabled && !_cast.isCasting) {
+            _isFadingOut = true;
+            _fadeStartVolume = _player.volume;
+            debugPrint('[SleepTimer] Warning: ${_timeRemaining.inSeconds}s remaining — starting fade');
+          } else {
+            debugPrint('[SleepTimer] Warning: ${_timeRemaining.inSeconds}s remaining');
+          }
+        }
+
+        // Gradually lower volume during the last 30 seconds
+        if (_isFadingOut && _timeRemaining.inSeconds > 0 && !_cast.isCasting) {
+          final fraction = _timeRemaining.inSeconds / _warningThreshold.inSeconds;
+          _player.setVolume((_fadeStartVolume * fraction).clamp(0.0, 1.0));
         }
 
         notifyListeners();
@@ -192,9 +209,13 @@ class SleepTimerService extends ChangeNotifier {
   void addTime(Duration extra) {
     if (_mode != SleepTimerMode.time) return;
     _timeRemaining += extra;
-    // Reset warning if we're above threshold again
+    // Reset warning and restore volume if we're above threshold again
     if (_timeRemaining > _warningThreshold) {
       _warningSent = false;
+      if (_isFadingOut) {
+        _isFadingOut = false;
+        _player.setVolume(_fadeStartVolume);
+      }
     }
     notifyListeners();
     debugPrint('[SleepTimer] Added ${extra.inMinutes}m — now ${_timeRemaining.inMinutes}m');
@@ -276,18 +297,25 @@ class SleepTimerService extends ChangeNotifier {
     return -1;
   }
 
+  bool _isFadingOut = false;
+  bool get isFadingOut => _isFadingOut;
+
   void _triggerSleep() {
     debugPrint('[SleepTimer] Triggering sleep — pausing playback');
-    _vibrateSleep();
     if (_cast.isCasting) {
       _cast.pause();
     } else {
       _player.pause();
+      // Restore volume so next playback starts at normal level
+      _player.setVolume(_fadeStartVolume);
     }
+    _isFadingOut = false;
     cancel();
   }
 
   void cancel() {
+    final wasFading = _isFadingOut;
+    _isFadingOut = false;
     _timer?.cancel();
     _timer = null;
     _positionSub?.cancel();
@@ -299,6 +327,10 @@ class SleepTimerService extends ChangeNotifier {
     _chaptersRemaining = 0;
     _targetChapterIndex = -1;
     _warningSent = false;
+    // Restore volume if cancelled during fade-out
+    if (wasFading) {
+      _player.setVolume(_fadeStartVolume);
+    }
     notifyListeners();
     debugPrint('[SleepTimer] Cancelled');
   }
@@ -310,24 +342,6 @@ class SleepTimerService extends ChangeNotifier {
     HapticFeedback.mediumImpact();
   }
 
-  /// Double heavy buzz when timer is almost done (30s left)
-  void _vibrateWarning() {
-    HapticFeedback.heavyImpact();
-    Future.delayed(const Duration(milliseconds: 200), () {
-      HapticFeedback.heavyImpact();
-    });
-  }
-
-  /// Triple heavy buzz when sleep actually triggers
-  void _vibrateSleep() {
-    HapticFeedback.heavyImpact();
-    Future.delayed(const Duration(milliseconds: 150), () {
-      HapticFeedback.heavyImpact();
-    });
-    Future.delayed(const Duration(milliseconds: 300), () {
-      HapticFeedback.heavyImpact();
-    });
-  }
 
   // ── Shake detection ──
 

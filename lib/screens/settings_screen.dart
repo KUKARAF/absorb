@@ -36,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _backSkip = 10;
   bool _shakeToResetSleep = true;
   bool _resetSleepOnPause = false;
+  bool _sleepFadeOut = true;
   int _shakeAddMinutes = 5;
   bool _autoContinueSeries = true;
   bool _hideEbookOnly = false;
@@ -65,6 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final bk = await PlayerSettings.getBackSkip();
     final shake = await PlayerSettings.getShakeToResetSleep();
     final resetOnPause = await PlayerSettings.getResetSleepOnPause();
+    final sleepFade = await PlayerSettings.getSleepFadeOut();
     final shakeMins = await PlayerSettings.getShakeAddMinutes();
     final autoSeries = await PlayerSettings.getAutoContinueSeries();
     final hideEbook = await PlayerSettings.getHideEbookOnly();
@@ -87,6 +89,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _backSkip = bk;
       _shakeToResetSleep = shake;
       _resetSleepOnPause = resetOnPause;
+      _sleepFadeOut = sleepFade;
       _shakeAddMinutes = shakeMins;
       _autoContinueSeries = autoSeries;
       _hideEbookOnly = hideEbook;
@@ -735,6 +738,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: _loaded ? (v) {
                         setState(() => _resetSleepOnPause = v);
                         PlayerSettings.setResetSleepOnPause(v);
+                      } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Fade volume before sleep'),
+                      subtitle: Text(
+                        _sleepFadeOut
+                            ? 'Gradually lowers volume during the last 30 seconds'
+                            : 'Playback stops immediately when timer ends',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _sleepFadeOut,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _sleepFadeOut = v);
+                        PlayerSettings.setSleepFadeOut(v);
                       } : null,
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
@@ -1569,6 +1586,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       onPressed: () {
                                         DownloadService().deleteDownload(info.itemId);
                                         Navigator.pop(d);
+                                        ScaffoldMessenger.of(ctx)
+                                          ..clearSnackBars()
+                                          ..showSnackBar(SnackBar(
+                                            content: Text('"${info.title}" removed'),
+                                            duration: const Duration(seconds: 2),
+                                            behavior: SnackBarBehavior.floating,
+                                          ));
                                       },
                                       child: const Text('Remove')),
                                   ],

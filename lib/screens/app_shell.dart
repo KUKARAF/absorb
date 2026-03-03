@@ -68,7 +68,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _navigateTo(int index) {
-    if (index == _currentIndex) return;
+    if (index == _currentIndex) {
+      // Already on this tab — handle re-tap actions
+      if (index == 2) {
+        // Absorbing tab: scroll to first card
+        AbsorbingScreen.scrollToFirst();
+      }
+      return;
+    }
     _ensurePageBuilt(index);
     setState(() {
       _currentIndex = index;

@@ -91,7 +91,17 @@ class _DownloadWideButtonState extends State<DownloadWideButton> {
         content: const Text('This will be removed from your device.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(onPressed: () { _dl.deleteDownload(widget.itemId); Navigator.pop(ctx); },
+          TextButton(onPressed: () {
+            _dl.deleteDownload(widget.itemId);
+            Navigator.pop(ctx);
+            ScaffoldMessenger.of(context)
+              ..clearSnackBars()
+              ..showSnackBar(const SnackBar(
+                content: Text('Download removed'),
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ));
+          },
             child: const Text('Remove', style: TextStyle(color: Colors.redAccent))),
         ],
       ));
