@@ -355,6 +355,20 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         _sheetBtn(icon: Icons.restart_alt_rounded,
           label: 'Reset Progress', onTap: () => _resetProgress(context, auth, duration)),
       ],
+      if (lib.isOnAbsorbingList(widget.itemId)) ...[
+        const SizedBox(height: 8),
+        _sheetBtn(icon: Icons.remove_circle_outline_rounded,
+          label: 'Remove from Absorbing', onTap: () async {
+            await lib.removeFromAbsorbing(widget.itemId);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                duration: const Duration(seconds: 3),
+                content: const Text('Removed from Absorbing'),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+            }
+          }),
+      ],
       const SizedBox(height: 16),
       Wrap(spacing: 8, runSpacing: 8, children: [
         if (year.isNotEmpty) _chip(Icons.calendar_today_rounded, year),

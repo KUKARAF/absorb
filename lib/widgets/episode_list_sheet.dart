@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
+import '../services/progress_sync_service.dart';
 import '../services/chromecast_service.dart';
 import '../providers/auth_provider.dart';
 
@@ -805,7 +806,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      isFinished ? 'Finished' : 'Mark Finished',
+                      isFinished ? 'Mark Unfinished' : 'Mark Finished',
                       style: TextStyle(
                         color: isFinished ? Colors.green : cs.onSurfaceVariant,
                         fontSize: 12, fontWeight: FontWeight.w500,
@@ -815,6 +816,28 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                 ),
               )),
             ]),
+
+            // Reset Progress
+            if (progress > 0 || isFinished) ...[
+              const SizedBox(height: 8),
+              _sheetBtn(icon: Icons.restart_alt_rounded,
+                label: 'Reset Progress', onTap: () => _resetProgress(context)),
+            ],
+            // Remove from Absorbing
+            if (lib.isOnAbsorbingList(dlKey)) ...[
+              const SizedBox(height: 8),
+              _sheetBtn(icon: Icons.remove_circle_outline_rounded,
+                label: 'Remove from Absorbing', onTap: () async {
+                  await lib.removeFromAbsorbing(dlKey);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      duration: const Duration(seconds: 3),
+                      content: const Text('Removed from Absorbing'),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+                  }
+                }),
+            ],
 
             // Metadata chips
             const SizedBox(height: 16),
@@ -877,6 +900,61 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
         ),
       ]),
     );
+  }
+
+  Widget _sheetBtn({required IconData icon, required String label, required VoidCallback onTap}) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(onTap: onTap, child: Container(height: 44,
+      decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.onSurface.withValues(alpha: 0.1))),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(icon, size: 16, color: cs.onSurfaceVariant), const SizedBox(width: 6),
+        Text(label, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w500))])));
+  }
+
+  Future<void> _resetProgress(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset Progress?'),
+        content: const Text('This will erase all progress for this episode and set it back to the beginning. This can\'t be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+            child: const Text('Reset')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final auth = context.read<AuthProvider>();
+    final api = auth.apiService;
+    if (api == null) return;
+    final player = AudioPlayerService();
+
+    if (player.currentItemId == _itemId && player.currentEpisodeId == _episodeId) {
+      await player.stopWithoutSaving();
+    }
+
+    final compoundKey = '$_itemId-$_episodeId';
+    await ProgressSyncService().deleteLocal(compoundKey);
+    final ok = await api.deleteEpisodeProgress(_itemId, _episodeId);
+    // Mark as unfinished with zero progress on the server
+    await api.updateEpisodeProgress(
+      _itemId, _episodeId,
+      currentTime: 0,
+      duration: _duration,
+      isFinished: false,
+    );
+
+    if (context.mounted) {
+      context.read<LibraryProvider>().resetProgressFor(compoundKey);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 3),
+        content: Text(ok ? 'Progress reset — fresh start!' : 'Reset may not have synced — check your server'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+    }
   }
 
   Widget _chip(IconData icon, String text) {
