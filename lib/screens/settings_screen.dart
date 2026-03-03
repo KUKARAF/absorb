@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -11,6 +13,7 @@ import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
 import '../services/sleep_timer_service.dart';
 import '../services/user_account_service.dart';
+import '../services/backup_service.dart';
 import '../services/log_service.dart';
 import '../screens/login_screen.dart';
 import '../screens/app_shell.dart';
@@ -51,6 +54,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _totalDownloadSizeBytes = 0;
   AutoSleepSettings _autoSleepSettings = const AutoSleepSettings();
   String _appVersion = '';
+  String? _expandedSection;
 
   @override
   void initState() {
@@ -416,6 +420,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.palette_outlined,
                   title: 'Appearance',
                   cs: cs,
+                  isExpanded: _expandedSection == 'Appearance',
+                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Appearance' : null),
                   children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -451,11 +457,107 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                // ── Absorbing Cards ──
+                _CollapsibleSection(
+                  icon: Icons.style_rounded,
+                  title: 'Absorbing Cards',
+                  cs: cs,
+                  isExpanded: _expandedSection == 'Absorbing Cards',
+                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Absorbing Cards' : null),
+                  children: [
+                    SwitchListTile(
+                      title: const Text('Full screen player'),
+                      subtitle: Text(
+                        _fullScreenPlayer ? 'On — books open in full screen when played' : 'Off — play within card view',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _fullScreenPlayer,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _fullScreenPlayer = v);
+                        PlayerSettings.setFullScreenPlayer(v);
+                      } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Full book scrubber'),
+                      subtitle: Text(
+                        _showBookSlider ? 'On — seekable slider across entire book' : 'Off — progress bar only',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _showBookSlider,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _showBookSlider = v);
+                        PlayerSettings.setShowBookSlider(v);
+                      } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Speed-adjusted time'),
+                      subtitle: Text(
+                        _speedAdjustedTime ? 'On — remaining time reflects playback speed' : 'Off — showing raw audio duration',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _speedAdjustedTime,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _speedAdjustedTime = v);
+                        PlayerSettings.setSpeedAdjustedTime(v);
+                      } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('When finished', style: tt.bodyMedium?.copyWith(color: cs.onSurface)),
+                        const SizedBox(height: 4),
+                        Text('What happens to the absorbing card when a book or episode finishes',
+                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        const SizedBox(height: 8),
+                        SizedBox(width: double.infinity, child: SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(value: 'overlay', icon: Icon(Icons.layers_rounded), label: Text('Show Overlay')),
+                            ButtonSegment(value: 'auto_remove', icon: Icon(Icons.auto_delete_rounded), label: Text('Auto-remove')),
+                          ],
+                          selected: {_whenFinished},
+                          onSelectionChanged: _loaded ? (s) {
+                            setState(() => _whenFinished = s.first);
+                            PlayerSettings.setWhenFinished(s.first);
+                          } : null,
+                          style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                        )),
+                      ]),
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Auto-play next book in series'),
+                      subtitle: Text(
+                        _autoPlayNextBook ? 'On — next book plays automatically' : 'Off',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _autoPlayNextBook,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _autoPlayNextBook = v);
+                        PlayerSettings.setAutoPlayNextBook(v);
+                      } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Auto-play next podcast episode'),
+                      subtitle: Text(
+                        _autoPlayNextPodcast ? 'On — next episode plays automatically' : 'Off',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _autoPlayNextPodcast,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _autoPlayNextPodcast = v);
+                        PlayerSettings.setAutoPlayNextPodcast(v);
+                      } : null,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
                 // ── Playback ──
                 _CollapsibleSection(
                   icon: Icons.play_circle_outline_rounded,
                   title: 'Playback',
                   cs: cs,
+                  isExpanded: _expandedSection == 'Playback',
+                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Playback' : null),
                   children: [
                     // Default speed
                     Padding(
@@ -547,90 +649,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         setState(() => _forwardSkip = v.round());
                         PlayerSettings.setForwardSkip(v.round());
                       } : null,
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    // Toggles
-                    SwitchListTile(
-                      title: const Text('Full book scrubber'),
-                      subtitle: Text(
-                        _showBookSlider ? 'On — seekable slider across entire book' : 'Off — progress bar only',
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      value: _showBookSlider,
-                      onChanged: _loaded ? (v) {
-                        setState(() => _showBookSlider = v);
-                        PlayerSettings.setShowBookSlider(v);
-                      } : null,
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    SwitchListTile(
-                      title: const Text('Speed-adjusted time'),
-                      subtitle: Text(
-                        _speedAdjustedTime ? 'On — remaining time reflects playback speed' : 'Off — showing raw audio duration',
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      value: _speedAdjustedTime,
-                      onChanged: _loaded ? (v) {
-                        setState(() => _speedAdjustedTime = v);
-                        PlayerSettings.setSpeedAdjustedTime(v);
-                      } : null,
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    SwitchListTile(
-                      title: const Text('Full screen player'),
-                      subtitle: Text(
-                        _fullScreenPlayer ? 'On — books open in full screen when played' : 'Off — play within card view',
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      value: _fullScreenPlayer,
-                      onChanged: _loaded ? (v) {
-                        setState(() => _fullScreenPlayer = v);
-                        PlayerSettings.setFullScreenPlayer(v);
-                      } : null,
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    SwitchListTile(
-                      title: const Text('Auto-play next book in series'),
-                      subtitle: Text(
-                        _autoPlayNextBook ? 'On — next book plays automatically' : 'Off',
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      value: _autoPlayNextBook,
-                      onChanged: _loaded ? (v) {
-                        setState(() => _autoPlayNextBook = v);
-                        PlayerSettings.setAutoPlayNextBook(v);
-                      } : null,
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    SwitchListTile(
-                      title: const Text('Auto-play next podcast episode'),
-                      subtitle: Text(
-                        _autoPlayNextPodcast ? 'On — next episode plays automatically' : 'Off',
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      value: _autoPlayNextPodcast,
-                      onChanged: _loaded ? (v) {
-                        setState(() => _autoPlayNextPodcast = v);
-                        PlayerSettings.setAutoPlayNextPodcast(v);
-                      } : null,
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('When finished', style: tt.bodyMedium?.copyWith(color: cs.onSurface)),
-                        const SizedBox(height: 4),
-                        Text('What happens to the absorbing card when a book or episode finishes',
-                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                        const SizedBox(height: 8),
-                        SizedBox(width: double.infinity, child: SegmentedButton<String>(
-                          segments: const [
-                            ButtonSegment(value: 'overlay', icon: Icon(Icons.layers_rounded), label: Text('Show Overlay')),
-                            ButtonSegment(value: 'auto_remove', icon: Icon(Icons.auto_delete_rounded), label: Text('Auto-remove')),
-                          ],
-                          selected: {_whenFinished},
-                          onSelectionChanged: _loaded ? (s) {
-                            setState(() => _whenFinished = s.first);
-                            PlayerSettings.setWhenFinished(s.first);
-                          } : null,
-                          style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                        )),
-                      ]),
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     // ── Auto-Rewind ──
@@ -732,6 +750,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.bedtime_outlined,
                   title: 'Sleep Timer',
                   cs: cs,
+                  isExpanded: _expandedSection == 'Sleep Timer',
+                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Sleep Timer' : null),
                   children: [
                     SwitchListTile(
                       title: const Text('Shake to add time'),
@@ -913,6 +933,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.download_outlined,
                   title: 'Downloads & Storage',
                   cs: cs,
+                  isExpanded: _expandedSection == 'Downloads & Storage',
+                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Downloads & Storage' : null),
                   children: [
                     SwitchListTile(
                       title: const Text('Download over Wi-Fi only'),
@@ -964,6 +986,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.auto_stories_outlined,
                   title: 'Library',
                   cs: cs,
+                  isExpanded: _expandedSection == 'Library',
+                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Library' : null),
                   children: [
                     SwitchListTile(
                       title: const Text('Hide eBook-only titles'),
@@ -1019,6 +1043,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.shield_outlined,
                   title: 'Permissions',
                   cs: cs,
+                  isExpanded: _expandedSection == 'Permissions',
+                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Permissions' : null),
                   children: [
                     ListTile(
                       leading: const Icon(Icons.notifications_outlined),
@@ -1078,6 +1104,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.support_agent_rounded,
                   title: 'Issues & Support',
                   cs: cs,
+                  isExpanded: _expandedSection == 'Issues & Support',
+                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Issues & Support' : null),
                   children: [
                     ListTile(
                       leading: Icon(Icons.bug_report_outlined, color: cs.onSurfaceVariant),
@@ -1196,6 +1224,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
                       ),
                     ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Backup & Restore ──
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Card(
+                    elevation: 0,
+                    color: cs.surfaceContainerHigh,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Icon(Icons.settings_backup_restore_rounded, color: cs.primary, size: 22),
+                            const SizedBox(width: 10),
+                            Text('Backup & Restore', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                          ]),
+                          const SizedBox(height: 4),
+                          Text('Save or restore all your settings to a file',
+                            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                          const SizedBox(height: 14),
+                          Row(children: [
+                            Expanded(child: FilledButton.tonalIcon(
+                              icon: const Icon(Icons.upload_rounded, size: 18),
+                              label: const Text('Back up'),
+                              onPressed: () => _backupSettings(context, cs, tt),
+                            )),
+                            const SizedBox(width: 10),
+                            Expanded(child: OutlinedButton.icon(
+                              icon: const Icon(Icons.download_rounded, size: 18),
+                              label: const Text('Restore'),
+                              onPressed: () => _restoreSettings(context, cs, tt),
+                            )),
+                          ]),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
 
@@ -1654,6 +1724,186 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _backupSettings(BuildContext context, ColorScheme cs, TextTheme tt) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.shield_rounded),
+        title: const Text('Include login info?'),
+        content: const Text(
+          'Would you like to include login credentials for all your saved accounts in the backup?\n\n'
+          'This makes it easy to restore on a new device, but the file will contain your auth tokens.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _performBackup(context, includeAccounts: false);
+            },
+            child: const Text('No, settings only'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _performBackup(context, includeAccounts: true);
+            },
+            child: const Text('Yes, include accounts'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _performBackup(BuildContext context, {required bool includeAccounts}) async {
+    try {
+      final data = await BackupService.exportSettings(includeAccounts: includeAccounts);
+      final jsonStr = const JsonEncoder.withIndent('  ').convert(data);
+      final now = DateTime.now();
+      final datePart = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final fileName = 'absorb_backup_$datePart.absorb';
+
+      final bytes = Uint8List.fromList(utf8.encode(jsonStr));
+
+      final result = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save Absorb backup',
+        fileName: fileName,
+        type: FileType.any,
+        bytes: bytes,
+      );
+
+      if (result != null) {
+        // Desktop platforms need manual file write; mobile writes via bytes param
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          await File(result).writeAsString(jsonStr);
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(includeAccounts
+                ? 'Backup saved (with accounts)'
+                : 'Backup saved (settings only)'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Backup failed: $e')),
+        );
+      }
+    }
+  }
+
+  void _restoreSettings(BuildContext context, ColorScheme cs, TextTheme tt) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
+      if (result == null || result.files.single.path == null) return;
+
+      final file = File(result.files.single.path!);
+      final jsonStr = await file.readAsString();
+      final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+
+      if (data['version'] == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid backup file')),
+          );
+        }
+        return;
+      }
+
+      if (!mounted) return;
+
+      final accounts = data['accounts'] as List<dynamic>?;
+      final hasAccounts = accounts != null && accounts.isNotEmpty;
+      final createdAt = data['createdAt'] as String?;
+      final appVersion = data['appVersion'] as String?;
+
+      String details = '';
+      if (appVersion != null) details += 'From Absorb v$appVersion';
+      if (createdAt != null) {
+        final dt = DateTime.tryParse(createdAt);
+        if (dt != null) {
+          details += details.isEmpty ? '' : ' · ';
+          details += '${dt.month}/${dt.day}/${dt.year}';
+        }
+      }
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Icon(Icons.restore_rounded),
+          title: const Text('Restore backup?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('This will replace all your current settings with the backup values.'),
+              if (details.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(details, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+              ],
+              if (hasAccounts) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.people_rounded, size: 16, color: cs.primary),
+                    const SizedBox(width: 8),
+                    Text('Includes ${accounts.length} saved account(s)',
+                      style: TextStyle(fontSize: 12, color: cs.primary)),
+                  ]),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Restore'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true || !mounted) return;
+
+      await BackupService.importSettings(data);
+
+      // Apply theme immediately
+      final theme = data['settings']?['themeMode'] as String?;
+      if (theme != null) {
+        themeNotifier.value = parseThemeMode(theme);
+      }
+
+      // Refresh UI
+      await _loadSettings();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Settings restored successfully'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Restore failed: $e')),
+        );
+      }
+    }
+  }
+
   void _confirmLogout(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     showDialog(
@@ -1756,35 +2006,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-class _CollapsibleSection extends StatelessWidget {
+class _CollapsibleSection extends StatefulWidget {
   final IconData icon;
   final String title;
   final ColorScheme cs;
   final List<Widget> children;
+  final bool isExpanded;
+  final ValueChanged<bool>? onExpansionChanged;
 
   const _CollapsibleSection({
     required this.icon,
     required this.title,
     required this.cs,
     required this.children,
+    this.isExpanded = false,
+    this.onExpansionChanged,
   });
 
   @override
+  State<_CollapsibleSection> createState() => _CollapsibleSectionState();
+}
+
+class _CollapsibleSectionState extends State<_CollapsibleSection> {
+  final ExpansibleController _controller = ExpansibleController();
+  bool _isBuilt = false;
+
+  @override
+  void didUpdateWidget(covariant _CollapsibleSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_isBuilt && widget.isExpanded != oldWidget.isExpanded) {
+      if (widget.isExpanded) {
+        _controller.expand();
+      } else {
+        _controller.collapse();
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    _isBuilt = true;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
-      elevation: 0,
+      elevation: isDark ? 0 : 2,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      color: cs.surfaceContainerHigh,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: widget.cs.surfaceContainerHighest,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: isDark ? BorderSide(color: widget.cs.outlineVariant.withValues(alpha: 0.3)) : BorderSide.none,
+      ),
       clipBehavior: Clip.antiAlias,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          leading: Icon(icon, color: cs.primary, size: 22),
-          title: Text(title, style: TextStyle(fontWeight: FontWeight.w600)),
+          controller: _controller,
+          initiallyExpanded: widget.isExpanded,
+          onExpansionChanged: widget.onExpansionChanged,
+          leading: Icon(widget.icon, color: widget.cs.primary, size: 22),
+          title: Text(widget.title, style: TextStyle(fontWeight: FontWeight.w600)),
           childrenPadding: EdgeInsets.zero,
           tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-          children: children,
+          children: widget.children,
         ),
       ),
     );

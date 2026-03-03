@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/backup_service.dart';
 import '../services/oidc_service.dart';
 import '../services/user_account_service.dart';
 import '../widgets/absorb_wave_icon.dart';
@@ -592,16 +596,35 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
                   ),
 
-                  // ── Version label ──
+                  // ── Version + Restore pill ──
                   const SizedBox(height: 32),
                   FadeTransition(
                     opacity: _fadeAnim,
-                    child: Text(
-                      _appVersion,
-                      style: tt.labelSmall?.copyWith(
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.3),
-                        letterSpacing: 1,
-                      ),
+                    child: Column(
+                      children: [
+                        Text(
+                          _appVersion,
+                          style: tt.labelSmall?.copyWith(
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.3),
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ActionChip(
+                          avatar: Icon(Icons.restore_rounded, size: 16,
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+                          label: Text('Restore from backup',
+                            style: tt.labelSmall?.copyWith(
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                            )),
+                          backgroundColor: cs.surfaceContainerHighest.withValues(alpha: 0.3),
+                          side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.15)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          onPressed: _restoreFromBackup,
+                        ),
+                      ],
                     ),
                   ),
 
@@ -698,6 +721,94 @@ class _LoginScreenState extends State<LoginScreen>
         ),
       ),
     );
+  }
+
+  Future<void> _restoreFromBackup() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
+      if (result == null || result.files.isEmpty) return;
+
+      final file = File(result.files.single.path!);
+      final jsonStr = await file.readAsString();
+      final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+
+      if (!data.containsKey('version')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid backup file')),
+          );
+        }
+        return;
+      }
+
+      final accounts = data['accounts'] as List<dynamic>?;
+      final accountCount = accounts?.length ?? 0;
+      final hasAccounts = accountCount > 0;
+
+      if (!mounted) return;
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Restore backup?'),
+          content: Text(hasAccounts
+              ? 'This will restore all settings and $accountCount saved account(s). You\'ll be signed in automatically.'
+              : 'This will restore all settings. No accounts were included in this backup.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Restore'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) return;
+
+      await BackupService.importSettings(data);
+
+      // Auto-login with the first restored account
+      if (hasAccounts && mounted) {
+        final restoredAccounts = UserAccountService().accounts;
+        if (restoredAccounts.isNotEmpty) {
+          final auth = context.read<AuthProvider>();
+          await auth.switchToAccount(restoredAccounts.first);
+
+          if (mounted) {
+            if (auth.isAuthenticated && auth.serverReachable) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Restored settings and signed in as ${restoredAccounts.first.username}'),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ));
+            } else {
+              // Token expired — accounts are saved but need re-auth
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: const Text('Settings restored. Session expired \u2014 sign in to continue.'),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ));
+              setState(() {}); // Refresh to show saved accounts list
+            }
+          }
+        }
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Settings restored'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Restore failed: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _quickSwitch(SavedAccount account) async {
