@@ -12,16 +12,19 @@ class ScopedPrefs {
 
   static String _scope(String key) => UserAccountService().scopedKey(key);
 
+  /// Only fall back to un-scoped data when there is no active scope
+  /// (i.e. pre-multi-user migration). Once scoped, a missing key means
+  /// the account has no data — not that it should inherit another account's.
+  static bool get _shouldFallback => !UserAccountService().hasScope;
+
   // ── String ──
 
   static Future<String?> getString(String key) async {
     final prefs = await SharedPreferences.getInstance();
-    // Try scoped key first, fall back to un-scoped (migration)
     final scoped = prefs.getString(_scope(key));
     if (scoped != null) return scoped;
-    // Fallback: if no scoped value but un-scoped exists, return it
-    // (this handles pre-multi-user data transparently)
-    return prefs.getString(key);
+    if (_shouldFallback) return prefs.getString(key);
+    return null;
   }
 
   static Future<void> setString(String key, String value) async {
@@ -40,7 +43,8 @@ class ScopedPrefs {
     final prefs = await SharedPreferences.getInstance();
     final scoped = prefs.getStringList(_scope(key));
     if (scoped != null) return scoped;
-    return prefs.getStringList(key) ?? [];
+    if (_shouldFallback) return prefs.getStringList(key) ?? [];
+    return [];
   }
 
   static Future<void> setStringList(String key, List<String> value) async {
@@ -54,7 +58,7 @@ class ScopedPrefs {
     final prefs = await SharedPreferences.getInstance();
     final scoped = _scope(key);
     if (prefs.containsKey(scoped)) return prefs.getBool(scoped);
-    if (prefs.containsKey(key)) return prefs.getBool(key);
+    if (_shouldFallback && prefs.containsKey(key)) return prefs.getBool(key);
     return null;
   }
 
@@ -69,7 +73,7 @@ class ScopedPrefs {
     final prefs = await SharedPreferences.getInstance();
     final scoped = _scope(key);
     if (prefs.containsKey(scoped)) return prefs.getDouble(scoped);
-    if (prefs.containsKey(key)) return prefs.getDouble(key);
+    if (_shouldFallback && prefs.containsKey(key)) return prefs.getDouble(key);
     return null;
   }
 
@@ -84,7 +88,7 @@ class ScopedPrefs {
     final prefs = await SharedPreferences.getInstance();
     final scoped = _scope(key);
     if (prefs.containsKey(scoped)) return prefs.getInt(scoped);
-    if (prefs.containsKey(key)) return prefs.getInt(key);
+    if (_shouldFallback && prefs.containsKey(key)) return prefs.getInt(key);
     return null;
   }
 
@@ -97,6 +101,8 @@ class ScopedPrefs {
 
   static Future<bool> containsKey(String key) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.containsKey(_scope(key)) || prefs.containsKey(key);
+    if (prefs.containsKey(_scope(key))) return true;
+    if (_shouldFallback) return prefs.containsKey(key);
+    return false;
   }
 }

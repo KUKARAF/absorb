@@ -1904,6 +1904,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Stop any active playback and sync progress to the server before
+  /// switching users, adding an account, or signing out.
+  Future<void> _stopAndSyncPlayback() async {
+    final player = AudioPlayerService();
+    if (player.hasBook) {
+      await player.pause();
+      await player.stop();
+    }
+  }
+
   void _confirmLogout(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     showDialog(
@@ -1918,9 +1928,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('Stay'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              context.read<AuthProvider>().logout();
+              await _stopAndSyncPlayback();
+              if (context.mounted) context.read<AuthProvider>().logout();
             },
             style: FilledButton.styleFrom(backgroundColor: cs.error),
             child: const Text('Sign Out'),
@@ -1931,6 +1942,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _addAccount(BuildContext context) async {
+    // Stop playback and sync before navigating to login
+    await _stopAndSyncPlayback();
+    if (!context.mounted) return;
     // Navigate to login screen as a pushed route (not replacing current)
     await Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -1990,6 +2004,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (confirmed != true || !context.mounted) return;
+
+    // Stop playback and sync before switching
+    await _stopAndSyncPlayback();
+    if (!context.mounted) return;
 
     final auth = context.read<AuthProvider>();
     final lib = context.read<LibraryProvider>();
