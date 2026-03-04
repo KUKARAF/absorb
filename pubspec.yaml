@@ -1,7 +1,7 @@
 name: absorb
 description: A Material 3 Audiobookshelf client for Android.
 publish_to: 'none'
-version: 1.7.29+34
+version: 1.7.30+34
 
 environment:
   sdk: '>=3.1.0 <4.0.0'
