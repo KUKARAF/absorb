@@ -264,8 +264,13 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         },
         icon: _isAbsorbing
             ? SizedBox(width: 24, height: 24, child: AbsorbingWave(color: cs.onPrimary))
-            : const Icon(Icons.waves_rounded, size: 24),
-        label: Text(_isAbsorbing ? 'Absorbing…' : 'Absorb',
+            : Icon(isFinished ? Icons.replay_rounded : Icons.waves_rounded, size: 24),
+        label: Text(
+          _isAbsorbing
+              ? 'Absorbing…'
+              : isFinished
+                  ? 'Absorb Again'
+                  : 'Absorb',
           style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onPrimary)),
         style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
       )),
