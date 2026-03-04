@@ -89,6 +89,15 @@ class PlayerSettings {
   static Future<bool> getWifiOnlyDownloads() => _get('wifiOnlyDownloads', false);
   static Future<void> setWifiOnlyDownloads(bool value) => _set('wifiOnlyDownloads', value);
 
+  static Future<bool> getRollingDownload() => _get('rollingDownload', false);
+  static Future<void> setRollingDownload(bool value) => _set('rollingDownload', value);
+
+  static Future<int> getRollingDownloadCount() => _get('rollingDownloadCount', 3);
+  static Future<void> setRollingDownloadCount(int value) => _set('rollingDownloadCount', value);
+
+  static Future<bool> getRollingDownloadDeleteFinished() => _get('rollingDownloadDeleteFinished', false);
+  static Future<void> setRollingDownloadDeleteFinished(bool value) => _set('rollingDownloadDeleteFinished', value);
+
   static Future<bool> getAutoPlayNextBook() => _get('autoPlayNextBook', false);
   static Future<void> setAutoPlayNextBook(bool value) => _set('autoPlayNextBook', value);
 
@@ -697,6 +706,13 @@ class AudioPlayerService extends ChangeNotifier {
     _onBookFinishedCallback = cb;
   }
 
+  /// Called when a new item starts playing. Used by LibraryProvider to trigger
+  /// rolling downloads for the next items in a series/podcast.
+  static void Function(String key)? _onPlayStartedCallback;
+  static void setOnPlayStartedCallback(void Function(String key)? cb) {
+    _onPlayStartedCallback = cb;
+  }
+
   /// Called when a podcast episode starts playing. Used by AppShell to
   /// auto-navigate to the Absorbing tab.
   static void Function()? _onEpisodePlayStartedCallback;
@@ -931,6 +947,9 @@ class AudioPlayerService extends ChangeNotifier {
   // Set true when BT/headphones disconnect so the interruption handler
   // won't auto-resume playback onto the phone speaker.
   static bool _noisyPause = false;
+  /// True when BT/headphones just disconnected — callers can check before
+  /// starting new playback to avoid blasting audio on the phone speaker.
+  static bool get wasNoisyPause => _noisyPause;
 
   static Future<void> _configureAudioSession() async {
     final session = await AudioSession.instance;
@@ -1035,6 +1054,9 @@ class AudioPlayerService extends ChangeNotifier {
 
     // Progress key: compound for episodes, plain for books
     final progressKey = episodeId != null ? '$itemId-$episodeId' : itemId;
+
+    // Notify rolling download listener that a new item is playing
+    _onPlayStartedCallback?.call(progressKey);
 
     // Check for local saved position (always prefer local — it's the freshest)
     final localPos = await _progressSync.getSavedPosition(progressKey);

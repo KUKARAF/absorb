@@ -192,7 +192,12 @@ class ProgressSyncService {
             debugPrint('[Sync] Local is newer for $itemId: local=$localTime s ($localTimestamp) vs server=$serverTime s ($serverTimestamp) — pushing');
           }
 
-          final session = await api.startPlaybackSession(itemId);
+          // Podcast episodes use compound key "showId-episodeId"
+          final isCompound = itemId.length > 36;
+          final apiItemId = isCompound ? itemId.substring(0, 36) : itemId;
+          final episodeId = isCompound ? itemId.substring(37) : null;
+
+          final session = await api.startPlaybackSession(apiItemId, episodeId: episodeId);
           if (session != null) {
             final sessionId = session['id'] as String?;
             if (sessionId != null) {

@@ -372,9 +372,10 @@ class ApiService {
   /// Start a playback session for a library item.
   /// POST /api/items/:id/play
   /// Returns the full session object including audioTracks with contentUrl.
-  Future<Map<String, dynamic>?> startPlaybackSession(String itemId) async {
+  Future<Map<String, dynamic>?> startPlaybackSession(String itemId, {String? episodeId}) async {
     try {
-      final url = '$_cleanBaseUrl/api/items/$itemId/play';
+      final epPath = episodeId != null ? '/$episodeId' : '';
+      final url = '$_cleanBaseUrl/api/items/$itemId/play$epPath';
       debugPrint('[ABS] Starting playback session: POST $url');
       final response = await http.post(
         Uri.parse(url),
@@ -464,8 +465,13 @@ class ApiService {
   /// GET /api/me/progress/:id
   Future<Map<String, dynamic>?> getItemProgress(String itemId) async {
     try {
+      // Podcast episodes use compound key "showId-episodeId" →
+      // ABS endpoint: /api/me/progress/{showId}/{episodeId}
+      final progressPath = itemId.length > 36
+          ? '${itemId.substring(0, 36)}/${itemId.substring(37)}'
+          : itemId;
       final resp = await http.get(
-        Uri.parse('$_cleanBaseUrl/api/me/progress/$itemId'),
+        Uri.parse('$_cleanBaseUrl/api/me/progress/$progressPath'),
         headers: _headers,
       ).timeout(const Duration(seconds: 10));
       if (resp.statusCode == 200) {
@@ -490,10 +496,13 @@ class ApiService {
         'progress': duration > 0 ? currentTime / duration : 0,
         'isFinished': isFinished,
       });
-      debugPrint('[API] updateProgress PATCH /api/me/progress/$itemId');
+      final progressPath = itemId.length > 36
+          ? '${itemId.substring(0, 36)}/${itemId.substring(37)}'
+          : itemId;
+      debugPrint('[API] updateProgress PATCH /api/me/progress/$progressPath');
       debugPrint('[API] updateProgress body: currentTime=$currentTime');
       final resp = await http.patch(
-        Uri.parse('$_cleanBaseUrl/api/me/progress/$itemId'),
+        Uri.parse('$_cleanBaseUrl/api/me/progress/$progressPath'),
         headers: _headers,
         body: body,
       ).timeout(const Duration(seconds: 10));
@@ -530,8 +539,11 @@ class ApiService {
   /// DELETE /api/me/progress/:id — fully remove progress entry
   Future<bool> deleteProgress(String itemId) async {
     try {
+      final progressPath = itemId.length > 36
+          ? '${itemId.substring(0, 36)}/${itemId.substring(37)}'
+          : itemId;
       final resp = await http.delete(
-        Uri.parse('$_cleanBaseUrl/api/me/progress/$itemId'),
+        Uri.parse('$_cleanBaseUrl/api/me/progress/$progressPath'),
         headers: _headers,
       ).timeout(const Duration(seconds: 10));
       debugPrint('[API] deleteProgress response: ${resp.statusCode} ${resp.body}');
@@ -545,14 +557,21 @@ class ApiService {
   /// Reset progress to zero.
   Future<bool> resetProgress(String itemId, double duration) async {
     try {
+      final progressPath = itemId.length > 36
+          ? '${itemId.substring(0, 36)}/${itemId.substring(37)}'
+          : itemId;
+      final isCompound = itemId.length > 36;
+      final apiItemId = isCompound ? itemId.substring(0, 36) : itemId;
+      final episodeId = isCompound ? itemId.substring(37) : null;
+
       // DELETE progress entry
       await http.delete(
-        Uri.parse('$_cleanBaseUrl/api/me/progress/$itemId'),
+        Uri.parse('$_cleanBaseUrl/api/me/progress/$progressPath'),
         headers: _headers,
       ).timeout(const Duration(seconds: 10));
 
       // Start session at 0 and close — forces server to update position
-      final sessionData = await startPlaybackSession(itemId);
+      final sessionData = await startPlaybackSession(apiItemId, episodeId: episodeId);
       if (sessionData != null) {
         final sessionId = sessionData['id'] as String?;
         if (sessionId != null) {
@@ -563,7 +582,7 @@ class ApiService {
 
       // PATCH last to hide from continue listening (after session sync)
       await http.patch(
-        Uri.parse('$_cleanBaseUrl/api/me/progress/$itemId'),
+        Uri.parse('$_cleanBaseUrl/api/me/progress/$progressPath'),
         headers: _headers,
         body: jsonEncode({
           'currentTime': 0,

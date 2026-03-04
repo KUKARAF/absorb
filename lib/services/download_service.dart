@@ -222,6 +222,7 @@ class DownloadService extends ChangeNotifier {
     if (json != null) {
       try {
         final map = jsonDecode(json) as Map<String, dynamic>;
+        final orphanIds = <String>[];
         for (final entry in map.entries) {
           final info =
               DownloadInfo.fromJson(entry.value as Map<String, dynamic>);
@@ -239,7 +240,28 @@ class DownloadService extends ChangeNotifier {
             }
             if (allExist) {
               _downloads[entry.key] = info;
+            } else {
+              orphanIds.add(entry.key);
             }
+          } else {
+            // Stale downloading/error entries from a previous crash
+            orphanIds.add(entry.key);
+          }
+        }
+        // Clean up partial/orphaned files on disk
+        if (orphanIds.isNotEmpty) {
+          final basePath = await downloadBasePath;
+          final internalBase = await _internalBasePath;
+          for (final id in orphanIds) {
+            debugPrint('[Download] Cleaning up orphaned entry: $id');
+            try {
+              final dir = Directory('$basePath/$id');
+              if (dir.existsSync()) dir.deleteSync(recursive: true);
+            } catch (_) {}
+            try {
+              final coverDir = Directory('$internalBase/$id');
+              if (coverDir.existsSync()) coverDir.deleteSync(recursive: true);
+            } catch (_) {}
           }
         }
       } catch (e) {
@@ -625,15 +647,16 @@ class DownloadService extends ChangeNotifier {
         final totalBytes = response.contentLength ?? -1;
         int receivedBytes = 0;
         final sink = file.openWrite();
-
-        await for (final chunk in response.stream.timeout(const Duration(seconds: 60))) {
-          sink.add(chunk);
-          receivedBytes += chunk.length;
-          trackProgress[i] = totalBytes > 0 ? receivedBytes / totalBytes : 0.5;
-          _updateProgress();
+        try {
+          await for (final chunk in response.stream.timeout(const Duration(seconds: 60))) {
+            sink.add(chunk);
+            receivedBytes += chunk.length;
+            trackProgress[i] = totalBytes > 0 ? receivedBytes / totalBytes : 0.5;
+            _updateProgress();
+          }
+        } finally {
+          await sink.close();
         }
-
-        await sink.close();
         localPaths[i] = filePath;
       }
 
@@ -694,14 +717,22 @@ class DownloadService extends ChangeNotifier {
 
       debugPrint('[Download] Complete: $title (${completedPaths.length} files)');
     } catch (e) {
-      if (_cancelled) {
-        debugPrint('[Download] Cancelled: $title');
-        _downloads.remove(itemId);
-        // Clean up partial files
+      // Clean up partial files on any failure
+      try {
         final basePath = await downloadBasePath;
         final bookDir = Directory('$basePath/$itemId');
         if (bookDir.existsSync()) bookDir.deleteSync(recursive: true);
+      } catch (_) {}
+
+      if (_cancelled) {
+        debugPrint('[Download] Cancelled: $title');
+        _downloads.remove(itemId);
       } else {
+        final isStorageFull = e.toString().contains('No space left') ||
+            e.toString().contains('ENOSPC');
+        final errorMsg = isStorageFull
+            ? 'Not enough storage space'
+            : 'Download failed';
         debugPrint('[Download] Error: $e');
         _downloads[itemId] = DownloadInfo(
           itemId: itemId,
@@ -712,7 +743,7 @@ class DownloadService extends ChangeNotifier {
         );
         // Show error notification
         try {
-          await notif.showError(title: title, message: 'Download failed: $title');
+          await notif.showError(title: title, message: '$errorMsg: $title');
         } catch (notifErr) {
           debugPrint('[Download] showError non-fatal error: $notifErr');
         }
@@ -729,6 +760,13 @@ class DownloadService extends ChangeNotifier {
     final info = _downloads[itemId];
     if (info == null) return;
 
+    // Stop playback if this item is currently playing to avoid crashes
+    final player = AudioPlayerService();
+    if (player.currentItemId == itemId ||
+        (itemId.length > 36 && player.currentItemId == itemId.substring(0, 36))) {
+      await player.stop();
+    }
+
     for (final path in info.localPaths) {
       try {
         final file = File(path);
@@ -740,6 +778,13 @@ class DownloadService extends ChangeNotifier {
       final basePath = await downloadBasePath;
       final bookDir = Directory('$basePath/$itemId');
       if (bookDir.existsSync()) bookDir.deleteSync(recursive: true);
+    } catch (_) {}
+
+    // Clean up cached cover image (stored separately in internal storage)
+    try {
+      final internalBase = await _internalBasePath;
+      final coverDir = Directory('$internalBase/$itemId');
+      if (coverDir.existsSync()) coverDir.deleteSync(recursive: true);
     } catch (_) {}
 
     _downloads.remove(itemId);

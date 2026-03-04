@@ -423,7 +423,8 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
       }
       books = books.where((b) {
         if (activeKey != null && _absorbingKey(b) == activeKey) return true;
-        return dl.isDownloaded(b['id'] as String? ?? '');
+        final dlKey = _absorbingKey(b);
+        return dl.isDownloaded(dlKey);
       }).toList();
     }
 
@@ -454,7 +455,18 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                   onTap: () {
                     final newVal = !lib.isManualOffline;
                     lib.setManualOffline(newVal);
-                    if (newVal) _stopAndRefresh(lib);
+                    if (newVal) {
+                      // Only stop playback if the current item isn't downloaded
+                      final dl = DownloadService();
+                      final itemId = _player.currentItemId;
+                      final epId = _player.currentEpisodeId;
+                      final dlKey = epId != null && itemId != null
+                          ? '$itemId-$epId'
+                          : itemId;
+                      if (dlKey == null || !dl.isDownloaded(dlKey)) {
+                        _stopAndRefresh(lib);
+                      }
+                    }
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),

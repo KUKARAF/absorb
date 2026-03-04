@@ -34,6 +34,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   AutoRewindSettings _rewindSettings = const AutoRewindSettings();
   double _defaultSpeed = 1.0;
   bool _wifiOnlyDownloads = false;
+  bool _rollingDownload = false;
+  int _rollingDownloadCount = 3;
+  bool _rollingDownloadDeleteFinished = false;
   bool _showBookSlider = false;
   bool _speedAdjustedTime = true;
   int _forwardSkip = 30;
@@ -67,6 +70,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final s = await AutoRewindSettings.load();
     final speed = await PlayerSettings.getDefaultSpeed();
     final wifiOnly = await PlayerSettings.getWifiOnlyDownloads();
+    final rolling = await PlayerSettings.getRollingDownload();
+    final rollingCount = await PlayerSettings.getRollingDownloadCount();
+    final rollingDelete = await PlayerSettings.getRollingDownloadDeleteFinished();
     final bookSlider = await PlayerSettings.getShowBookSlider();
     final speedAdj = await PlayerSettings.getSpeedAdjustedTime();
     final fwd = await PlayerSettings.getForwardSkip();
@@ -92,6 +98,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _rewindSettings = s;
       _defaultSpeed = speed;
       _wifiOnlyDownloads = wifiOnly;
+      _rollingDownload = rolling;
+      _rollingDownloadCount = rollingCount;
+      _rollingDownloadDeleteFinished = rollingDelete;
       _showBookSlider = bookSlider;
       _speedAdjustedTime = speedAdj;
       _forwardSkip = fwd;
@@ -422,7 +431,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Appearance',
                   cs: cs,
                   isExpanded: _expandedSection == 'Appearance',
-                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Appearance' : null),
+                  onExpansionChanged: (v) => setState(() { if (v) _expandedSection = 'Appearance'; else if (_expandedSection == 'Appearance') _expandedSection = null; }),
                   children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -464,7 +473,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Absorbing Cards',
                   cs: cs,
                   isExpanded: _expandedSection == 'Absorbing Cards',
-                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Absorbing Cards' : null),
+                  onExpansionChanged: (v) => setState(() { if (v) _expandedSection = 'Absorbing Cards'; else if (_expandedSection == 'Absorbing Cards') _expandedSection = null; }),
                   children: [
                     SwitchListTile(
                       title: const Text('Full screen player'),
@@ -558,7 +567,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Playback',
                   cs: cs,
                   isExpanded: _expandedSection == 'Playback',
-                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Playback' : null),
+                  onExpansionChanged: (v) => setState(() { if (v) _expandedSection = 'Playback'; else if (_expandedSection == 'Playback') _expandedSection = null; }),
                   children: [
                     // Default speed
                     Padding(
@@ -752,7 +761,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Sleep Timer',
                   cs: cs,
                   isExpanded: _expandedSection == 'Sleep Timer',
-                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Sleep Timer' : null),
+                  onExpansionChanged: (v) => setState(() { if (v) _expandedSection = 'Sleep Timer'; else if (_expandedSection == 'Sleep Timer') _expandedSection = null; }),
                   children: [
                     SwitchListTile(
                       title: const Text('Shake to add time'),
@@ -935,7 +944,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Downloads & Storage',
                   cs: cs,
                   isExpanded: _expandedSection == 'Downloads & Storage',
-                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Downloads & Storage' : null),
+                  onExpansionChanged: (v) => setState(() { if (v) _expandedSection = 'Downloads & Storage'; else if (_expandedSection == 'Downloads & Storage') _expandedSection = null; }),
                   children: [
                     SwitchListTile(
                       title: const Text('Download over Wi-Fi only'),
@@ -948,6 +957,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         PlayerSettings.setWifiOnlyDownloads(v);
                       } : null,
                     ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Rolling downloads'),
+                      subtitle: Text(
+                        _rollingDownload
+                            ? 'Auto-download next items in a series or podcast'
+                            : 'Off — manual downloads only',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _rollingDownload,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _rollingDownload = v);
+                        PlayerSettings.setRollingDownload(v);
+                      } : null,
+                    ),
+                    if (_rollingDownload) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Keep next', style: tt.bodyMedium?.copyWith(color: cs.onSurface)),
+                            const SizedBox(height: 8),
+                            SizedBox(width: double.infinity, child: SegmentedButton<int>(
+                              segments: const [
+                                ButtonSegment(value: 2, label: Text('2')),
+                                ButtonSegment(value: 3, label: Text('3')),
+                                ButtonSegment(value: 4, label: Text('4')),
+                                ButtonSegment(value: 5, label: Text('5')),
+                              ],
+                              selected: {_rollingDownloadCount},
+                              onSelectionChanged: (v) {
+                                setState(() => _rollingDownloadCount = v.first);
+                                PlayerSettings.setRollingDownloadCount(v.first);
+                              },
+                            )),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
+                      ),
+                      SwitchListTile(
+                        title: const Text('Delete finished downloads'),
+                        subtitle: Text(
+                          _rollingDownloadDeleteFinished
+                              ? 'Finished items are removed to save space'
+                              : 'Off — finished downloads kept',
+                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        value: _rollingDownloadDeleteFinished,
+                        onChanged: _loaded ? (v) {
+                          setState(() => _rollingDownloadDeleteFinished = v);
+                          PlayerSettings.setRollingDownloadDeleteFinished(v);
+                        } : null,
+                      ),
+                    ],
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     ListTile(
                       leading: Icon(Icons.folder_outlined, color: cs.primary),
@@ -988,7 +1050,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Library',
                   cs: cs,
                   isExpanded: _expandedSection == 'Library',
-                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Library' : null),
+                  onExpansionChanged: (v) => setState(() { if (v) _expandedSection = 'Library'; else if (_expandedSection == 'Library') _expandedSection = null; }),
                   children: [
                     SwitchListTile(
                       title: const Text('Hide eBook-only titles'),
@@ -1045,7 +1107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Permissions',
                   cs: cs,
                   isExpanded: _expandedSection == 'Permissions',
-                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Permissions' : null),
+                  onExpansionChanged: (v) => setState(() { if (v) _expandedSection = 'Permissions'; else if (_expandedSection == 'Permissions') _expandedSection = null; }),
                   children: [
                     ListTile(
                       leading: const Icon(Icons.notifications_outlined),
@@ -1106,7 +1168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Issues & Support',
                   cs: cs,
                   isExpanded: _expandedSection == 'Issues & Support',
-                  onExpansionChanged: (v) => setState(() => _expandedSection = v ? 'Issues & Support' : null),
+                  onExpansionChanged: (v) => setState(() { if (v) _expandedSection = 'Issues & Support'; else if (_expandedSection == 'Issues & Support') _expandedSection = null; }),
                   children: [
                     ListTile(
                       leading: Icon(Icons.bug_report_outlined, color: cs.onSurfaceVariant),

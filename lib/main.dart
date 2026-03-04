@@ -26,6 +26,10 @@ import 'widgets/absorb_wave_icon.dart';
 /// Global notifier so any widget (e.g. settings) can change the theme instantly.
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 
+/// Global key so non-widget code (e.g. providers) can show snackbars.
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 ThemeMode parseThemeMode(String value) {
   switch (value) {
     case 'light': return ThemeMode.light;
@@ -143,6 +147,7 @@ class AbsorbApp extends StatelessWidget {
             );
 
             return MaterialApp(
+              scaffoldMessengerKey: scaffoldMessengerKey,
               title: 'Absorb',
               debugShowCheckedModeBanner: false,
               themeMode: currentMode,
