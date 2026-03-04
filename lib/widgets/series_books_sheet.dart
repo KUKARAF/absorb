@@ -65,6 +65,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
   bool _isLoading = true;
   bool _isDownloadingAll = false;
   bool _isMarkingAll = false;
+  bool _autoDownloadEnabled = false;
 
   @override
   void initState() {
@@ -75,6 +76,16 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
     if (_books.isNotEmpty) _isLoading = false;
     // Fetch full data from API for proper sequence info
     _fetchFromApi();
+    _loadAutoDownloadState();
+  }
+
+  void _loadAutoDownloadState() {
+    final seriesId = widget.seriesId;
+    if (seriesId == null || seriesId.isEmpty) return;
+    final lib = context.read<LibraryProvider>();
+    setState(() {
+      _autoDownloadEnabled = lib.isRollingDownloadEnabled(seriesId);
+    });
   }
 
   /// Unwrap ABS format: { libraryItem: {...}, sequence: "1" }
@@ -296,6 +307,27 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
     final api = auth.apiService;
     if (api == null) return;
 
+    // Offer to enable auto-download if not already on
+    final seriesId = widget.seriesId;
+    if (seriesId != null && seriesId.isNotEmpty && !_autoDownloadEnabled) {
+      final enable = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Auto-Download This Series?'),
+          content: const Text('Automatically download the next books as you listen.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No Thanks')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enable')),
+          ],
+        ),
+      );
+      if (enable == true && mounted) {
+        final lib = context.read<LibraryProvider>();
+        await lib.enableRollingDownload(seriesId);
+        setState(() => _autoDownloadEnabled = true);
+      }
+    }
+
     setState(() => _isDownloadingAll = true);
 
     for (final book in _books) {
@@ -482,6 +514,47 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
               },
             ),
           ),
+          // Auto-download toggle
+          if (widget.seriesId != null && widget.seriesId!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: GestureDetector(
+                onTap: () async {
+                  final lib = context.read<LibraryProvider>();
+                  await lib.toggleRollingDownload(widget.seriesId!);
+                  setState(() => _autoDownloadEnabled = lib.isRollingDownloadEnabled(widget.seriesId!));
+                },
+                child: Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: _autoDownloadEnabled
+                        ? cs.primary.withValues(alpha: 0.08)
+                        : cs.onSurface.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _autoDownloadEnabled
+                          ? cs.primary.withValues(alpha: 0.2)
+                          : cs.onSurface.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(
+                      _autoDownloadEnabled ? Icons.downloading_rounded : Icons.download_outlined,
+                      size: 16,
+                      color: _autoDownloadEnabled ? cs.primary : cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _autoDownloadEnabled ? 'Auto-Download On' : 'Auto-Download Off',
+                      style: TextStyle(
+                        color: _autoDownloadEnabled ? cs.primary : cs.onSurfaceVariant,
+                        fontSize: 12, fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
         ],
         if (_isLoading && _books.isEmpty)
           const Expanded(

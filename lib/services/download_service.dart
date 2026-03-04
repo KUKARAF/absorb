@@ -756,15 +756,17 @@ class DownloadService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteDownload(String itemId) async {
+  Future<void> deleteDownload(String itemId, {bool skipStopCheck = false}) async {
     final info = _downloads[itemId];
     if (info == null) return;
 
     // Stop playback if this item is currently playing to avoid crashes
-    final player = AudioPlayerService();
-    if (player.currentItemId == itemId ||
-        (itemId.length > 36 && player.currentItemId == itemId.substring(0, 36))) {
-      await player.stop();
+    if (!skipStopCheck) {
+      final player = AudioPlayerService();
+      if (player.currentItemId == itemId ||
+          (itemId.length > 36 && player.currentItemId == itemId.substring(0, 36))) {
+        await player.stop();
+      }
     }
 
     for (final path in info.localPaths) {

@@ -89,9 +89,6 @@ class PlayerSettings {
   static Future<bool> getWifiOnlyDownloads() => _get('wifiOnlyDownloads', false);
   static Future<void> setWifiOnlyDownloads(bool value) => _set('wifiOnlyDownloads', value);
 
-  static Future<bool> getRollingDownload() => _get('rollingDownload', false);
-  static Future<void> setRollingDownload(bool value) => _set('rollingDownload', value);
-
   static Future<int> getRollingDownloadCount() => _get('rollingDownloadCount', 3);
   static Future<void> setRollingDownloadCount(int value) => _set('rollingDownloadCount', value);
 

@@ -34,7 +34,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   AutoRewindSettings _rewindSettings = const AutoRewindSettings();
   double _defaultSpeed = 1.0;
   bool _wifiOnlyDownloads = false;
-  bool _rollingDownload = false;
   int _rollingDownloadCount = 3;
   bool _rollingDownloadDeleteFinished = false;
   bool _showBookSlider = false;
@@ -70,7 +69,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final s = await AutoRewindSettings.load();
     final speed = await PlayerSettings.getDefaultSpeed();
     final wifiOnly = await PlayerSettings.getWifiOnlyDownloads();
-    final rolling = await PlayerSettings.getRollingDownload();
     final rollingCount = await PlayerSettings.getRollingDownloadCount();
     final rollingDelete = await PlayerSettings.getRollingDownloadDeleteFinished();
     final bookSlider = await PlayerSettings.getShowBookSlider();
@@ -98,7 +96,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _rewindSettings = s;
       _defaultSpeed = speed;
       _wifiOnlyDownloads = wifiOnly;
-      _rollingDownload = rolling;
       _rollingDownloadCount = rollingCount;
       _rollingDownloadDeleteFinished = rollingDelete;
       _showBookSlider = bookSlider;
@@ -958,58 +955,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       } : null,
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
-                    SwitchListTile(
-                      title: const Text('Rolling downloads'),
+                    ListTile(
+                      title: const Text('Auto-download'),
                       subtitle: Text(
-                        _rollingDownload
-                            ? 'Auto-download next items in a series or podcast'
-                            : 'Off — manual downloads only',
+                        'Enable per series or podcast from their detail pages',
                         style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      value: _rollingDownload,
+                      leading: Icon(Icons.downloading_rounded, color: cs.primary),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Keep next', style: tt.bodyMedium?.copyWith(color: cs.onSurface)),
+                          const SizedBox(height: 8),
+                          SizedBox(width: double.infinity, child: SegmentedButton<int>(
+                            segments: const [
+                              ButtonSegment(value: 2, label: Text('2')),
+                              ButtonSegment(value: 3, label: Text('3')),
+                              ButtonSegment(value: 4, label: Text('4')),
+                              ButtonSegment(value: 5, label: Text('5')),
+                            ],
+                            selected: {_rollingDownloadCount},
+                            onSelectionChanged: (v) {
+                              setState(() => _rollingDownloadCount = v.first);
+                              PlayerSettings.setRollingDownloadCount(v.first);
+                            },
+                          )),
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                    ),
+                    SwitchListTile(
+                      title: const Text('Delete finished downloads'),
+                      subtitle: Text(
+                        _rollingDownloadDeleteFinished
+                            ? 'Finished items are removed to save space'
+                            : 'Off — finished downloads kept',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _rollingDownloadDeleteFinished,
                       onChanged: _loaded ? (v) {
-                        setState(() => _rollingDownload = v);
-                        PlayerSettings.setRollingDownload(v);
+                        setState(() => _rollingDownloadDeleteFinished = v);
+                        PlayerSettings.setRollingDownloadDeleteFinished(v);
                       } : null,
                     ),
-                    if (_rollingDownload) ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Keep next', style: tt.bodyMedium?.copyWith(color: cs.onSurface)),
-                            const SizedBox(height: 8),
-                            SizedBox(width: double.infinity, child: SegmentedButton<int>(
-                              segments: const [
-                                ButtonSegment(value: 2, label: Text('2')),
-                                ButtonSegment(value: 3, label: Text('3')),
-                                ButtonSegment(value: 4, label: Text('4')),
-                                ButtonSegment(value: 5, label: Text('5')),
-                              ],
-                              selected: {_rollingDownloadCount},
-                              onSelectionChanged: (v) {
-                                setState(() => _rollingDownloadCount = v.first);
-                                PlayerSettings.setRollingDownloadCount(v.first);
-                              },
-                            )),
-                            const SizedBox(height: 8),
-                          ],
-                        ),
-                      ),
-                      SwitchListTile(
-                        title: const Text('Delete finished downloads'),
-                        subtitle: Text(
-                          _rollingDownloadDeleteFinished
-                              ? 'Finished items are removed to save space'
-                              : 'Off — finished downloads kept',
-                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                        value: _rollingDownloadDeleteFinished,
-                        onChanged: _loaded ? (v) {
-                          setState(() => _rollingDownloadDeleteFinished = v);
-                          PlayerSettings.setRollingDownloadDeleteFinished(v);
-                        } : null,
-                      ),
-                    ],
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     ListTile(
                       leading: Icon(Icons.folder_outlined, color: cs.primary),

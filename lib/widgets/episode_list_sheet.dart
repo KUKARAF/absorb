@@ -52,6 +52,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
   List<dynamic> _episodes = [];
   bool _isLoading = true;
   bool _isDownloadingAll = false;
+  bool _autoDownloadEnabled = false;
 
   String get _itemId => widget.podcastItem['id'] as String? ?? '';
 
@@ -69,6 +70,15 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
   void initState() {
     super.initState();
     _loadEpisodes();
+    _loadAutoDownloadState();
+  }
+
+  void _loadAutoDownloadState() {
+    if (_itemId.isEmpty) return;
+    final lib = context.read<LibraryProvider>();
+    setState(() {
+      _autoDownloadEnabled = lib.isRollingDownloadEnabled(_itemId);
+    });
   }
 
   Future<void> _loadEpisodes() async {
@@ -185,6 +195,26 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     final auth = context.read<AuthProvider>();
     final api = auth.apiService;
     if (api == null) return;
+
+    // Offer to enable auto-download if not already on
+    if (_itemId.isNotEmpty && !_autoDownloadEnabled) {
+      final enable = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Auto-Download This Podcast?'),
+          content: const Text('Automatically download the next episodes as you listen.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No Thanks')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enable')),
+          ],
+        ),
+      );
+      if (enable == true && mounted) {
+        final lib = context.read<LibraryProvider>();
+        await lib.enableRollingDownload(_itemId);
+        setState(() => _autoDownloadEnabled = true);
+      }
+    }
 
     setState(() => _isDownloadingAll = true);
 
@@ -373,6 +403,47 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                       ),
                     );
                   },
+                ),
+              ],
+
+              // Auto-download toggle
+              if (_itemId.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () async {
+                    final lib = context.read<LibraryProvider>();
+                    await lib.toggleRollingDownload(_itemId);
+                    setState(() => _autoDownloadEnabled = lib.isRollingDownloadEnabled(_itemId));
+                  },
+                  child: Container(
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: _autoDownloadEnabled
+                          ? cs.primary.withValues(alpha: 0.08)
+                          : cs.onSurface.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: _autoDownloadEnabled
+                            ? cs.primary.withValues(alpha: 0.2)
+                            : cs.onSurface.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(
+                        _autoDownloadEnabled ? Icons.downloading_rounded : Icons.download_outlined,
+                        size: 16,
+                        color: _autoDownloadEnabled ? cs.primary : cs.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _autoDownloadEnabled ? 'Auto-Download On' : 'Auto-Download Off',
+                        style: TextStyle(
+                          color: _autoDownloadEnabled ? cs.primary : cs.onSurfaceVariant,
+                          fontSize: 12, fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ]),
+                  ),
                 ),
               ],
 

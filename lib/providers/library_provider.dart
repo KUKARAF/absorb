@@ -41,6 +41,47 @@ class LibraryProvider extends ChangeNotifier {
   static const _personalizedFetchCooldown = Duration(seconds: 5);
   static const _rssHydrationCooldown = Duration(minutes: 10);
 
+  // Per-series/show rolling download opt-in
+  Set<String> _rollingDownloadSeries = {};
+
+  bool isRollingDownloadEnabled(String seriesOrShowId) =>
+      _rollingDownloadSeries.contains(seriesOrShowId);
+
+  Future<void> enableRollingDownload(String seriesOrShowId) async {
+    _rollingDownloadSeries.add(seriesOrShowId);
+    await _saveRollingDownloadSeries();
+    notifyListeners();
+  }
+
+  Future<void> disableRollingDownload(String seriesOrShowId) async {
+    _rollingDownloadSeries.remove(seriesOrShowId);
+    await _saveRollingDownloadSeries();
+    notifyListeners();
+  }
+
+  Future<void> toggleRollingDownload(String seriesOrShowId) async {
+    if (_rollingDownloadSeries.contains(seriesOrShowId)) {
+      await disableRollingDownload(seriesOrShowId);
+    } else {
+      await enableRollingDownload(seriesOrShowId);
+    }
+  }
+
+  Future<void> _loadRollingDownloadSeries() async {
+    _rollingDownloadSeries =
+        (await ScopedPrefs.getStringList('rolling_download_series')).toSet();
+    // Clean up old global key if it exists
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.containsKey('rollingDownload')) {
+      await prefs.remove('rollingDownload');
+    }
+  }
+
+  Future<void> _saveRollingDownloadSeries() async {
+    await ScopedPrefs.setStringList(
+        'rolling_download_series', _rollingDownloadSeries.toList());
+  }
+
   // Offline mode
   bool _manualOffline = false;
   bool _networkOffline = false;
@@ -361,6 +402,7 @@ class LibraryProvider extends ChangeNotifier {
         _manualAbsorbRemoves.clear();
         _absorbingBookIds.clear();
         _absorbingItemCache.clear();
+        _rollingDownloadSeries.clear();
         _itemUpdatedAt.clear();
         _personalizedInFlight = null;
         _lastPersonalizedFetchAt = null;
@@ -385,6 +427,7 @@ class LibraryProvider extends ChangeNotifier {
         debugPrint('[Library] restoreOfflineMode done, serverReachable=${auth.serverReachable} api=${_api != null} offline=$isOffline');
         _startConnectivityMonitoring();
         _loadManualAbsorbing();
+        _loadRollingDownloadSeries();
 
         // If server was unreachable on startup, force offline mode and ping
         if (!auth.serverReachable) {
@@ -1278,8 +1321,10 @@ class LibraryProvider extends ChangeNotifier {
     _lastFinishedItemId = itemId;
     _locallyFinishedItems.add(itemId);
     // Move finished item to front so the next-in-series/episode lands at index 1
-    _absorbingBookIds.remove(itemId);
-    _absorbingBookIds.insert(0, itemId);
+    // (only if it was already in the absorbing list — don't add books that weren't there)
+    if (_absorbingBookIds.remove(itemId)) {
+      _absorbingBookIds.insert(0, itemId);
+    }
     // Ensure cache entry has _absorbingKey so the card can extract the episode ID
     if (itemId.length > 36) {
       final cached = _absorbingItemCache[itemId];
@@ -1294,16 +1339,26 @@ class LibraryProvider extends ChangeNotifier {
     // then the server refresh still runs in the background when online.
     _autoAdvanceOffline(itemId);
 
-    // Auto-delete finished download when rolling delete is enabled
-    PlayerSettings.getRollingDownload().then((rolling) {
-      if (!rolling) return;
+    // Auto-delete finished download if this item's series/show is opted in
+    if (_rollingDownloadSeries.isNotEmpty && DownloadService().isDownloaded(itemId)) {
       PlayerSettings.getRollingDownloadDeleteFinished().then((delete) {
-        if (delete && DownloadService().isDownloaded(itemId)) {
-          DownloadService().deleteDownload(itemId);
+        if (!delete) return;
+        bool optedIn = false;
+        if (itemId.length > 36) {
+          optedIn = _rollingDownloadSeries.contains(itemId.substring(0, 36));
+        } else {
+          final data = _itemDataWithSeries(itemId);
+          if (data != null) {
+            final (seriesId, _) = _extractSeries(data);
+            optedIn = seriesId != null && _rollingDownloadSeries.contains(seriesId);
+          }
+        }
+        if (optedIn) {
+          DownloadService().deleteDownload(itemId, skipStopCheck: true);
           _showRollingSnackBar('Deleted finished download');
         }
       });
-    });
+    }
 
     // For podcast episodes, fetch the next episode and THEN refresh.
     // This avoids a race where the refresh prunes the newly added episode.
@@ -1591,18 +1646,32 @@ class LibraryProvider extends ChangeNotifier {
 
   // ── Rolling auto-download ──────────────────────────────────────────────
 
-  /// Called when a new item starts playing. If rolling downloads are enabled,
-  /// ensures the next N-1 items in the same series/podcast are downloaded.
-  void _checkRollingDownloads(String playingKey) {
-    PlayerSettings.getRollingDownload().then((enabled) async {
-      if (!enabled || _api == null || isOffline) return;
-      final count = await PlayerSettings.getRollingDownloadCount();
-      if (playingKey.length > 36) {
+  /// Called when a new item starts playing. If the item's series/show is
+  /// opted in for rolling downloads, ensures the next N items are downloaded.
+  void _checkRollingDownloads(String playingKey) async {
+    if (_api == null || isOffline || _rollingDownloadSeries.isEmpty) return;
+    final count = await PlayerSettings.getRollingDownloadCount();
+
+    if (playingKey.length > 36) {
+      // Podcast: show ID is first 36 chars
+      final showId = playingKey.substring(0, 36);
+      if (_rollingDownloadSeries.contains(showId)) {
         _rollingDownloadPodcast(playingKey, count);
-      } else {
+      }
+    } else {
+      // Book: extract series ID from metadata
+      var data = _itemDataWithSeries(playingKey);
+      var (seriesId, _) = data != null ? _extractSeries(data) : (null, null);
+      if (seriesId == null) {
+        final fullItem = await _api!.getLibraryItem(playingKey);
+        if (fullItem != null) {
+          (seriesId, _) = _extractSeries(fullItem);
+        }
+      }
+      if (seriesId != null && _rollingDownloadSeries.contains(seriesId)) {
         _rollingDownloadBook(playingKey, count);
       }
-    });
+    }
   }
 
   /// Download the next [count]-1 books in the same series as [bookId].

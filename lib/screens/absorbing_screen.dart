@@ -579,7 +579,17 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                   ? Center(child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurface.withValues(alpha: 0.24)))
                   : books.isEmpty
                       ? _emptyState(cs, tt, effectiveOffline)
-                      : PageView.builder(
+                      : books.length == 1
+                          ? LayoutBuilder(
+                              builder: (context, constraints) {
+                                final vPad = (constraints.maxHeight * 0.04).clamp(12.0, 40.0);
+                                return Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: vPad),
+                                  child: RepaintBoundary(child: AbsorbingCard(key: ValueKey(_absorbingKey(books[0])), item: books[0], player: _player)),
+                                );
+                              },
+                            )
+                          : PageView.builder(
                           controller: _pageController,
                           scrollDirection: Axis.horizontal,
                           clipBehavior: Clip.none,
