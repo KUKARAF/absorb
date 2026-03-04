@@ -64,6 +64,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
   List<Map<String, dynamic>> _books = [];
   bool _isLoading = true;
   bool _isDownloadingAll = false;
+  bool _isMarkingAll = false;
 
   @override
   void initState() {
@@ -173,6 +174,123 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
     if (mounted) setState(() => _isLoading = false);
   }
 
+  bool get _allFinished {
+    final lib = context.read<LibraryProvider>();
+    if (_books.isEmpty) return false;
+    for (final book in _books) {
+      final bookId = book['id'] as String? ?? '';
+      if (lib.getProgressData(bookId)?['isFinished'] != true) return false;
+    }
+    return true;
+  }
+
+  Future<void> _markAllFinished() async {
+    final auth = context.read<AuthProvider>();
+    final api = auth.apiService;
+    if (api == null) return;
+    final lib = context.read<LibraryProvider>();
+
+    setState(() => _isMarkingAll = true);
+
+    for (final book in _books) {
+      final bookId = book['id'] as String? ?? '';
+      if (bookId.isEmpty) continue;
+      if (lib.getProgressData(bookId)?['isFinished'] == true) continue;
+      final media = book['media'] as Map<String, dynamic>? ?? {};
+      final duration = (media['duration'] is num)
+          ? (media['duration'] as num).toDouble()
+          : 0.0;
+      await api.markFinished(bookId, duration);
+      lib.markFinishedLocally(bookId, skipRefresh: true);
+    }
+
+    if (mounted) {
+      lib.refresh();
+      setState(() => _isMarkingAll = false);
+    }
+  }
+
+  Future<void> _markAllNotFinished() async {
+    final auth = context.read<AuthProvider>();
+    final api = auth.apiService;
+    if (api == null) return;
+    final lib = context.read<LibraryProvider>();
+
+    setState(() => _isMarkingAll = true);
+
+    for (final book in _books) {
+      final bookId = book['id'] as String? ?? '';
+      if (bookId.isEmpty) continue;
+      if (lib.getProgressData(bookId)?['isFinished'] != true) continue;
+      final media = book['media'] as Map<String, dynamic>? ?? {};
+      final duration = (media['duration'] is num)
+          ? (media['duration'] as num).toDouble()
+          : 0.0;
+      await api.markNotFinished(bookId, currentTime: 0, duration: duration);
+      lib.resetProgressFor(bookId);
+    }
+
+    if (mounted) {
+      lib.refresh();
+      setState(() => _isMarkingAll = false);
+    }
+  }
+
+  Widget _buildAbsorbButton(ColorScheme cs) {
+    final allDone = _allFinished;
+    final green = Theme.of(context).brightness == Brightness.dark
+        ? Colors.greenAccent : Colors.green.shade700;
+
+    if (_isMarkingAll) {
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: SizedBox(
+          width: 16, height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
+        ),
+      );
+    }
+
+    return IconButton(
+      icon: Icon(
+        allDone ? Icons.remove_done_rounded : Icons.done_all_rounded,
+        size: 20,
+        color: allDone ? green : cs.onSurfaceVariant,
+      ),
+      tooltip: allDone ? 'Mark all not finished' : 'Fully absorb series',
+      visualDensity: VisualDensity.compact,
+      onPressed: () async {
+        if (allDone) {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Mark All Not Finished?'),
+              content: Text('This will clear the finished status for all ${_books.length} books in this series.'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Unmark All')),
+              ],
+            ),
+          );
+          if (confirmed == true) _markAllNotFinished();
+        } else {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Fully Absorb Series?'),
+              content: Text('This will mark all ${_books.length} books in this series as finished.'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Fully Absorb')),
+              ],
+            ),
+          );
+          if (confirmed == true) _markAllFinished();
+        }
+      },
+    );
+  }
+
   Future<void> _downloadAll() async {
     final auth = context.read<AuthProvider>();
     final api = auth.apiService;
@@ -238,6 +356,8 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                     style: tt.titleLarge
                         ?.copyWith(fontWeight: FontWeight.w600)),
               ),
+              if (_books.isNotEmpty)
+                _buildAbsorbButton(cs),
             ],
           ),
         ),

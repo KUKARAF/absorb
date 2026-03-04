@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'audio_player_service.dart';
+import 'scoped_prefs.dart';
 import 'sleep_timer_service.dart';
 import 'user_account_service.dart';
 
@@ -82,13 +84,32 @@ class BackupService {
     // Offline mode
     final offlineMode = prefs.getBool('manual_offline_mode') ?? false;
 
-    // Accounts (optional)
+    // Bookmarks for current account (always included — not sensitive)
+    final bookmarks = <String, List<String>>{};
+    final scope = UserAccountService().activeScopeKey;
+    final bmPrefix = scope.isNotEmpty ? '$scope:bookmarks_' : 'bookmarks_';
+    for (final key in prefs.getKeys()) {
+      if (key.startsWith(bmPrefix)) {
+        final itemId = key.substring(bmPrefix.length);
+        final list = prefs.getStringList(key);
+        if (list != null && list.isNotEmpty) bookmarks[itemId] = list;
+      }
+    }
+
+    // Accounts & custom headers (optional — contain auth data)
     List<Map<String, dynamic>>? accounts;
+    Map<String, String>? customHeaders;
     if (includeAccounts) {
       accounts = UserAccountService()
           .accounts
           .map((a) => a.toJson())
           .toList();
+      final headersJson = prefs.getString('custom_headers');
+      if (headersJson != null) {
+        try {
+          customHeaders = Map<String, String>.from(jsonDecode(headersJson) as Map);
+        } catch (_) {}
+      }
     }
 
     return {
@@ -101,7 +122,9 @@ class BackupService {
       'equalizer': equalizer,
       'bookSpeeds': bookSpeeds,
       'offlineMode': offlineMode,
+      'bookmarks': bookmarks,
       'accounts': accounts,
+      'customHeaders': customHeaders,
     };
   }
 
@@ -189,6 +212,15 @@ class BackupService {
       await prefs.setBool('manual_offline_mode', data['offlineMode'] as bool);
     }
 
+    // Bookmarks (import into current account scope)
+    final bookmarks = data['bookmarks'] as Map<String, dynamic>?;
+    if (bookmarks != null) {
+      for (final entry in bookmarks.entries) {
+        final list = (entry.value as List<dynamic>).cast<String>();
+        await ScopedPrefs.setStringList('bookmarks_${entry.key}', list);
+      }
+    }
+
     // Accounts
     final accounts = data['accounts'] as List<dynamic>?;
     if (accounts != null) {
@@ -196,6 +228,12 @@ class BackupService {
         final map = a as Map<String, dynamic>;
         await UserAccountService().saveAccount(SavedAccount.fromJson(map));
       }
+    }
+
+    // Custom headers
+    final customHeaders = data['customHeaders'] as Map<String, dynamic>?;
+    if (customHeaders != null) {
+      await prefs.setString('custom_headers', jsonEncode(customHeaders));
     }
   }
 }

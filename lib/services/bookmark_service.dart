@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'scoped_prefs.dart';
+import 'user_account_service.dart';
 
 /// A single bookmark in an audiobook.
 class Bookmark {
@@ -55,12 +57,11 @@ class BookmarkService {
 
   static const int _maxBookmarksPerBook = 100;
 
-  String _key(String itemId) => 'bookmarks_$itemId';
+  static const _keyPrefix = 'bookmarks_';
 
   /// Get all bookmarks for a book, sorted by position.
   Future<List<Bookmark>> getBookmarks(String itemId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getStringList(_key(itemId)) ?? [];
+    final stored = await ScopedPrefs.getStringList('$_keyPrefix$itemId');
 
     final bookmarks = <Bookmark>[];
     for (final json in stored) {
@@ -90,9 +91,8 @@ class BookmarkService {
       note: note,
     );
 
-    final prefs = await SharedPreferences.getInstance();
-    final key = _key(itemId);
-    final existing = prefs.getStringList(key) ?? [];
+    final key = '$_keyPrefix$itemId';
+    final existing = (await ScopedPrefs.getStringList(key)).toList();
 
     existing.add(jsonEncode(bookmark.toJson()));
 
@@ -101,7 +101,7 @@ class BookmarkService {
       existing.removeRange(0, existing.length - _maxBookmarksPerBook);
     }
 
-    await prefs.setStringList(key, existing);
+    await ScopedPrefs.setStringList(key, existing);
     debugPrint('[Bookmarks] Added "${bookmark.title}" at ${bookmark.formattedPosition}');
     return bookmark;
   }
@@ -113,9 +113,8 @@ class BookmarkService {
     String? title,
     String? note,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = _key(itemId);
-    final stored = prefs.getStringList(key) ?? [];
+    final key = '$_keyPrefix$itemId';
+    final stored = await ScopedPrefs.getStringList(key);
 
     final updated = <String>[];
     for (final json in stored) {
@@ -133,7 +132,7 @@ class BookmarkService {
       }
     }
 
-    await prefs.setStringList(key, updated);
+    await ScopedPrefs.setStringList(key, updated);
   }
 
   /// Delete a bookmark.
@@ -141,9 +140,8 @@ class BookmarkService {
     required String itemId,
     required String bookmarkId,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = _key(itemId);
-    final stored = prefs.getStringList(key) ?? [];
+    final key = '$_keyPrefix$itemId';
+    final stored = await ScopedPrefs.getStringList(key);
 
     final updated = <String>[];
     for (final json in stored) {
@@ -157,19 +155,43 @@ class BookmarkService {
       }
     }
 
-    await prefs.setStringList(key, updated);
+    await ScopedPrefs.setStringList(key, updated);
     debugPrint('[Bookmarks] Deleted bookmark $bookmarkId');
+  }
+
+  /// Get all bookmarks across all books for the current account, keyed by itemId.
+  Future<Map<String, List<Bookmark>>> getAllBookmarks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final scope = UserAccountService().activeScopeKey;
+    final scopedPrefix = scope.isNotEmpty ? '$scope:$_keyPrefix' : _keyPrefix;
+    final result = <String, List<Bookmark>>{};
+
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith(scopedPrefix)) continue;
+      final itemId = key.substring(scopedPrefix.length);
+      final stored = prefs.getStringList(key) ?? [];
+      final bookmarks = <Bookmark>[];
+      for (final json in stored) {
+        try {
+          bookmarks.add(Bookmark.fromJson(jsonDecode(json)));
+        } catch (_) {}
+      }
+      if (bookmarks.isNotEmpty) {
+        bookmarks.sort((a, b) => a.positionSeconds.compareTo(b.positionSeconds));
+        result[itemId] = bookmarks;
+      }
+    }
+
+    return result;
   }
 
   /// Get bookmark count for a book.
   Future<int> getCount(String itemId) async {
-    final prefs = await SharedPreferences.getInstance();
-    return (prefs.getStringList(_key(itemId)) ?? []).length;
+    return (await ScopedPrefs.getStringList('$_keyPrefix$itemId')).length;
   }
 
   /// Clear all bookmarks for a book.
   Future<void> clearBookmarks(String itemId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_key(itemId));
+    await ScopedPrefs.remove('$_keyPrefix$itemId');
   }
 }

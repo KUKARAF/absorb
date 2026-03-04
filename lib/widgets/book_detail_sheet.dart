@@ -675,12 +675,19 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       await api.markFinished(widget.itemId, duration);
       await ProgressSyncService().deleteLocal(widget.itemId);
       if (context.mounted) {
+        final lib = context.read<LibraryProvider>();
         await _loadItem();
-        await context.read<LibraryProvider>().refresh();
+        await lib.refresh();
+        final mode = await PlayerSettings.getWhenFinished();
+        if (mode == 'auto_remove') {
+          await lib.removeFromAbsorbing(widget.itemId);
+        }
         if (mounted) setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          duration: const Duration(seconds: 3), content: const Text('Marked as finished — nice work!'),
-          behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            duration: const Duration(seconds: 3), content: const Text('Marked as finished — nice work!'),
+            behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+        }
       }
     } catch (_) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(

@@ -18,6 +18,7 @@ import '../services/log_service.dart';
 import '../screens/login_screen.dart';
 import '../screens/app_shell.dart';
 import '../screens/admin_screen.dart';
+import '../screens/bookmarks_screen.dart';
 import '../main.dart' show themeNotifier, parseThemeMode;
 import '../widgets/absorb_page_header.dart';
 import '../widgets/absorb_slider.dart';
@@ -1269,6 +1270,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
 
+                const SizedBox(height: 10),
+
+                // ── All Bookmarks ──
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Card(
+                    elevation: 0,
+                    color: cs.surfaceContainerHigh,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    child: ListTile(
+                      leading: Icon(Icons.bookmarks_rounded, color: cs.primary),
+                      title: const Text('All Bookmarks'),
+                      subtitle: Text('View bookmarks across all books',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      trailing: Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      onTap: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const BookmarksScreen())),
+                    ),
+                  ),
+                ),
+
                 const SizedBox(height: 24),
 
                 // ── Accounts ──
@@ -1817,6 +1840,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       final accounts = data['accounts'] as List<dynamic>?;
       final hasAccounts = accounts != null && accounts.isNotEmpty;
+      final bookmarks = data['bookmarks'] as Map<String, dynamic>?;
+      final hasBookmarks = bookmarks != null && bookmarks.isNotEmpty;
+      final hasCustomHeaders = data['customHeaders'] != null;
       final createdAt = data['createdAt'] as String?;
       final appVersion = data['appVersion'] as String?;
 
@@ -1844,20 +1870,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 12),
                 Text(details, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
               ],
-              if (hasAccounts) ...[
+              if (hasAccounts || hasBookmarks || hasCustomHeaders) ...[
                 const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(children: [
-                    Icon(Icons.people_rounded, size: 16, color: cs.primary),
-                    const SizedBox(width: 8),
-                    Text('Includes ${accounts.length} saved account(s)',
-                      style: TextStyle(fontSize: 12, color: cs.primary)),
-                  ]),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (hasAccounts)
+                      _restoreChip(Icons.people_rounded, '${accounts.length} account(s)', cs),
+                    if (hasBookmarks)
+                      _restoreChip(Icons.bookmark_rounded, 'Bookmarks for ${bookmarks.length} book(s)', cs),
+                    if (hasCustomHeaders)
+                      _restoreChip(Icons.vpn_key_rounded, 'Custom headers', cs),
+                  ],
                 ),
               ],
             ],
@@ -1902,6 +1927,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
+  }
+
+  Widget _restoreChip(IconData icon, String label, ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 16, color: cs.primary),
+        const SizedBox(width: 8),
+        Text(label, style: TextStyle(fontSize: 12, color: cs.primary)),
+      ]),
+    );
   }
 
   /// Stop any active playback and sync progress to the server before
