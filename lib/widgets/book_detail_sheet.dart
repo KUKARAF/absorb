@@ -256,24 +256,57 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
           style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
         ))
       else
-      SizedBox(height: 52, child: FilledButton.icon(
-        onPressed: _isAbsorbing ? null : () {
-          setState(() => _isAbsorbing = true);
-          _startAbsorb(context, auth: auth, title: title, author: authorName,
-            coverUrl: _coverUrl, duration: duration, chapters: chapters);
-        },
-        icon: _isAbsorbing
-            ? SizedBox(width: 24, height: 24, child: AbsorbingWave(color: cs.onPrimary))
-            : Icon(isFinished ? Icons.replay_rounded : Icons.waves_rounded, size: 24),
-        label: Text(
-          _isAbsorbing
-              ? 'Absorbing…'
-              : isFinished
-                  ? 'Absorb Again'
-                  : 'Absorb',
-          style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onPrimary)),
-        style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-      )),
+      SizedBox(
+        height: 52,
+        child: ListenableBuilder(
+          listenable: AudioPlayerService(),
+          builder: (_, __) {
+            final player = AudioPlayerService();
+            final isCurrentPlaying =
+                player.currentItemId == widget.itemId && player.isPlaying;
+            final showAbsorbingState = _isAbsorbing || isCurrentPlaying;
+
+            return FilledButton.icon(
+              onPressed: showAbsorbingState
+                  ? null
+                  : () {
+                      setState(() => _isAbsorbing = true);
+                      _startAbsorb(
+                        context,
+                        auth: auth,
+                        title: title,
+                        author: authorName,
+                        coverUrl: _coverUrl,
+                        duration: duration,
+                        chapters: chapters,
+                      );
+                    },
+              icon: showAbsorbingState
+                  ? SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: AbsorbingWave(color: cs.onPrimary),
+                    )
+                  : Icon(
+                      isFinished ? Icons.replay_rounded : Icons.waves_rounded,
+                      size: 24,
+                    ),
+              label: Text(
+                showAbsorbingState
+                    ? 'Absorbing…'
+                    : isFinished
+                        ? 'Absorb Again'
+                        : 'Absorb',
+                style: tt.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w600, color: cs.onPrimary),
+              ),
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            );
+          },
+        ),
+      ),
       const SizedBox(height: 12),
       if (isEbookOnly && ebookFile != null) ...[
         GestureDetector(
