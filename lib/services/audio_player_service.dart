@@ -817,6 +817,7 @@ class AudioPlayerService extends ChangeNotifier {
   bool _isOfflineMode = false;
   StreamSubscription? _syncSub;
   StreamSubscription? _completionSub;
+  Timer? _bgSaveTimer;
   /// Last known position in seconds — used to detect end→0 position jumps.
   double _lastKnownPositionSec = 0;
   // ── Stream error retry tracking ──
@@ -1668,6 +1669,8 @@ class AudioPlayerService extends ChangeNotifier {
     _completionSub?.cancel();
     _completionSub = null;
     _lastKnownPositionSec = 0;
+    _bgSaveTimer?.cancel();
+    _bgSaveTimer = null;
     _eqSessionSub?.cancel();
     _eqSessionSub = null;
     _streamRetryCount = 0;
@@ -1774,8 +1777,28 @@ class AudioPlayerService extends ChangeNotifier {
   void _setupSync() {
     _syncSub?.cancel();
     _completionSub?.cancel();
+    _bgSaveTimer?.cancel();
     _lastSyncSecond = -1;
     _lastKnownPositionSec = 0;
+
+    // Independent periodic timer for position persistence.
+    // The positionStream listener (below) saves every 5s, but Android can
+    // throttle stream events when the Dart isolate is backgrounded while
+    // ExoPlayer keeps playing natively.  This timer acts as a safety net so
+    // progress is still written to SharedPreferences even when the stream
+    // goes silent.
+    _bgSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (_currentItemId == null || _player == null || !_player!.playing) return;
+      final pos = position;
+      final posSec = pos.inMilliseconds / 1000.0;
+      if (posSec <= 0) return;
+      debugPrint('[Player] Background save: ${posSec.toStringAsFixed(1)}s');
+      await _saveProgressLocal(pos);
+      // Sync to server through the active session
+      if (!_isOfflineMode && _playbackSessionId != null) {
+        _syncToServer(pos);
+      }
+    });
 
     // Attach equalizer to current audio session
     _attachEqualizer();
@@ -1916,6 +1939,8 @@ class AudioPlayerService extends ChangeNotifier {
     _syncSub = null;
     _completionSub?.cancel();
     _completionSub = null;
+    _bgSaveTimer?.cancel();
+    _bgSaveTimer = null;
     await _player?.stop();
 
     // Mark as finished on the server
@@ -2063,7 +2088,9 @@ class AudioPlayerService extends ChangeNotifier {
     await _player?.pause();
     _logEvent(PlaybackEventType.pause);
     notifyListeners();
-    _saveProgressLocal(position);
+    final pos = position;
+    debugPrint('[Player] Saving on pause: ${(pos.inMilliseconds / 1000.0).toStringAsFixed(1)}s');
+    await _saveProgressLocal(pos);
 
     // Check manual offline before syncing
     final prefs = await SharedPreferences.getInstance();
@@ -2071,7 +2098,7 @@ class AudioPlayerService extends ChangeNotifier {
     if (manualOffline) return;
 
     if (!_isOfflineMode && _playbackSessionId != null) {
-      _syncToServer(position);
+      await _syncToServer(pos);
     } else if (!_isOfflineMode && _currentItemId != null && _api != null) {
       final syncKey = _currentEpisodeId != null
           ? '$_currentItemId-$_currentEpisodeId'
@@ -2178,7 +2205,9 @@ class AudioPlayerService extends ChangeNotifier {
   Future<void> stop() async {
     // Save final position locally
     if (_currentItemId != null) {
-      await _saveProgressLocal(position);
+      final pos = position;
+      debugPrint('[Player] Saving on stop: ${(pos.inMilliseconds / 1000.0).toStringAsFixed(1)}s');
+      await _saveProgressLocal(pos);
     }
 
     // Check manual offline before syncing
@@ -2226,6 +2255,7 @@ class AudioPlayerService extends ChangeNotifier {
   @override
   void dispose() {
     _syncSub?.cancel();
+    _bgSaveTimer?.cancel();
     _indexSub?.cancel();
     _player?.dispose();
     super.dispose();

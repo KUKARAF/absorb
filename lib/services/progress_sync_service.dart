@@ -192,24 +192,28 @@ class ProgressSyncService {
             debugPrint('[Sync] Local is newer for $itemId: local=$localTime s ($localTimestamp) vs server=$serverTime s ($serverTimestamp) — pushing');
           }
 
-          // Podcast episodes use compound key "showId-episodeId"
+          // Use the direct progress endpoint instead of creating a new
+          // playback session.  Creating a session can invalidate the
+          // player's active session on the server, causing subsequent
+          // in-playback syncs to silently fail.
           final isCompound = itemId.length > 36;
           final apiItemId = isCompound ? itemId.substring(0, 36) : itemId;
           final episodeId = isCompound ? itemId.substring(37) : null;
 
-          final session = await api.startPlaybackSession(apiItemId, episodeId: episodeId);
-          if (session != null) {
-            final sessionId = session['id'] as String?;
-            if (sessionId != null) {
-              await api.syncPlaybackSession(
-                sessionId,
-                currentTime: localTime,
-                duration: localDuration,
-              );
-              await api.closePlaybackSession(sessionId);
-              debugPrint('[Sync] Flushed $itemId via session: ${localTime}s');
-            }
+          if (episodeId != null) {
+            await api.updateEpisodeProgress(
+              apiItemId, episodeId,
+              currentTime: localTime,
+              duration: localDuration,
+            );
+          } else {
+            await api.updateProgress(
+              apiItemId,
+              currentTime: localTime,
+              duration: localDuration,
+            );
           }
+          debugPrint('[Sync] Flushed $itemId via progress update: ${localTime}s');
 
           final updated = await ScopedPrefs.getStringList('pending_syncs');
           updated.remove(itemId);
