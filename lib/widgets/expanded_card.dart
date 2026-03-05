@@ -87,6 +87,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
   bool _wasPlaying = false;
   bool _isPopping = false; // Prevent double-pop and setState during exit
   List<String> _buttonOrder = PlayerSettings.defaultButtonOrder;
+  bool _autoRemoveFinished = false;
 
   // Our own route, captured for popUntil when modals are stacked above us
   Route<dynamic>? _ownRoute;
@@ -164,6 +165,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
     ChromecastService().addListener(_onCastChanged);
     PlayerSettings.settingsChanged.addListener(_reloadButtonOrder);
     _reloadButtonOrder();
+    _loadWhenFinished();
     _startChapterTracking();
     _fetchChaptersIfNeeded();
     // Generate our own blurred cover
@@ -179,6 +181,12 @@ class _ExpandedCardState extends State<ExpandedCard> {
   void _reloadButtonOrder() {
     PlayerSettings.getCardButtonOrder().then((o) {
       if (mounted && o.join(',') != _buttonOrder.join(',')) setState(() => _buttonOrder = o);
+    });
+  }
+
+  void _loadWhenFinished() {
+    PlayerSettings.getWhenFinished().then((mode) {
+      if (mounted) setState(() => _autoRemoveFinished = mode == 'auto_remove');
     });
   }
 
@@ -663,7 +671,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                             ),
                                           ],
                                           // Finished overlay
-                                          if (isFinished && !isCastingThis) ...[
+                                          if (isFinished && !isCastingThis && !_autoRemoveFinished) ...[
                                             Positioned.fill(
                                               child: Container(color: Colors.black.withValues(alpha: 0.78)),
                                             ),
