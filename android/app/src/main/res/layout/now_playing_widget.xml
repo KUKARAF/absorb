@@ -16,19 +16,11 @@
         android:background="@drawable/widget_background"
         android:clipToOutline="true">
 
-        <!-- Blurred cover background (behind everything) -->
-        <ImageView
-            android:id="@+id/widget_bg_blur"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scaleType="fitXY"
-            android:visibility="gone" />
-
         <!-- Cover art: fixed square, small left margin, centered vertically -->
         <ImageView
             android:id="@+id/widget_cover"
-            android:layout_width="105dp"
-            android:layout_height="105dp"
+            android:layout_width="130dp"
+            android:layout_height="130dp"
             android:layout_alignParentStart="true"
             android:layout_centerVertical="true"
             android:layout_marginStart="6dp"
@@ -45,13 +37,44 @@
             android:layout_alignTop="@id/widget_cover"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
+            android:paddingTop="4dp"
             android:text="Absorb"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="end"
             android:fontFamily="sans-serif-medium" />
+
+        <!-- Author below title -->
+        <TextView
+            android:id="@+id/widget_author"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_toEndOf="@id/widget_cover"
+            android:layout_below="@id/widget_title"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="Not playing"
+            android:textColor="#99FFFFFF"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <!-- Chapter title below author -->
+        <TextView
+            android:id="@+id/widget_chapter"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_toEndOf="@id/widget_cover"
+            android:layout_below="@id/widget_author"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:textColor="#77FFFFFF"
+            android:textSize="11sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:visibility="gone" />
 
         <!-- Controls aligned with bottom of cover -->
         <LinearLayout
@@ -66,70 +89,96 @@
             android:paddingEnd="4dp"
             android:visibility="gone">
 
-            <ImageButton
+            <!-- Skip back: arrow icon with duration overlay -->
+            <FrameLayout
                 android:id="@+id/widget_skip_back"
                 android:layout_width="0dp"
-                android:layout_height="34dp"
+                android:layout_height="40dp"
                 android:layout_weight="1"
-                android:src="@drawable/ic_widget_skip_back"
                 android:background="@android:color/transparent"
-                android:contentDescription="Skip backward"
-                android:scaleType="centerInside" />
+                android:contentDescription="Skip backward">
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_widget_skip_back"
+                    android:scaleType="centerInside" />
+                <TextView
+                    android:id="@+id/widget_skip_back_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:layout_marginTop="2dp"
+                    android:text="10"
+                    android:textColor="#FFFFFF"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:fontFamily="sans-serif-medium" />
+            </FrameLayout>
 
+            <!-- Play/pause: white circle with dark icon -->
             <ImageButton
                 android:id="@+id/widget_play_pause"
-                android:layout_width="0dp"
-                android:layout_height="38dp"
-                android:layout_weight="1"
-                android:src="@drawable/ic_widget_play"
-                android:background="@android:color/transparent"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:padding="8dp"
+                android:src="@drawable/ic_widget_play_dark"
+                android:background="@drawable/widget_play_btn_bg"
                 android:contentDescription="Play or pause"
                 android:scaleType="centerInside" />
 
-            <ImageButton
+            <!-- Skip forward: arrow icon with duration overlay -->
+            <FrameLayout
                 android:id="@+id/widget_skip_forward"
                 android:layout_width="0dp"
-                android:layout_height="34dp"
+                android:layout_height="40dp"
                 android:layout_weight="1"
-                android:src="@drawable/ic_widget_skip_forward"
                 android:background="@android:color/transparent"
-                android:contentDescription="Skip forward"
-                android:scaleType="centerInside" />
+                android:contentDescription="Skip forward">
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_widget_skip_forward"
+                    android:scaleType="centerInside" />
+                <TextView
+                    android:id="@+id/widget_skip_forward_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:layout_marginTop="2dp"
+                    android:text="30"
+                    android:textColor="#FFFFFF"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:fontFamily="sans-serif-medium" />
+            </FrameLayout>
 
         </LinearLayout>
 
-        <!-- Progress bar just above controls -->
-        <ProgressBar
-            android:id="@+id/widget_progress"
-            style="@android:style/Widget.ProgressBar.Horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="2dp"
-            android:layout_toEndOf="@id/widget_cover"
-            android:layout_above="@id/widget_controls"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="12dp"
-            android:layout_marginBottom="2dp"
-            android:max="1000"
-            android:progress="0"
-            android:progressDrawable="@drawable/widget_progress_bar"
-            android:visibility="invisible" />
-
-        <!-- Author centered between title and progress bar -->
-        <TextView
-            android:id="@+id/widget_author"
+        <!-- Wrapper fills the gap; ProgressBar is centered inside at 2dp thin -->
+        <FrameLayout
+            android:id="@+id/widget_progress_wrapper"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_toEndOf="@id/widget_cover"
-            android:layout_below="@id/widget_title"
-            android:layout_above="@id/widget_progress"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:gravity="center_vertical"
-            android:text="Not playing"
-            android:textColor="#99FFFFFF"
-            android:textSize="13sp"
-            android:maxLines="1"
-            android:ellipsize="end" />
+            android:layout_below="@id/widget_chapter"
+            android:layout_above="@id/widget_controls">
+
+            <ProgressBar
+                android:id="@+id/widget_progress"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent"
+                android:layout_height="2dp"
+                android:layout_gravity="center"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="12dp"
+                android:max="1000"
+                android:progress="0"
+                android:progressDrawable="@drawable/widget_progress_bar"
+                android:visibility="invisible" />
+
+        </FrameLayout>
 
     </RelativeLayout>
 

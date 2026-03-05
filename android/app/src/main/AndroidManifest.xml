@@ -96,7 +96,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Now Playing homescreen widget -->
+        <!-- Now Playing homescreen widget (4x2) -->
         <receiver
             android:name=".NowPlayingWidget"
             android:exported="true">
@@ -106,6 +106,18 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/now_playing_widget_info" />
+        </receiver>
+
+        <!-- Now Playing compact widget (4x1) -->
+        <receiver
+            android:name=".NowPlayingWidgetCompact"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/now_playing_widget_compact_info" />
         </receiver>
 
 

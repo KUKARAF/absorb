@@ -25,6 +25,10 @@ class MainActivity : AudioServiceActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "moveToBackground" -> {
+                        moveTaskToBack(true)
+                        result.success(true)
+                    }
                     "init" -> handleInit(result)
                     "attachSession" -> {
                         val sessionId = call.argument<Int>("sessionId") ?: 0
