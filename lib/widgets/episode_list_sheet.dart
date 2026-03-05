@@ -237,6 +237,67 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     if (mounted) setState(() => _isDownloadingAll = false);
   }
 
+  Widget _buildOverflowMenu(ColorScheme cs) {
+    final dl = DownloadService();
+    int downloaded = 0;
+    for (final ep in _episodes) {
+      final eid = ep['id'] as String? ?? '';
+      final key = '$_itemId-$eid';
+      if (dl.isDownloaded(key)) downloaded++;
+    }
+    final allDownloaded = downloaded == _episodes.length;
+
+    if (_isDownloadingAll) {
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: SizedBox(
+          width: 18, height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
+        ),
+      );
+    }
+
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_vert_rounded, color: cs.onSurfaceVariant),
+      onSelected: (value) async {
+        switch (value) {
+          case 'download':
+            _downloadAll();
+          case 'auto_download':
+            final lib = context.read<LibraryProvider>();
+            await lib.toggleRollingDownload(_itemId);
+            setState(() => _autoDownloadEnabled = lib.isRollingDownloadEnabled(_itemId));
+        }
+      },
+      itemBuilder: (_) => [
+        if (!allDownloaded)
+          PopupMenuItem(
+            value: 'download',
+            child: ListTile(
+              leading: const Icon(Icons.download_rounded),
+              title: Text(downloaded > 0
+                  ? 'Download Remaining (${_episodes.length - downloaded})'
+                  : 'Download All'),
+              dense: true, contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        if (_itemId.isNotEmpty)
+          PopupMenuItem(
+            value: 'auto_download',
+            child: ListTile(
+              leading: Icon(_autoDownloadEnabled
+                  ? Icons.downloading_rounded
+                  : Icons.download_outlined),
+              title: Text(_autoDownloadEnabled
+                  ? 'Turn Auto-Download Off'
+                  : 'Turn Auto-Download On'),
+              dense: true, contentPadding: EdgeInsets.zero,
+            ),
+          ),
+      ],
+    );
+  }
+
   String? get _coverUrl {
     final auth = context.read<AuthProvider>();
     return auth.apiService?.getCoverUrl(_itemId, width: 800);
@@ -292,9 +353,21 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
             child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
             child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // Show title (centered)
-              Text(_title, textAlign: TextAlign.center,
-                style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)),
+              // Show title with 3-dot menu pinned right
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(width: 48),
+                  Expanded(
+                    child: Text(_title, textAlign: TextAlign.center,
+                      style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)),
+                  ),
+                  SizedBox(
+                    width: 48,
+                    child: _episodes.isNotEmpty ? _buildOverflowMenu(cs) : null,
+                  ),
+                ],
+              ),
               if (_author.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(_author, textAlign: TextAlign.center,
@@ -316,136 +389,8 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
                 if (!_isLoading) _chip(Icons.podcasts_rounded, '${_episodes.length} episode${_episodes.length == 1 ? '' : 's'}'),
+                if (_autoDownloadEnabled) _chip(Icons.downloading_rounded, 'Auto-Download'),
               ]),
-
-              // Download All button (reactive)
-              if (_episodes.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                ListenableBuilder(
-                  listenable: DownloadService(),
-                  builder: (_, __) {
-                    final dl = DownloadService();
-                    int downloaded = 0;
-                    int downloading = 0;
-                    double totalProgress = 0;
-                    for (final ep in _episodes) {
-                      final eid = ep['id'] as String? ?? '';
-                      final key = '$_itemId-$eid';
-                      if (dl.isDownloaded(key)) {
-                        downloaded++;
-                      } else if (dl.isDownloading(key)) {
-                        downloading++;
-                        totalProgress += dl.downloadProgress(key);
-                      }
-                    }
-                    final allDone = downloaded == _episodes.length;
-                    final anyActive = _isDownloadingAll || downloading > 0;
-                    final overallProgress = _episodes.isNotEmpty
-                        ? (downloaded + totalProgress) / _episodes.length
-                        : 0.0;
-
-                    if (allDone) {
-                      return GestureDetector(
-                        child: Container(height: 44,
-                          decoration: BoxDecoration(
-                            color: (Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent : Colors.green.shade700).withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: (Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent : Colors.green.shade700).withValues(alpha: 0.15)),
-                          ),
-                          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            Icon(Icons.download_done_rounded, size: 16, color: (Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent : Colors.green.shade700).withValues(alpha: 0.7)),
-                            const SizedBox(width: 6),
-                            Text('All Episodes Downloaded',
-                              style: TextStyle(color: (Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent : Colors.green.shade700).withValues(alpha: 0.7), fontSize: 12, fontWeight: FontWeight.w500)),
-                          ])),
-                      );
-                    }
-
-                    return GestureDetector(
-                      onTap: anyActive ? null : _downloadAll,
-                      child: Container(height: 44,
-                        clipBehavior: Clip.antiAlias,
-                        decoration: BoxDecoration(
-                          color: cs.onSurface.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: cs.onSurface.withValues(alpha: 0.1)),
-                        ),
-                        child: Stack(children: [
-                          if (anyActive)
-                            FractionallySizedBox(
-                              widthFactor: overallProgress.clamp(0.0, 1.0),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(13),
-                                ),
-                              ),
-                            ),
-                          Center(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            if (anyActive)
-                              SizedBox(width: 14, height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2,
-                                  color: Theme.of(context).colorScheme.primary))
-                            else
-                              Icon(Icons.download_rounded, size: 16, color: cs.onSurfaceVariant),
-                            const SizedBox(width: 6),
-                            Text(
-                              anyActive
-                                  ? 'Downloading ${downloaded + downloading}/${_episodes.length} · ${(overallProgress * 100).toStringAsFixed(0)}%'
-                                  : downloaded > 0
-                                      ? 'Download Remaining (${_episodes.length - downloaded})'
-                                      : 'Download All Episodes',
-                              style: TextStyle(
-                                color: anyActive ? Theme.of(context).colorScheme.primary : cs.onSurfaceVariant,
-                                fontSize: 12, fontWeight: FontWeight.w500)),
-                          ])),
-                        ]),
-                      ),
-                    );
-                  },
-                ),
-              ],
-
-              // Auto-download toggle
-              if (_itemId.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () async {
-                    final lib = context.read<LibraryProvider>();
-                    await lib.toggleRollingDownload(_itemId);
-                    setState(() => _autoDownloadEnabled = lib.isRollingDownloadEnabled(_itemId));
-                  },
-                  child: Container(
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: _autoDownloadEnabled
-                          ? cs.primary.withValues(alpha: 0.08)
-                          : cs.onSurface.withValues(alpha: 0.04),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _autoDownloadEnabled
-                            ? cs.primary.withValues(alpha: 0.2)
-                            : cs.onSurface.withValues(alpha: 0.08),
-                      ),
-                    ),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(
-                        _autoDownloadEnabled ? Icons.downloading_rounded : Icons.download_outlined,
-                        size: 16,
-                        color: _autoDownloadEnabled ? cs.primary : cs.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _autoDownloadEnabled ? 'Auto-Download On' : 'Auto-Download Off',
-                        style: TextStyle(
-                          color: _autoDownloadEnabled ? cs.primary : cs.onSurfaceVariant,
-                          fontSize: 12, fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ]),
-                  ),
-                ),
-              ],
 
               // Episodes section header
               const SizedBox(height: 16),
