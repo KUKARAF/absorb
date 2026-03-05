@@ -452,6 +452,8 @@ class LibraryProvider extends ChangeNotifier {
         loadLibraries();
       }).catchError((e) {
         debugPrint('[Library] restoreOfflineMode error: $e');
+        _isLoading = false;
+        notifyListeners();
       });
     } else {
       _lastAuthKey = null;

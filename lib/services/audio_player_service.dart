@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
@@ -1032,6 +1033,21 @@ class AudioPlayerService extends ChangeNotifier {
   // Set true when BT/headphones disconnect so the interruption handler
   // won't auto-resume playback onto the phone speaker.
   static bool _noisyPause = false;
+  // Whether BT audio was connected when the current interruption began.
+  static bool _wasOnBluetooth = false;
+  static const _eqChannel = MethodChannel('com.absorb.equalizer');
+
+  /// Check if BT audio (A2DP/SCO) is currently connected via native AudioManager.
+  static Future<bool> _isBluetoothAudioConnected() async {
+    try {
+      final result = await _eqChannel.invokeMethod<bool>('isBluetoothAudioConnected');
+      return result ?? false;
+    } catch (e) {
+      debugPrint('[AudioSession] BT check failed: $e');
+      return false;
+    }
+  }
+
   /// True when BT/headphones just disconnected — callers can check before
   /// starting new playback to avoid blasting audio on the phone speaker.
   static bool get wasNoisyPause => _noisyPause;
@@ -1048,6 +1064,8 @@ class AudioPlayerService extends ChangeNotifier {
       if (event.begin) {
         if (service.isPlaying) {
           debugPrint('[AudioSession] Interrupted (${event.type}) — pausing');
+          _wasOnBluetooth = await _isBluetoothAudioConnected();
+          debugPrint('[AudioSession] Was on BT: $_wasOnBluetooth');
           // Pause the underlying player directly — NOT service.pause() —
           // to keep the interruption lightweight. service.pause() saves progress,
           // syncs to server, clears _wasPlayingBeforeInterrupt, and sets
@@ -1066,12 +1084,24 @@ class AudioPlayerService extends ChangeNotifier {
           return;
         }
         if (service._wasPlayingBeforeInterrupt) {
-          debugPrint('[AudioSession] Interruption ended — resuming');
           service._wasPlayingBeforeInterrupt = false;
-          await Future.delayed(const Duration(milliseconds: 300));
+          await Future.delayed(const Duration(milliseconds: 600));
           // Re-check: another event (like becoming-noisy) might have fired
           // during the delay.
           if (_noisyPause) return;
+          // If we were on BT when interrupted, check if BT is still connected.
+          // Some car head units never send AUDIO_BECOMING_NOISY on disconnect,
+          // so _noisyPause alone is not enough.
+          if (_wasOnBluetooth) {
+            final stillOnBt = await _isBluetoothAudioConnected();
+            debugPrint('[AudioSession] Interruption ended — was BT, still BT: $stillOnBt');
+            if (!stillOnBt) {
+              debugPrint('[AudioSession] BT disconnected during interruption — skipping resume');
+              _noisyPause = true;
+              return;
+            }
+          }
+          debugPrint('[AudioSession] Interruption ended — resuming');
           await service.play();
         }
       }

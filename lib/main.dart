@@ -48,7 +48,15 @@ void main() async {
   // stares at a loading spinner.  Downloads must be loaded before the
   // handler so getChildren() can serve the browse tree immediately.
   await DownloadService().init();
-  await AudioPlayerService.init();
+  // Timeout guards against AudioService.init() hanging when Android killed
+  // the app process but kept the MediaBrowserService alive (e.g. Bluetooth
+  // or Android Auto was connected).  If it times out the app still launches
+  // and _initServices() in AuthGate will retry.
+  try {
+    await AudioPlayerService.init().timeout(const Duration(seconds: 8));
+  } catch (e) {
+    debugPrint('[Main] AudioPlayerService.init timed out or failed: $e');
+  }
 
   // Lock to portrait — no landscape support
   await SystemChrome.setPreferredOrientations([

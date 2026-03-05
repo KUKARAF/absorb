@@ -553,13 +553,29 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         final cleanBase = api.baseUrl.endsWith('/') ? api.baseUrl.substring(0, api.baseUrl.length - 1) : api.baseUrl;
         final url = '$cleanBase/api/items/${widget.itemId}/file/$ino';
 
-        // Use streamed download to avoid loading entire file into memory
-        // and to prevent timeout-based truncation of large files
+        // Use streamed download with proper headers (including custom
+        // reverse-proxy headers) and manual redirect following so auth
+        // headers are preserved across redirects.
         final request = http.Request('GET', Uri.parse(url));
-        request.headers['Authorization'] = 'Bearer ${api.token}';
+        request.followRedirects = false;
+        api.mediaHeaders.forEach((k, v) => request.headers[k] = v);
         final client = http.Client();
         try {
-          final response = await client.send(request);
+          var response = await client.send(request);
+
+          // Manually follow redirects while preserving auth headers
+          var redirects = 0;
+          while ([301, 302, 303, 307, 308].contains(response.statusCode) && redirects < 5) {
+            final location = response.headers['location'];
+            if (location == null) break;
+            final redirectUrl = Uri.parse(url).resolve(location);
+            final rReq = http.Request('GET', redirectUrl);
+            api.mediaHeaders.forEach((k, v) => rReq.headers[k] = v);
+            rReq.followRedirects = false;
+            response = await client.send(rReq);
+            redirects++;
+          }
+
           if (response.statusCode != 200) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -567,6 +583,19 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
             }
             return;
           }
+
+          // Sanity-check: if the server returned HTML instead of a binary
+          // file, the download is likely an error/login page.
+          final ct = response.headers['content-type'] ?? '';
+          if (ct.contains('text/html')) {
+            debugPrint('[Ebook] Server returned HTML instead of ebook file (content-type: $ct)');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Server returned an error page instead of the ebook file')));
+            }
+            return;
+          }
+
           final sink = cachedFile.openWrite();
           try {
             await response.stream.pipe(sink);
