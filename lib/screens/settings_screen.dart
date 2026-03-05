@@ -37,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _rollingDownloadCount = 3;
   bool _rollingDownloadDeleteFinished = false;
   bool _showBookSlider = false;
+  bool _notifChapterProgress = false;
   bool _speedAdjustedTime = true;
   int _forwardSkip = 30;
   int _backSkip = 10;
@@ -72,6 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final rollingCount = await PlayerSettings.getRollingDownloadCount();
     final rollingDelete = await PlayerSettings.getRollingDownloadDeleteFinished();
     final bookSlider = await PlayerSettings.getShowBookSlider();
+    final notifChapter = await PlayerSettings.getNotificationChapterProgress();
     final speedAdj = await PlayerSettings.getSpeedAdjustedTime();
     final fwd = await PlayerSettings.getForwardSkip();
     final bk = await PlayerSettings.getBackSkip();
@@ -99,6 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _rollingDownloadCount = rollingCount;
       _rollingDownloadDeleteFinished = rollingDelete;
       _showBookSlider = bookSlider;
+      _notifChapterProgress = notifChapter;
       _speedAdjustedTime = speedAdj;
       _forwardSkip = fwd;
       _backSkip = bk;
@@ -655,6 +658,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: _loaded ? (v) {
                         setState(() => _forwardSkip = v.round());
                         PlayerSettings.setForwardSkip(v.round());
+                      } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Chapter progress in notification'),
+                      subtitle: Text(
+                        _notifChapterProgress ? 'On — lockscreen shows chapter progress' : 'Off — lockscreen shows full book progress',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _notifChapterProgress,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _notifChapterProgress = v);
+                        PlayerSettings.setNotificationChapterProgress(v);
                       } : null,
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),

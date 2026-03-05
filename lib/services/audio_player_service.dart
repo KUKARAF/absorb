@@ -118,6 +118,9 @@ class PlayerSettings {
   static Future<int> getBackSkip() => _get('backSkip', 10);
   static Future<void> setBackSkip(int seconds) => _set('backSkip', seconds, notify: true);
 
+  static Future<bool> getNotificationChapterProgress() => _get('notificationChapterProgress', false);
+  static Future<void> setNotificationChapterProgress(bool value) => _set('notificationChapterProgress', value, notify: true);
+
   // ── Sleep timer settings ──
 
   static Future<bool> getShakeToResetSleep() => _get('shakeToResetSleep', true);
@@ -225,6 +228,14 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   void bindService(AudioPlayerService service) => _service = service;
 
+  /// Force-push current PlaybackState so the notification picks up
+  /// new chapter-relative position immediately (e.g. on chapter change).
+  void refreshPlaybackState() {
+    try {
+      playbackState.add(_transformEvent(_player.playbackEvent));
+    } catch (_) {}
+  }
+
   AudioPlayerHandler() {
     // Manually subscribe instead of .pipe() so we can handle errors.
     // Without onError, a stream error (e.g. network timeout during streaming)
@@ -319,7 +330,9 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
         ProcessingState.completed: AudioProcessingState.completed,
       }[_player.processingState]!,
       playing: _player.playing,
-      updatePosition: _player.position,
+      updatePosition: _service != null && _service!.notifChapterMode
+          ? _chapterRelativePosition()
+          : _player.position,
       bufferedPosition: _player.bufferedPosition,
       // Report actual speed — always
       speed: _player.speed,
@@ -348,6 +361,15 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
+  /// Compute chapter-relative position for the notification progress bar.
+  Duration _chapterRelativePosition() {
+    if (_service == null) return _player.position;
+    final absPos = _service!.position;
+    final chStart = Duration(seconds: _service!.currentChapterStart.round());
+    final relative = absPos - chStart;
+    return relative.isNegative ? Duration.zero : relative;
+  }
+
   @override
   Future<void> play() async {
     debugPrint('[Handler] play() called — routing to service');
@@ -372,7 +394,12 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   Future<void> seek(Duration position) async {
     debugPrint('[Handler] seek(${position.inSeconds}s)');
     if (_service != null) {
-      await _service!.seekTo(position);
+      // In chapter mode, the notification sends chapter-relative position —
+      // convert back to absolute book position.
+      final absPos = _service!.notifChapterMode
+          ? position + Duration(seconds: _service!.currentChapterStart.round())
+          : position;
+      await _service!.seekTo(absPos);
     } else {
       await _player.seek(position);
     }
@@ -746,6 +773,30 @@ class AudioPlayerService extends ChangeNotifier {
   int _lastNotifiedChapterIndex = -1;
   StreamSubscription? _indexSub;
 
+  // ── Notification chapter progress mode ──
+  bool _notifChapterMode = false;
+  double _currentChapterStart = 0;
+  double _currentChapterEnd = 0;
+  bool get notifChapterMode => _notifChapterMode && _chapters.isNotEmpty;
+  double get currentChapterStart => _currentChapterStart;
+  double get currentChapterEnd => _currentChapterEnd;
+
+  void _onSettingsChanged() {
+    PlayerSettings.getNotificationChapterProgress().then((v) {
+      if (v == _notifChapterMode) return;
+      _notifChapterMode = v;
+      // Re-push MediaItem + PlaybackState so notification updates immediately
+      if (_currentItemId != null) {
+        _pushMediaItem(_currentItemId!, _currentTitle ?? '', _currentAuthor ?? '',
+            _currentCoverUrl, _totalDuration,
+            chapter: _lastNotifiedChapterIndex >= 0 && _chapters.isNotEmpty
+                ? (_chapters[_lastNotifiedChapterIndex] as Map<String, dynamic>)['title'] as String?
+                : null);
+        _handler?.refreshPlaybackState();
+      }
+    });
+  }
+
   /// The last seek target in seconds (absolute book position).
   /// UI can use this to immediately snap to the target before stream catches up.
   double? _lastSeekTargetSeconds;
@@ -930,6 +981,9 @@ class AudioPlayerService extends ChangeNotifier {
       // Bind service so handler routes play/pause through service (for auto-rewind)
       _handler!.bindService(_instance);
       debugPrint('[Player] AudioService initialized');
+      // Load notification chapter progress setting and watch for changes
+      _instance._notifChapterMode = await PlayerSettings.getNotificationChapterProgress();
+      PlayerSettings.settingsChanged.addListener(_instance._onSettingsChanged);
       // Configure audio session for audiobook playback
       await _configureAudioSession();
     } catch (e, st) {
@@ -1306,7 +1360,8 @@ class AudioPlayerService extends ChangeNotifier {
       }
 
       _subscribeTrackIndex();
-      _pushMediaItem(itemId, title, author, coverUrl, totalDuration);
+      final initChapter = _initChapterInfo(startTime);
+      _pushMediaItem(itemId, title, author, coverUrl, totalDuration, chapter: initChapter);
       final bookSpeed = await PlayerSettings.getBookSpeed(itemId);
       final speed = bookSpeed ?? await PlayerSettings.getDefaultSpeed();
       await _player!.setSpeed(speed);
@@ -1424,7 +1479,8 @@ class AudioPlayerService extends ChangeNotifier {
       }
 
       _subscribeTrackIndex();
-      _pushMediaItem(itemId, title, author, coverUrl, totalDuration);
+      final initChapter = _initChapterInfo(startTime);
+      _pushMediaItem(itemId, title, author, coverUrl, totalDuration, chapter: initChapter);
       final bookSpeed = await PlayerSettings.getBookSpeed(itemId);
       final speed = bookSpeed ?? await PlayerSettings.getDefaultSpeed();
       await _player!.setSpeed(speed);
@@ -1442,6 +1498,32 @@ class AudioPlayerService extends ChangeNotifier {
       _clearState();
       return false;
     }
+  }
+
+  /// Set _currentChapterStart/End for the chapter containing [posSeconds].
+  /// Returns the chapter title (or null) so _pushMediaItem can show it.
+  String? _initChapterInfo(double posSeconds) {
+    if (_chapters.isEmpty) return null;
+    for (int i = 0; i < _chapters.length; i++) {
+      final ch = _chapters[i] as Map<String, dynamic>;
+      final start = (ch['start'] as num?)?.toDouble() ?? 0;
+      final end = (ch['end'] as num?)?.toDouble() ?? _totalDuration;
+      if (posSeconds >= start && posSeconds < end) {
+        _currentChapterStart = start;
+        _currentChapterEnd = end;
+        _lastNotifiedChapterIndex = i;
+        return ch['title'] as String?;
+      }
+    }
+    // Past all chapters — use the last one
+    if (_chapters.isNotEmpty) {
+      final last = _chapters.last as Map<String, dynamic>;
+      _currentChapterStart = (last['start'] as num?)?.toDouble() ?? 0;
+      _currentChapterEnd = (last['end'] as num?)?.toDouble() ?? _totalDuration;
+      _lastNotifiedChapterIndex = _chapters.length - 1;
+      return last['title'] as String?;
+    }
+    return null;
   }
 
   /// Content provider authority — must match CoverContentProvider and AndroidManifest.
@@ -1463,12 +1545,16 @@ class AudioPlayerService extends ChangeNotifier {
     final displayArtist = chapter != null && chapter.isNotEmpty
         ? '$author · $chapter'
         : author;
+    // In chapter progress mode, show chapter duration instead of full book
+    final displayDuration = notifChapterMode
+        ? (_currentChapterEnd - _currentChapterStart)
+        : totalDuration;
     _handler!.mediaItem.add(MediaItem(
       id: itemId,
       title: title,
       artist: displayArtist,
       album: title,
-      duration: Duration(seconds: totalDuration.round()),
+      duration: Duration(seconds: displayDuration.round()),
       artUri: coverUrl != null ? Uri.tryParse(coverUrl) : null,
     ));
   }
@@ -1649,6 +1735,8 @@ class AudioPlayerService extends ChangeNotifier {
       if (_chapters.isNotEmpty && _currentItemId != null) {
         int chapterIdx = -1;
         String? chapterTitle;
+        double chapterStart = 0;
+        double chapterEnd = _totalDuration;
         for (int i = 0; i < _chapters.length; i++) {
           final ch = _chapters[i] as Map<String, dynamic>;
           final start = (ch['start'] as num?)?.toDouble() ?? 0;
@@ -1656,16 +1744,23 @@ class AudioPlayerService extends ChangeNotifier {
           if (posSec >= start && posSec < end) {
             chapterIdx = i;
             chapterTitle = ch['title'] as String?;
+            chapterStart = start;
+            chapterEnd = end;
             break;
           }
         }
         if (chapterIdx >= 0 && chapterIdx != _lastNotifiedChapterIndex) {
           _lastNotifiedChapterIndex = chapterIdx;
+          _currentChapterStart = chapterStart;
+          _currentChapterEnd = chapterEnd;
           _pushMediaItem(
             _currentItemId!, _currentTitle ?? '', _currentAuthor ?? '',
             _currentCoverUrl, _totalDuration,
             chapter: chapterTitle,
           );
+          // Force PlaybackState refresh so the notification position resets
+          // to 0 immediately instead of waiting for the next stream event.
+          if (_notifChapterMode) _handler?.refreshPlaybackState();
         }
       }
 
