@@ -8,5 +8,6 @@
     android:resizeMode="horizontal"
     android:widgetCategory="home_screen"
     android:previewImage="@mipmap/ic_launcher"
+    android:previewLayout="@layout/now_playing_widget"
     android:description="@string/widget_description"
     android:updatePeriodMillis="0" />
