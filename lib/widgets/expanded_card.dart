@@ -1224,12 +1224,33 @@ class _ExpandedCardState extends State<ExpandedCard> {
     if (chapters.isEmpty) return;
     final totalDur = _isCastingThis ? cast.castingDuration : (_isActive ? widget.player.totalDuration : _duration);
 
+    // Find current chapter index for auto-scroll
+    int currentIdx = -1;
+    if (_isPlaybackActive) {
+      final pos = _isCastingThis
+          ? cast.castPosition.inMilliseconds / 1000.0
+          : widget.player.position.inMilliseconds / 1000.0;
+      for (int i = 0; i < chapters.length; i++) {
+        final ch = chapters[i] as Map<String, dynamic>;
+        final start = (ch['start'] as num?)?.toDouble() ?? 0;
+        final end = (ch['end'] as num?)?.toDouble() ?? 0;
+        if (pos >= start && pos < end) { currentIdx = i; break; }
+      }
+    }
+
     showModalBottomSheet(
       context: context, isScrollControlled: true, useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => DraggableScrollableSheet(
         expand: false, initialChildSize: 0.6, minChildSize: 0.05, snap: true, maxChildSize: 0.9,
-        builder: (_, sc) => Container(
+        builder: (_, sc) {
+          if (currentIdx > 0) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              final target = currentIdx * 48.0 - 48; // one row above current
+              if (sc.hasClients) sc.jumpTo(target.clamp(0, sc.position.maxScrollExtent));
+            });
+          }
+          return Container(
           decoration: BoxDecoration(
             color: Theme.of(context).bottomSheetTheme.backgroundColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -1278,7 +1299,8 @@ class _ExpandedCardState extends State<ExpandedCard> {
               },
             )),
           ]),
-        ),
+        );
+        },
       ),
     );
   }
