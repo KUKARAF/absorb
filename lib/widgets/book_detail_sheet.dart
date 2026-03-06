@@ -396,6 +396,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         if (year.isNotEmpty) _chip(Icons.calendar_today_rounded, year),
         _chip(Icons.schedule_rounded, _fmtDur(duration)),
         if (chapters.isNotEmpty) _chip(Icons.list_rounded, '${chapters.length} chapters'),
+        ..._audioInfoChips(media),
         if (publisher.isNotEmpty) _chip(Icons.business_rounded, publisher),
         ...genres.take(3).map((g) => _chip(Icons.tag_rounded, g)),
         if (progressData?['startedAt'] is num)
@@ -488,6 +489,18 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(icon, size: 16, color: cs.onSurfaceVariant), const SizedBox(width: 6),
         Text(label, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w500))])));
+  }
+
+  List<Widget> _audioInfoChips(Map<String, dynamic> media) {
+    final audioFiles = media['audioFiles'] as List<dynamic>?;
+    if (audioFiles == null || audioFiles.isEmpty) return [];
+    final first = audioFiles.first as Map<String, dynamic>;
+    final codec = (first['codec'] as String?)?.toUpperCase();
+    final bitRate = (first['bitRate'] as num?)?.toInt();
+    return [
+      if (codec != null && codec.isNotEmpty) _chip(Icons.audio_file_rounded, codec),
+      if (bitRate != null && bitRate > 0) _chip(Icons.speed_rounded, '${(bitRate / 1000).round()} kbps'),
+    ];
   }
 
   Widget _chip(IconData icon, String text) {

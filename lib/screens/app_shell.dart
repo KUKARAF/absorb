@@ -51,7 +51,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   String? _lastItemId;
   bool _expandedIsOpen = false;
   bool _wasCasting = false;
-  Timer? _castDisconnectTimer;
+
 
   // Lazily build tabs so startup on Absorbing does not initialize Home/Library
   // work until the user actually visits those tabs.
@@ -209,20 +209,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _castDisconnectTimer?.cancel();
-      _castDisconnectTimer = null;
       _refreshDataForTab(_currentIndex);
       // Check auto sleep in case we resumed into the window
       SleepTimerService().checkAutoSleep();
-    } else if (state == AppLifecycleState.paused) {
-      // Disconnect cast if app doesn't resume (e.g. swiped away).
-      // detached doesn't fire reliably on Android swipe-away.
-      final cast = ChromecastService();
-      if (cast.isConnected) {
-        _castDisconnectTimer = Timer(const Duration(seconds: 3), () {
-          cast.disconnect();
-        });
-      }
     } else if (state == AppLifecycleState.detached) {
       final cast = ChromecastService();
       if (cast.isConnected) cast.disconnect();

@@ -29,6 +29,12 @@ class ChromecastService extends ChangeNotifier {
   Duration _castPosition = Duration.zero;
   String? _connectedDeviceName;
 
+  // Multi-track fallback state (when queueLoadItems fails)
+  List<dynamic>? _fallbackTracks;
+  List<double>? _fallbackOffsets;
+  int _fallbackTrackIdx = -1;
+  bool _isAdvancingTrack = false;
+
   String? get castingItemId => _castingItemId;
   String? get castingEpisodeId => _castingEpisodeId;
   String? get castingTitle => _castingTitle;
@@ -118,6 +124,7 @@ class ChromecastService extends ChangeNotifier {
     _castingDuration = 0;
     _castingChapters = [];
     _castPosition = Duration.zero;
+    _fallbackTracks = null; _fallbackOffsets = null; _fallbackTrackIdx = -1;
     _mediaStatusSub?.cancel();
     _positionSub?.cancel();
     _syncTimer?.cancel();
@@ -141,12 +148,15 @@ class ChromecastService extends ChangeNotifier {
         }
       }
 
-      // Detect playback completion: was playing/buffering → now idle, position near end
+      // Detect playback completion: was playing/buffering → now idle
       if (_playbackState == CastPlaybackState.idle &&
           (prev == CastPlaybackState.playing || prev == CastPlaybackState.buffering) &&
-          _castingItemId != null && _castingDuration > 0) {
+          _castingItemId != null && _castingDuration > 0 && !_isAdvancingTrack) {
         final pos = _castPosition.inMilliseconds / 1000.0;
-        if (pos >= _castingDuration - 5) {
+        // In fallback mode, check if this is a track end (not book end)
+        if (_fallbackTracks != null && _fallbackTrackIdx < _fallbackTracks!.length - 1) {
+          _advanceToNextTrack();
+        } else if (pos >= _castingDuration - 5) {
           _onCastPlaybackComplete();
         }
       }
@@ -158,7 +168,15 @@ class ChromecastService extends ChangeNotifier {
   void _listenToPosition() {
     _positionSub?.cancel();
     _positionSub = GoogleCastRemoteMediaClient.instance.playerPositionStream?.listen((pos) {
-      if (pos != null) _castPosition = pos;
+      if (pos != null) {
+        // In fallback mode, translate track-local position to book position
+        if (_fallbackOffsets != null && _fallbackTrackIdx >= 0 && _fallbackTrackIdx < _fallbackOffsets!.length) {
+          final offsetMs = (_fallbackOffsets![_fallbackTrackIdx] * 1000).round();
+          _castPosition = Duration(milliseconds: offsetMs + pos.inMilliseconds);
+        } else {
+          _castPosition = pos;
+        }
+      }
     });
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
@@ -373,23 +391,97 @@ class ChromecastService extends ChangeNotifier {
         ));
       }
       debugPrint('[Cast] Calling queueLoadItems with ${items.length} items...');
-      await GoogleCastRemoteMediaClient.instance.queueLoadItems(items);
-      debugPrint('[Cast] ✓ queueLoadItems completed');
+      try {
+        await GoogleCastRemoteMediaClient.instance.queueLoadItems(items);
+        debugPrint('[Cast] ✓ queueLoadItems completed');
 
-      if (localStart > 0.5) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        debugPrint('[Cast] Seeking to $localStart...');
-        await GoogleCastRemoteMediaClient.instance.seek(
-          GoogleCastMediaSeekOption(position: Duration(milliseconds: (localStart * 1000).round())),
-        );
-        debugPrint('[Cast] ✓ Seek completed');
+        if (localStart > 0.5) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          debugPrint('[Cast] Seeking to $localStart...');
+          await GoogleCastRemoteMediaClient.instance.seek(
+            GoogleCastMediaSeekOption(position: Duration(milliseconds: (localStart * 1000).round())),
+          );
+          debugPrint('[Cast] ✓ Seek completed');
+        }
+        _castPosition = Duration(milliseconds: (startTime * 1000).round());
+        return true;
+      } catch (queueErr) {
+        debugPrint('[Cast] queueLoadItems failed, falling back to single-track loadMedia: $queueErr');
       }
+
+      // Fallback: load the correct track via loadMedia instead of queue
+      int trackIdx = 0;
+      for (int i = 0; i < offsets.length - 1; i++) {
+        if (startTime < offsets[i + 1] || i == offsets.length - 2) {
+          trackIdx = i;
+          break;
+        }
+      }
+      // Store fallback state for auto-advance
+      _fallbackTracks = tracks;
+      _fallbackOffsets = offsets;
+      _fallbackTrackIdx = trackIdx;
+
+      await _loadFallbackTrack(api, tracks, offsets, trackIdx, localStart, title, author, coverUrl, totalDuration);
       _castPosition = Duration(milliseconds: (startTime * 1000).round());
       return true;
     } catch (e, st) {
-      debugPrint('[Cast] Queue error: $e\n$st');
+      debugPrint('[Cast] Cast load error: $e\n$st');
       _playbackState = CastPlaybackState.idle; notifyListeners(); return false;
     }
+  }
+
+  Future<void> _loadFallbackTrack(ApiService api, List<dynamic> tracks,
+      List<double> offsets, int trackIdx, double localStart,
+      String title, String author, String? coverUrl, double totalDuration) async {
+    final m = tracks[trackIdx] as Map<String, dynamic>;
+    final fallbackUrl = api.buildTrackUrl(m['contentUrl'] as String? ?? '');
+    final trackDur = (m['duration'] as num?)?.toDouble() ?? totalDuration;
+    debugPrint('[Cast] Fallback: loading track $trackIdx/${tracks.length} at ${localStart}s');
+    await GoogleCastRemoteMediaClient.instance.loadMedia(
+      GoogleCastMediaInformation(
+        contentId: fallbackUrl,
+        streamType: CastMediaStreamType.buffered,
+        contentUrl: Uri.parse(fallbackUrl),
+        contentType: _contentType(fallbackUrl),
+        metadata: GoogleCastGenericMediaMetadata(
+          title: title,
+          subtitle: '$author · Track ${trackIdx + 1} of ${tracks.length}',
+          images: coverUrl != null ? [GoogleCastImage(url: Uri.parse(coverUrl), height: 400, width: 400)] : null,
+        ),
+        duration: Duration(seconds: trackDur.round()),
+      ),
+      autoPlay: true,
+      playPosition: Duration(milliseconds: (localStart * 1000).round()),
+    );
+    debugPrint('[Cast] ✓ Fallback loadMedia completed (track $trackIdx)');
+  }
+
+  /// Auto-advance to next track when in fallback single-track mode
+  Future<void> _advanceToNextTrack() async {
+    if (_isAdvancingTrack || _fallbackTracks == null || _api == null) return;
+    final nextIdx = _fallbackTrackIdx + 1;
+    if (nextIdx >= _fallbackTracks!.length) return; // last track — real completion
+    _isAdvancingTrack = true;
+    _fallbackTrackIdx = nextIdx;
+    debugPrint('[Cast] Auto-advancing to track $nextIdx/${_fallbackTracks!.length}');
+    try {
+      await _loadFallbackTrack(
+        _api!, _fallbackTracks!, _fallbackOffsets!, nextIdx, 0,
+        _castingTitle ?? '', _castingAuthor ?? '', _castingCoverUrl, _castingDuration,
+      );
+      _castPosition = Duration(milliseconds: (_fallbackOffsets![nextIdx] * 1000).round());
+      // Re-apply speed
+      if ((_castSpeed - 1.0).abs() > 0.01) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        try {
+          await GoogleCastRemoteMediaClient.instance.setPlaybackRate(_castSpeed);
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('[Cast] Auto-advance error: $e');
+    }
+    _isAdvancingTrack = false;
   }
 
   String _contentType(String url) {
@@ -498,6 +590,7 @@ class ChromecastService extends ChangeNotifier {
     _playbackState = CastPlaybackState.idle;
     _castingItemId = _castingEpisodeId = _castingTitle = _castingAuthor = _castingCoverUrl = null;
     _castingDuration = 0; _castingChapters = [];
+    _fallbackTracks = null; _fallbackOffsets = null; _fallbackTrackIdx = -1;
     notifyListeners();
   }
 
