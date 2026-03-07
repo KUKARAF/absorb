@@ -1195,7 +1195,7 @@ class _EpisodeRowState extends State<_EpisodeRow> {
                                 CircularProgressIndicator(
                                   value: dlProgress > 0 ? dlProgress : null,
                                   strokeWidth: 2, color: cs.primary),
-                                Text('${(dlProgress * 100).toStringAsFixed(0)}',
+                                Text((dlProgress * 100).toStringAsFixed(0),
                                   style: TextStyle(fontSize: 7, color: cs.primary, fontWeight: FontWeight.w600)),
                               ])),
                           );

@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../services/audio_player_service.dart';
 import '../services/sleep_timer_service.dart';
@@ -316,7 +315,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
         height: 28,
         child: Switch(
           value: _shakeEnabled,
-          activeColor: accent,
+          activeTrackColor: accent,
           onChanged: (v) {
             setState(() => _shakeEnabled = v);
             PlayerSettings.setShakeToResetSleep(v);

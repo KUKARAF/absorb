@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../services/audio_player_service.dart';
 import '../services/chromecast_service.dart';
 import 'absorb_slider.dart';
-import 'absorbing_shared.dart';
 
 // ─── DUAL PROGRESS BAR (card version) ───────────────────────
 

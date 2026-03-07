@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../services/api_service.dart';
 import '../widgets/absorb_page_header.dart';
 import '../widgets/html_description.dart';
 
@@ -172,9 +171,6 @@ class _AdminPodcastsScreenState extends State<AdminPodcastsScreen> {
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => _PodcastDetailScreen(item: item, libraryId: _libraryId, onChanged: _loadShows)));
   }
-
-  void _msg(String s) => ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(
-    SnackBar(content: Text(s), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
 }
 
 
@@ -379,8 +375,6 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
     child: Icon(Icons.podcasts_rounded, color: cs.primary.withValues(alpha: 0.4), size: 22),
   );
 
-  void _snk(String s) => ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(
-    SnackBar(content: Text(s), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
 }
 
 

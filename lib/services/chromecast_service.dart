@@ -167,7 +167,9 @@ class ChromecastService extends ChangeNotifier {
 
   void _listenToPosition() {
     _positionSub?.cancel();
+    // ignore: invalid_null_aware_operator
     _positionSub = GoogleCastRemoteMediaClient.instance.playerPositionStream?.listen((pos) {
+      // ignore: unnecessary_null_comparison
       if (pos != null) {
         // In fallback mode, translate track-local position to book position
         if (_fallbackOffsets != null && _fallbackTrackIdx >= 0 && _fallbackTrackIdx < _fallbackOffsets!.length) {

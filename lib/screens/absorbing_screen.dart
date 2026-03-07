@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -791,6 +792,7 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
 
     return Container(
       decoration: BoxDecoration(
@@ -811,7 +813,7 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
           child: Row(children: [
-            Expanded(child: Text('Reorder Queue',
+            Expanded(child: Text('Manage Queue',
               style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600))),
             TextButton(
               onPressed: () {
@@ -825,6 +827,7 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
         Expanded(
           child: ReorderableListView.builder(
             buildDefaultDragHandles: false,
+            padding: EdgeInsets.only(bottom: bottomInset + 16),
             proxyDecorator: (child, index, animation) {
               return AnimatedBuilder(
                 animation: animation,
@@ -858,59 +861,145 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
               final epTitle = re?['title'] as String?;
               final isFinished = widget.lib.isItemFinishedByKey(key);
 
-              return Padding(
+              return Dismissible(
                 key: ValueKey(key),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 24),
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                   decoration: BoxDecoration(
-                    color: isFinished ? cs.onSurface.withValues(alpha: 0.03) : Colors.transparent,
+                    color: cs.error.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(children: [
-                    // Queue position number
-                    SizedBox(width: 24, child: Text('${i + 1}',
-                      style: tt.labelMedium?.copyWith(
-                        color: isFinished ? cs.onSurface.withValues(alpha: 0.3) : cs.primary,
-                        fontWeight: FontWeight.w700,
-                      ))),
-                    // Finished indicator
-                    if (isFinished)
-                      Icon(Icons.check_circle_rounded, size: 16, color: Colors.green.withValues(alpha: 0.5))
-                    else
-                      Icon(Icons.circle_outlined, size: 16, color: cs.onSurface.withValues(alpha: 0.2)),
-                    const SizedBox(width: 8),
-                    // Title + subtitle
-                    Expanded(child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(epTitle ?? title,
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: tt.bodyMedium?.copyWith(
-                            color: isFinished ? cs.onSurface.withValues(alpha: 0.4) : null,
-                          )),
-                        if (epTitle != null)
-                          Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                        if (author.isNotEmpty && epTitle == null)
-                          Text(author, maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      ],
-                    )),
-                    // Drag handle
-                    ReorderableDragStartListener(
-                      index: i,
-                      child: Icon(Icons.drag_handle_rounded, size: 20,
-                        color: cs.onSurface.withValues(alpha: 0.3)),
+                  child: Icon(Icons.remove_circle_outline_rounded, color: cs.error),
+                ),
+                onDismissed: (_) {
+                  final removedKey = _order[i];
+                  setState(() => _order.removeAt(i));
+                  widget.lib.removeFromAbsorbing(removedKey);
+                  widget.lib.reorderAbsorbing(_order);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isFinished ? cs.onSurface.withValues(alpha: 0.03) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ]),
+                    child: Row(children: [
+                      // Queue position number
+                      SizedBox(width: 24, child: Text('${i + 1}',
+                        style: tt.labelMedium?.copyWith(
+                          color: isFinished ? cs.onSurface.withValues(alpha: 0.3) : cs.primary,
+                          fontWeight: FontWeight.w700,
+                        ))),
+                      // Finished indicator
+                      if (isFinished)
+                        Icon(Icons.check_circle_rounded, size: 16, color: Colors.green.withValues(alpha: 0.5))
+                      else
+                        Icon(Icons.circle_outlined, size: 16, color: cs.onSurface.withValues(alpha: 0.2)),
+                      const SizedBox(width: 8),
+                      // Title + subtitle
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(epTitle ?? title,
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: tt.bodyMedium?.copyWith(
+                              color: isFinished ? cs.onSurface.withValues(alpha: 0.4) : null,
+                            )),
+                          if (epTitle != null)
+                            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                          if (author.isNotEmpty && epTitle == null)
+                            Text(author, maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        ],
+                      )),
+                      // Drag handle (long-press to avoid conflict with system home gesture)
+                      _DragHandle(index: i, color: cs.onSurface),
+                    ]),
+                  ),
                 ),
               );
             },
           ),
         ),
       ]),
+    );
+  }
+}
+
+// ─── DRAG HANDLE WITH HOLD FEEDBACK ─────────────────────────
+
+class _DragHandle extends StatefulWidget {
+  final int index;
+  final Color color;
+  const _DragHandle({required this.index, required this.color});
+
+  @override
+  State<_DragHandle> createState() => _DragHandleState();
+}
+
+class _DragHandleState extends State<_DragHandle> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  // Match ReorderableDelayedDragStartListener's default delay
+  static const _holdDuration = Duration(milliseconds: 500);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: _holdDuration);
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        HapticFeedback.mediumImpact();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onDown(PointerDownEvent _) {
+    _controller.forward(from: 0);
+  }
+
+  void _onUp(PointerEvent _) {
+    _controller.stop();
+    _controller.reset();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: _onDown,
+      onPointerUp: _onUp,
+      onPointerCancel: _onUp,
+      child: ReorderableDelayedDragStartListener(
+        index: widget.index,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final ready = _controller.isCompleted;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: ready ? widget.color.withValues(alpha: 0.1) : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.drag_handle_rounded, size: 20,
+                color: widget.color.withValues(alpha: ready ? 0.7 : 0.3)),
+            );
+          },
+        ),
+      ),
     );
   }
 }

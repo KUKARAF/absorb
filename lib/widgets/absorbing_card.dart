@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
@@ -231,9 +230,9 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
   }
 
   @override
-  void didUpdateWidget(AbsorbingCard old) {
-    super.didUpdateWidget(old);
-    final oldId = old.item['id'] as String? ?? '';
+  void didUpdateWidget(AbsorbingCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldId = oldWidget.item['id'] as String? ?? '';
     if (oldId != _itemId) {
       // Item changed — reset all stale state
       _coverScheme = null;
@@ -245,7 +244,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
       _lastChapterIdx = -1;
       _fetchChaptersIfNeeded();
     }
-    if (old.player != widget.player) _startChapterTracking();
+    if (oldWidget.player != widget.player) _startChapterTracking();
   }
 
   @override
@@ -336,7 +335,6 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
     final tt = Theme.of(context).textTheme;
     final cs = _coverScheme ?? Theme.of(context).colorScheme;
     final accent = cs.primary;
-    final bgDark = cs.surface;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final lib = context.watch<LibraryProvider>();

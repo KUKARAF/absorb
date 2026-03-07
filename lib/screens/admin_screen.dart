@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../services/api_service.dart';
 import '../widgets/absorb_page_header.dart';
 import 'admin_users_screen.dart';
 import 'admin_podcasts_screen.dart';
@@ -18,7 +17,7 @@ class _AdminScreenState extends State<AdminScreen> {
   List<dynamic> _libraries = [];
   List<dynamic> _backups = [];
   List<dynamic> _sessions = [];
-  Map<String, Map<String, dynamic>> _libraryStats = {};
+  final Map<String, Map<String, dynamic>> _libraryStats = {};
   String? _serverVersion;
 
   final Set<String> _scanningLibraries = {};
@@ -37,11 +36,11 @@ class _AdminScreenState extends State<AdminScreen> {
     final futures = await Future.wait([
       api.getUsers(), api.getOnlineUsers(), api.getLibraries(), api.getBackups(), api.getAllSessions(limit: 10),
     ]);
-    _users = futures[0] as List<dynamic>;
-    _onlineUsers = futures[1] as List<dynamic>;
-    _libraries = futures[2] as List<dynamic>;
-    _backups = futures[3] as List<dynamic>;
-    _sessions = futures[4] as List<dynamic>;
+    _users = futures[0];
+    _onlineUsers = futures[1];
+    _libraries = futures[2];
+    _backups = futures[3];
+    _sessions = futures[4];
     _serverVersion = context.read<AuthProvider>().serverVersion;
 
     for (final lib in _libraries) {

@@ -84,7 +84,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                   scale: 0.8,
                   child: Switch(
                     value: _eq.enabled,
-                    activeColor: accent,
+                    activeTrackColor: accent,
                     onChanged: (v) => _eq.setEnabled(v),
                   ),
                 ),
@@ -263,8 +263,6 @@ class _EQBandSlider extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final eq = EqualizerService();
     final label = eq.freqLabel(frequency);
-    final normalized = ((level - minLevel) / (maxLevel - minLevel)).clamp(0.0, 1.0);
-
     return Column(
       children: [
         Text('${level >= 0 ? "+" : ""}${level.toStringAsFixed(0)}',

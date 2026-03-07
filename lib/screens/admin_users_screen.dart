@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../services/api_service.dart';
 import '../widgets/absorb_page_header.dart';
 
 class AdminUsersScreen extends StatefulWidget {
@@ -22,7 +21,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   Future<void> _reload() async {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     final results = await Future.wait([api.getUsers(), api.getOnlineUsers()]);
-    if (mounted) setState(() { _users = results[0] as List<dynamic>; _onlineUsers = results[1] as List<dynamic>; });
+    if (mounted) setState(() { _users = results[0]; _onlineUsers = results[1]; });
   }
 
   @override

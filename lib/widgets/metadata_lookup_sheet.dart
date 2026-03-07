@@ -377,9 +377,6 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet> {
     final publisher = _safeString(book['publisher']);
     final series = _safeString(book['series']);
 
-    // Match confidence from Audible provider
-    final matchKey = result['matchKey'] as String?;
-
     return Card(
       elevation: 0,
       color: Colors.white.withValues(alpha: 0.05),

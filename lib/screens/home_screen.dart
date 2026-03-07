@@ -54,8 +54,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh setting when returning to screen
-    _loadSettings();
+    // Refresh setting when returning to screen, but only if changed
+    PlayerSettings.getHideEbookOnly().then((v) {
+      if (mounted && v != _hideEbookOnly) setState(() => _hideEbookOnly = v);
+    });
   }
 
   List<dynamic> _filterEbookOnly(List<dynamic> items) {
@@ -126,7 +128,9 @@ class _HomeScreenState extends State<HomeScreen> {
       lib.loadPersonalizedView();
     }
 
-    setState(() {});
+    if (itemChanged || stopped) {
+      setState(() {});
+    }
   }
 
   void _showLibraryPicker(BuildContext context, ColorScheme cs, TextTheme tt, List<dynamic> allLibraries, LibraryProvider lib) {

@@ -72,36 +72,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final s = await AutoRewindSettings.load();
-    final speed = await PlayerSettings.getDefaultSpeed();
-    final wifiOnly = await PlayerSettings.getWifiOnlyDownloads();
-    final rollingCount = await PlayerSettings.getRollingDownloadCount();
-    final rollingDelete = await PlayerSettings.getRollingDownloadDeleteFinished();
-    final bookSlider = await PlayerSettings.getShowBookSlider();
-    final notifChapter = await PlayerSettings.getNotificationChapterProgress();
-    final speedAdj = await PlayerSettings.getSpeedAdjustedTime();
-    final fwd = await PlayerSettings.getForwardSkip();
-    final bk = await PlayerSettings.getBackSkip();
-    final shake = await PlayerSettings.getShakeToResetSleep();
-    final resetOnPause = await PlayerSettings.getResetSleepOnPause();
-    final sleepFade = await PlayerSettings.getSleepFadeOut();
-    final shakeMins = await PlayerSettings.getShakeAddMinutes();
-    final queueMode = await PlayerSettings.getQueueMode();
-    final queueAutoDl = await PlayerSettings.getQueueAutoDownload();
-    final mergeLibs = await PlayerSettings.getMergeAbsorbingLibraries();
-    final maxConc = await PlayerSettings.getMaxConcurrentDownloads();
-    final whenFinished = await PlayerSettings.getWhenFinished();
-    final hideEbook = await PlayerSettings.getHideEbookOnly();
-    final showGoodreads = await PlayerSettings.getShowGoodreadsButton();
-    final logging = await PlayerSettings.getLoggingEnabled();
-    final fullScreen = await PlayerSettings.getFullScreenPlayer();
-    final theme = await PlayerSettings.getThemeMode();
-
-    final dlLabel = await DownloadService().downloadLocationLabel;
-    final dlSize = await DownloadService().totalDownloadSize;
-    final deviceStorage = await DownloadService.getDeviceStorage();
-    final autoSleep = await AutoSleepSettings.load();
-    final pkgInfo = await PackageInfo.fromPlatform();
+    final results = await Future.wait([
+      AutoRewindSettings.load(),                              // 0
+      PlayerSettings.getDefaultSpeed(),                       // 1
+      PlayerSettings.getWifiOnlyDownloads(),                  // 2
+      PlayerSettings.getRollingDownloadCount(),                // 3
+      PlayerSettings.getRollingDownloadDeleteFinished(),       // 4
+      PlayerSettings.getShowBookSlider(),                     // 5
+      PlayerSettings.getNotificationChapterProgress(),        // 6
+      PlayerSettings.getSpeedAdjustedTime(),                  // 7
+      PlayerSettings.getForwardSkip(),                        // 8
+      PlayerSettings.getBackSkip(),                           // 9
+      PlayerSettings.getShakeToResetSleep(),                  // 10
+      PlayerSettings.getResetSleepOnPause(),                  // 11
+      PlayerSettings.getSleepFadeOut(),                       // 12
+      PlayerSettings.getShakeAddMinutes(),                    // 13
+      PlayerSettings.getQueueMode(),                          // 14
+      PlayerSettings.getQueueAutoDownload(),                  // 15
+      PlayerSettings.getMergeAbsorbingLibraries(),            // 16
+      PlayerSettings.getMaxConcurrentDownloads(),             // 17
+      PlayerSettings.getWhenFinished(),                       // 18
+      PlayerSettings.getHideEbookOnly(),                      // 19
+      PlayerSettings.getShowGoodreadsButton(),                // 20
+      PlayerSettings.getLoggingEnabled(),                     // 21
+      PlayerSettings.getFullScreenPlayer(),                   // 22
+      PlayerSettings.getThemeMode(),                          // 23
+      DownloadService().downloadLocationLabel,                // 24
+      DownloadService().totalDownloadSize,                    // 25
+      DownloadService.getDeviceStorage(),                     // 26
+      AutoSleepSettings.load(),                               // 27
+      PackageInfo.fromPlatform(),                             // 28
+    ]);
+    final s = results[0] as AutoRewindSettings;
+    final speed = results[1] as double;
+    final wifiOnly = results[2] as bool;
+    final rollingCount = results[3] as int;
+    final rollingDelete = results[4] as bool;
+    final bookSlider = results[5] as bool;
+    final notifChapter = results[6] as bool;
+    final speedAdj = results[7] as bool;
+    final fwd = results[8] as int;
+    final bk = results[9] as int;
+    final shake = results[10] as bool;
+    final resetOnPause = results[11] as bool;
+    final sleepFade = results[12] as bool;
+    final shakeMins = results[13] as int;
+    final queueMode = results[14] as String;
+    final queueAutoDl = results[15] as bool;
+    final mergeLibs = results[16] as bool;
+    final maxConc = results[17] as int;
+    final whenFinished = results[18] as String;
+    final hideEbook = results[19] as bool;
+    final showGoodreads = results[20] as bool;
+    final logging = results[21] as bool;
+    final fullScreen = results[22] as bool;
+    final theme = results[23] as String;
+    final dlLabel = results[24] as String;
+    final dlSize = results[25] as int;
+    final deviceStorage = results[26] as Map<String, int>?;
+    final autoSleep = results[27] as AutoSleepSettings;
+    final pkgInfo = results[28] as PackageInfo;
     if (mounted) setState(() {
       _rewindSettings = s;
       _defaultSpeed = speed;

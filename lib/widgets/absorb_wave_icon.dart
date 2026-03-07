@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// Reusable Absorb wave icon — the 5-bar ascending/descending wave pattern.
