@@ -744,9 +744,9 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     // Mark finished locally first so the absorbing card shows the overlay
     // immediately when the player stops (which triggers the expanded card to pop)
     if (context.mounted) {
-      context.read<LibraryProvider>().markFinishedLocally(widget.itemId, skipRefresh: true);
+      context.read<LibraryProvider>().markFinishedLocally(widget.itemId, skipRefresh: true, skipAutoAdvance: true);
     }
-    if (player.currentItemId == widget.itemId) await player.stop();
+    if (player.currentItemId == widget.itemId) await player.stopWithoutSaving();
     try {
       await api.markFinished(widget.itemId, duration);
       await ProgressSyncService().deleteLocal(widget.itemId);

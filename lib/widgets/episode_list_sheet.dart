@@ -630,7 +630,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
           duration: _duration,
           isFinished: true,
         );
-        lib.markFinishedLocally(key);
+        lib.markFinishedLocally(key, skipAutoAdvance: true);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: const Text('Marked as finished — nice!'),

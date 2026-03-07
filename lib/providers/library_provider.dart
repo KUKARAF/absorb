@@ -41,6 +41,7 @@ class LibraryProvider extends ChangeNotifier {
   String? _lastRssHydrationLibraryId;
   static const _personalizedFetchCooldown = Duration(seconds: 5);
   static const _rssHydrationCooldown = Duration(minutes: 10);
+  Timer? _progressRefreshDebounce;
 
   // Per-series/show rolling download opt-in
   Set<String> _rollingDownloadSeries = {};
@@ -484,6 +485,7 @@ class LibraryProvider extends ChangeNotifier {
       _selectedLibraryId = null;
       _errorMessage = null;
       _connectivitySub?.cancel();
+      _progressRefreshDebounce?.cancel();
       _stopServerPingTimer();
       SocketService().disconnect();
       _personalizedInFlight = null;
@@ -585,10 +587,20 @@ class LibraryProvider extends ChangeNotifier {
     final episodeId = mp['episodeId'] as String?;
     if (itemId == null) return;
     final key = episodeId != null ? '$itemId-$episodeId' : itemId;
+    // Don't let a stale socket event overwrite a local mark-finished.
+    // The server will confirm isFinished on the next full refresh.
+    if (_locallyFinishedItems.contains(key) && mp['isFinished'] != true) return;
     _progressMap[key] = mp;
     _localProgressOverrides.remove(key);
     _resetItems.remove(key);
     notifyListeners();
+
+    // Debounce a personalized view refresh so sections like "continue series"
+    // update when progress changes (e.g. a book finished on another device).
+    _progressRefreshDebounce?.cancel();
+    _progressRefreshDebounce = Timer(const Duration(seconds: 2), () {
+      loadPersonalizedView(force: true);
+    });
   }
 
   /// Handle library item added or updated from socket.
@@ -1416,7 +1428,7 @@ class LibraryProvider extends ChangeNotifier {
   /// [itemId] can be a plain book ID or a compound "showId-episodeId" key.
   /// If [skipRefresh] is true, the caller handles refreshing (e.g.
   /// book_detail_sheet calls refresh() after api.markFinished).
-  void markFinishedLocally(String itemId, {bool skipRefresh = false}) {
+  void markFinishedLocally(String itemId, {bool skipRefresh = false, bool skipAutoAdvance = false}) {
     if (_resetItems.contains(itemId)) return;
     final existing = _progressMap[itemId] ?? {};
     _progressMap[itemId] = {...existing, 'isFinished': true};
@@ -1440,14 +1452,17 @@ class LibraryProvider extends ChangeNotifier {
     // Instant local auto-advance — uses cached metadata + download info,
     // no server call needed. Fires first so playback starts immediately,
     // then the server refresh still runs in the background when online.
-    PlayerSettings.getQueueMode().then((mode) {
-      if (mode == 'manual') {
-        _manualQueueAdvance(itemId);
-      } else if (mode == 'auto_next') {
-        _autoAdvanceOffline(itemId);
-      }
-      // mode == 'off': do nothing, playback stops
-    });
+    // Skip when user manually marks an item finished (not natural playback completion).
+    if (!skipAutoAdvance) {
+      PlayerSettings.getQueueMode().then((mode) {
+        if (mode == 'manual') {
+          _manualQueueAdvance(itemId);
+        } else if (mode == 'auto_next') {
+          _autoAdvanceOffline(itemId);
+        }
+        // mode == 'off': do nothing, playback stops
+      });
+    }
 
     // Slide the rolling download window forward for the finished item's series
     _checkRollingDownloads(itemId);

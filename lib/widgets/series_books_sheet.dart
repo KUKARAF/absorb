@@ -212,7 +212,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
           ? (media['duration'] as num).toDouble()
           : 0.0;
       await api.markFinished(bookId, duration);
-      lib.markFinishedLocally(bookId, skipRefresh: true);
+      lib.markFinishedLocally(bookId, skipRefresh: true, skipAutoAdvance: true);
     }
 
     if (mounted) {

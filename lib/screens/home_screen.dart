@@ -27,7 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Cached filtered sections — invalidated when source data or settings change.
   List<dynamic>? _cachedSections;
   List<dynamic>? _cachedClItems;
-  int _lastSectionsLength = -1;
+  List<dynamic>? _lastSectionsRef;
   bool _lastHideEbook = false;
   bool _lastIsPodcast = false;
 
@@ -77,13 +77,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void _refreshFilteredCache(LibraryProvider lib) {
     final sections = lib.personalizedSections;
     final isPod = lib.isPodcastLibrary;
-    if (sections.length == _lastSectionsLength &&
+    if (identical(sections, _lastSectionsRef) &&
         _hideEbookOnly == _lastHideEbook &&
         isPod == _lastIsPodcast &&
         _cachedSections != null) {
       return; // cache is still valid
     }
-    _lastSectionsLength = sections.length;
+    _lastSectionsRef = sections;
     _lastHideEbook = _hideEbookOnly;
     _lastIsPodcast = isPod;
 
@@ -253,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // (where the new user may have the same number of sections).
       _cachedSections = null;
       _cachedClItems = null;
-      _lastSectionsLength = -1;
+      _lastSectionsRef = null;
     } else {
       _refreshFilteredCache(lib);
     }
