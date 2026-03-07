@@ -46,10 +46,21 @@ A modern audiobookshelf client for Android with a card-based player experience.
 
 ## Install
 
-[<img src="https://raw.githubusercontent.com/NeoApplications/Neo-Backup/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Get it on GitHub" height="64">](../../releases)
-[<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="55">](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/pounat/absorb)
+[<img src="https://raw.githubusercontent.com/NeoApplications/Neo-Backup/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Get it on GitHub" height="58">](../../releases)
+[<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="58">](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/pounat/absorb)
 
 Absorb is also in **closed testing on Google Play**. If you'd like access, reach out or request an invite.
+
+## Android Auto
+
+Absorb supports Android Auto for browsing and listening from your car. To use it, you'll need to enable unknown sources in Android Auto:
+
+> 1. Open **Android Auto** settings on your phone
+> 2. Tap **Version** at the bottom repeatedly to enable Developer mode
+> 3. Tap the three-dot menu (top right) and select **Developer settings**
+> 4. Enable **Unknown sources**
+>
+> This is required because Absorb is not distributed through Google Play's production track.
 
 ## Requirements
 
