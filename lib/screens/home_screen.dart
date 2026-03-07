@@ -9,6 +9,7 @@ import '../widgets/home_section.dart';
 import '../widgets/absorb_page_header.dart';
 import '../widgets/shimmer.dart';
 import '../widgets/book_detail_sheet.dart';
+import '../widgets/card_buttons.dart';
 import '../widgets/episode_list_sheet.dart';
 import 'app_shell.dart';
 
@@ -712,13 +713,16 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
       final epDuration = (recentEpisode['duration'] as num?)?.toDouble() ?? 0;
       final coverUrl = widget.lib.getCoverUrl(itemId);
 
-      await widget.player.playItem(
+      final error = await widget.player.playItem(
         api: api, itemId: itemId, title: episodeTitle, author: showTitle,
         coverUrl: coverUrl, totalDuration: epDuration, chapters: [],
         episodeId: episodeId,
         episodeTitle: episodeTitle,
       );
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        if (error != null) showErrorSnackBar(context, error);
+        setState(() => _isLoading = false);
+      }
       return;
     }
 
@@ -736,10 +740,11 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
     final chapters = (media['chapters'] as List<dynamic>?) ?? [];
 
     // Start playback
-    await widget.player.playItem(
+    final error = await widget.player.playItem(
       api: api, itemId: itemId, title: title, author: author,
       coverUrl: coverUrl, totalDuration: duration, chapters: chapters,
     );
+    if (error != null && mounted) showErrorSnackBar(context, error);
 
     // Ensure this book is on the absorbing list (clear any manual remove)
     if (context.mounted) {

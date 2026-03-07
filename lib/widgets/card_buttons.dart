@@ -18,6 +18,17 @@ void showInactiveToast(BuildContext context) {
     ));
 }
 
+/// Show an error message to the user.
+void showErrorSnackBar(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+    ..clearSnackBars()
+    ..showSnackBar(SnackBar(
+      content: Text(message),
+      duration: const Duration(seconds: 4),
+      behavior: SnackBarBehavior.floating,
+    ));
+}
+
 // ─── WIDE GLASS BUTTON (for 2-column grid) ─────────────────
 
 class CardWideButton extends StatelessWidget {

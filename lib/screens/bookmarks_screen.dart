@@ -7,6 +7,7 @@ import '../providers/library_provider.dart';
 import '../screens/app_shell.dart';
 import '../services/audio_player_service.dart';
 import '../services/bookmark_service.dart';
+import '../widgets/card_buttons.dart';
 import '../services/download_service.dart';
 import '../widgets/absorb_page_header.dart';
 
@@ -207,7 +208,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
         ? (media['duration'] as num).toDouble() : 0.0;
     final chapters = (media['chapters'] as List<dynamic>?) ?? [];
 
-    await player.playItem(
+    final error = await player.playItem(
       api: api,
       itemId: itemId,
       title: title,
@@ -217,6 +218,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
       chapters: chapters,
       startTime: bookmark.positionSeconds,
     );
+    if (error != null && mounted) showErrorSnackBar(context, error);
 
     if (mounted) Navigator.pop(context);
     AppShell.goToAbsorbingGlobal();

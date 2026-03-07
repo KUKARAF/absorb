@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
+import 'card_buttons.dart';
 import '../services/api_service.dart';
 import '../services/download_service.dart';
 import '../services/progress_sync_service.dart';
@@ -707,7 +708,8 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     if (api == null) return;
 
     // Start playback
-    await player.playItem(api: api, itemId: widget.itemId, title: title, author: author, coverUrl: coverUrl, totalDuration: duration, chapters: chapters);
+    final error = await player.playItem(api: api, itemId: widget.itemId, title: title, author: author, coverUrl: coverUrl, totalDuration: duration, chapters: chapters);
+    if (error != null && context.mounted) showErrorSnackBar(context, error);
 
     // Refresh library so the absorbing screen picks up the new book
     if (context.mounted) {

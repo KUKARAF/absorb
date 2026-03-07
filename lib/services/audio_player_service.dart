@@ -1171,7 +1171,7 @@ class AudioPlayerService extends ChangeNotifier {
   String? _currentEpisodeTitle;
   String? get currentEpisodeTitle => _currentEpisodeTitle;
 
-  Future<bool> playItem({
+  Future<String?> playItem({
     required ApiService api,
     required String itemId,
     required String title,
@@ -1189,7 +1189,7 @@ class AudioPlayerService extends ChangeNotifier {
     }
     if (_handler == null) {
       debugPrint('[Player] Handler init failed, cannot play');
-      return false;
+      return 'Player failed to initialize';
     }
 
     // Stop Chromecast if currently casting
@@ -1246,7 +1246,7 @@ class AudioPlayerService extends ChangeNotifier {
     _isCompletingBook = false;
 
     // Check if downloaded — play locally
-    final bool result;
+    final String? result;
     if (_downloadService.isDownloaded(progressKey)) {
       result = await _playFromLocal(progressKey, title, author, coverUrl,
           totalDuration, chapters, startTime);
@@ -1257,7 +1257,7 @@ class AudioPlayerService extends ChangeNotifier {
       if (manualOffline) {
         debugPrint('[Player] Manual offline — cannot stream non-downloaded item');
         _clearState();
-        return false;
+        return 'This item isn\'t downloaded and offline mode is on';
       }
       // Stream from server
       result = await _playFromServer(api, itemId, title, author, coverUrl,
@@ -1265,7 +1265,7 @@ class AudioPlayerService extends ChangeNotifier {
     }
 
     // Auto-navigate to Absorbing tab when an episode starts playing
-    if (result && episodeId != null) {
+    if (result == null && episodeId != null) {
       _onEpisodePlayStartedCallback?.call();
     }
     return result;
@@ -1338,7 +1338,7 @@ class AudioPlayerService extends ChangeNotifier {
     }
   }
 
-  Future<bool> _playFromLocal(
+  Future<String?> _playFromLocal(
     String itemId,
     String title,
     String author,
@@ -1418,7 +1418,7 @@ class AudioPlayerService extends ChangeNotifier {
     if (localPaths == null || localPaths.isEmpty) {
       debugPrint('[Player] No local files found');
       _clearState();
-      return false;
+      return 'Downloaded files not found - try re-downloading';
     }
 
     // Get cached session data for track durations (and chapters if needed)
@@ -1482,15 +1482,15 @@ class AudioPlayerService extends ChangeNotifier {
       final sleepTimer = SleepTimerService();
       sleepTimer.resetDismiss();
       sleepTimer.checkAutoSleep();
-      return true;
+      return null;
     } catch (e, stack) {
       debugPrint('[Player] Local play error: $e\n$stack');
       _clearState();
-      return false;
+      return 'Playback failed: ${e.toString().split('\n').first}';
     }
   }
 
-  Future<bool> _playFromServer(
+  Future<String?> _playFromServer(
     ApiService api,
     String itemId,
     String title,
@@ -1510,14 +1510,14 @@ class AudioPlayerService extends ChangeNotifier {
     if (sessionData == null) {
       debugPrint('[Player] Failed to start playback session');
       _clearState();
-      return false;
+      return 'Could not connect to server';
     }
 
     _playbackSessionId = sessionData['id'] as String?;
     final audioTracks = sessionData['audioTracks'] as List<dynamic>?;
     if (audioTracks == null || audioTracks.isEmpty) {
       _clearState();
-      return false;
+      return 'No audio files found - this item may be missing on the server';
     }
 
     // Pick up chapters from session (e.g. podcast episodes with embedded chapters)
@@ -1601,11 +1601,11 @@ class AudioPlayerService extends ChangeNotifier {
       final sleepTimer = SleepTimerService();
       sleepTimer.resetDismiss();
       sleepTimer.checkAutoSleep();
-      return true;
+      return null;
     } catch (e, stack) {
       debugPrint('[Player] Stream error: $e\n$stack');
       _clearState();
-      return false;
+      return 'Playback failed: ${e.toString().split('\n').first}';
     }
   }
 
@@ -1749,10 +1749,10 @@ class AudioPlayerService extends ChangeNotifier {
     );
 
     _retryInProgress = false;
-    if (ok) {
+    if (ok == null) {
       debugPrint('[Player] Retry succeeded');
     } else {
-      debugPrint('[Player] Retry failed');
+      debugPrint('[Player] Retry failed: $ok');
     }
   }
 

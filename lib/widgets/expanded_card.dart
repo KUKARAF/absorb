@@ -952,13 +952,16 @@ class _ExpandedCardState extends State<ExpandedCard> {
     final auth = context.read<AuthProvider>();
     final api = auth.apiService;
     if (api == null) { setState(() => _isStarting = false); return; }
-    await widget.player.playItem(
+    final error = await widget.player.playItem(
       api: api, itemId: _itemId, title: _title, author: _author,
       coverUrl: _coverUrl, totalDuration: _effectiveDuration, chapters: _chapters,
       episodeId: _episodeId,
       episodeTitle: _recentEpisode?['title'] as String?,
     );
-    if (mounted) setState(() => _isStarting = false);
+    if (mounted) {
+      if (error != null) showErrorSnackBar(context, error);
+      setState(() => _isStarting = false);
+    }
   }
 
   Future<void> _listenAgain() async {
@@ -973,11 +976,14 @@ class _ExpandedCardState extends State<ExpandedCard> {
     await api.resetProgress(_itemId, _duration);
     lib.resetProgressFor(_itemId);
     await ProgressSyncService().deleteLocal(_itemId);
-    await widget.player.playItem(
+    final error = await widget.player.playItem(
       api: api, itemId: _itemId, title: _title, author: _author,
       coverUrl: _coverUrl, totalDuration: _duration, chapters: _chapters,
     );
-    if (mounted) setState(() => _isStarting = false);
+    if (mounted) {
+      if (error != null) showErrorSnackBar(context, error);
+      setState(() => _isStarting = false);
+    }
   }
 
   Future<void> _removeFromAbsorbing() async {

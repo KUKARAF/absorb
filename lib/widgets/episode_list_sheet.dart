@@ -8,6 +8,7 @@ import '../services/download_service.dart';
 import '../services/progress_sync_service.dart';
 import '../services/chromecast_service.dart';
 import '../providers/auth_provider.dart';
+import 'card_buttons.dart';
 import 'html_description.dart';
 
 /// Bottom sheet that shows a podcast's episode list.
@@ -154,7 +155,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     }
 
     final player = AudioPlayerService();
-    await player.playItem(
+    final error = await player.playItem(
       api: api,
       itemId: _itemId,
       title: episodeTitle,
@@ -165,7 +166,10 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
       episodeId: episodeId,
       episodeTitle: episodeTitle,
     );
-    if (mounted) Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+    if (mounted) {
+      if (error != null) showErrorSnackBar(context, error);
+      Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+    }
   }
 
   Future<void> _downloadEpisode(Map<String, dynamic> episode) async {
@@ -537,13 +541,16 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
       return;
     }
 
-    await AudioPlayerService().playItem(
+    final error = await AudioPlayerService().playItem(
       api: api, itemId: _itemId, title: _episodeTitle, author: _showTitle,
       coverUrl: api.getCoverUrl(_itemId), totalDuration: _duration, chapters: _chapters,
       episodeId: _episodeId,
       episodeTitle: _episodeTitle,
     );
-    if (mounted) Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+    if (mounted) {
+      if (error != null) showErrorSnackBar(context, error);
+      Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+    }
   }
 
   Future<void> _download() async {

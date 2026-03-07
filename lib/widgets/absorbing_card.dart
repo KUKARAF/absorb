@@ -841,13 +841,16 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
     final auth = context.read<AuthProvider>();
     final api = auth.apiService;
     if (api == null) { setState(() => _isStarting = false); return; }
-    await widget.player.playItem(
+    final error = await widget.player.playItem(
       api: api, itemId: _itemId, title: _title, author: _author,
       coverUrl: _coverUrl, totalDuration: _effectiveDuration, chapters: _chapters,
       episodeId: _episodeId,
       episodeTitle: _recentEpisode?['title'] as String?,
     );
-    if (mounted) setState(() => _isStarting = false);
+    if (mounted) {
+      if (error != null) showErrorSnackBar(context, error);
+      setState(() => _isStarting = false);
+    }
   }
 
   Future<void> _listenAgain() async {
@@ -870,14 +873,17 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
     // Clear the locally saved position so playItem() doesn't override startTime
     // back to the end (where it was saved on completion)
     await ProgressSyncService().deleteLocal(progressKey);
-    await widget.player.playItem(
+    final error = await widget.player.playItem(
       api: api, itemId: _itemId, title: _title, author: _author,
       coverUrl: _coverUrl, totalDuration: _episodeId != null ? _effectiveDuration : _duration,
       chapters: _chapters,
       episodeId: _episodeId,
       episodeTitle: _recentEpisode?['title'] as String?,
     );
-    if (mounted) setState(() => _isStarting = false);
+    if (mounted) {
+      if (error != null) showErrorSnackBar(context, error);
+      setState(() => _isStarting = false);
+    }
   }
 
   void _deleteDownload(String dlKey) {
