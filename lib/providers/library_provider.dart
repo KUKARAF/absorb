@@ -452,9 +452,16 @@ class LibraryProvider extends ChangeNotifier {
           ProgressSyncService().flushPendingSync(api: _api!);
           DownloadService().enrichMetadata(_api!);
         }
-        // Connect Socket.IO for online presence
+        // Connect Socket.IO for online presence + cross-device sync
         if (auth.serverUrl != null && auth.token != null) {
-          SocketService().connect(auth.serverUrl!, auth.token!);
+          final socket = SocketService();
+          socket.onProgressUpdated = _onRemoteProgressUpdated;
+          socket.onItemUpdated = _onRemoteItemUpdated;
+          socket.onItemRemoved = _onRemoteItemRemoved;
+          socket.onSeriesUpdated = _onRemoteSeriesUpdated;
+          socket.onCollectionUpdated = _onRemoteCollectionUpdated;
+          socket.onUserUpdated = _onRemoteUserUpdated;
+          socket.connect(auth.serverUrl!, auth.token!);
         }
         debugPrint('[Library] Calling loadLibraries()');
         loadLibraries();
@@ -570,6 +577,60 @@ class LibraryProvider extends ChangeNotifier {
     _buildOfflineSections();
     notifyListeners();
     if (_deviceHasConnectivity && !_manualOffline) _startServerPingTimer();
+  }
+
+  /// Handle a progress update pushed from the server (cross-device sync).
+  void _onRemoteProgressUpdated(Map<String, dynamic> mp) {
+    final itemId = mp['libraryItemId'] as String?;
+    final episodeId = mp['episodeId'] as String?;
+    if (itemId == null) return;
+    final key = episodeId != null ? '$itemId-$episodeId' : itemId;
+    _progressMap[key] = mp;
+    _localProgressOverrides.remove(key);
+    _resetItems.remove(key);
+    notifyListeners();
+  }
+
+  /// Handle library item added or updated from socket.
+  void _onRemoteItemUpdated(Map<String, dynamic> data) {
+    // Refresh the personalized view so new/updated items appear
+    loadPersonalizedView(force: true);
+  }
+
+  /// Handle library item removed from socket.
+  void _onRemoteItemRemoved(Map<String, dynamic> data) {
+    loadPersonalizedView(force: true);
+  }
+
+  /// Handle series changes from socket.
+  void _onRemoteSeriesUpdated() {
+    loadPersonalizedView(force: true);
+    loadSeries();
+  }
+
+  /// Handle collection changes from socket.
+  void _onRemoteCollectionUpdated() {
+    loadPersonalizedView(force: true);
+  }
+
+  /// Handle current user updated from socket.
+  void _onRemoteUserUpdated(Map<String, dynamic> data) {
+    // Rebuild progress map from updated user data
+    final progressList = data['mediaProgress'] as List<dynamic>?;
+    if (progressList != null) {
+      for (final mp in progressList) {
+        if (mp is Map<String, dynamic>) {
+          final itemId = mp['libraryItemId'] as String?;
+          final episodeId = mp['episodeId'] as String?;
+          if (itemId != null) {
+            final key = episodeId != null ? '$itemId-$episodeId' : itemId;
+            _progressMap[key] = mp;
+            _localProgressOverrides.remove(key);
+          }
+        }
+      }
+      notifyListeners();
+    }
   }
 
   void _buildProgressMap(AuthProvider auth) {
