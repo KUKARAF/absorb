@@ -12,6 +12,7 @@ import '../services/progress_sync_service.dart';
 import '../services/download_service.dart';
 import '../services/android_auto_service.dart';
 import '../services/chromecast_service.dart';
+import '../services/socket_service.dart';
 import '../main.dart' show scaffoldMessengerKey;
 
 /// Holds library data and personalized home sections.
@@ -451,6 +452,10 @@ class LibraryProvider extends ChangeNotifier {
           ProgressSyncService().flushPendingSync(api: _api!);
           DownloadService().enrichMetadata(_api!);
         }
+        // Connect Socket.IO for online presence
+        if (auth.serverUrl != null && auth.token != null) {
+          SocketService().connect(auth.serverUrl!, auth.token!);
+        }
         debugPrint('[Library] Calling loadLibraries()');
         loadLibraries();
       }).catchError((e) {
@@ -473,6 +478,7 @@ class LibraryProvider extends ChangeNotifier {
       _errorMessage = null;
       _connectivitySub?.cancel();
       _stopServerPingTimer();
+      SocketService().disconnect();
       _personalizedInFlight = null;
       _lastPersonalizedFetchAt = null;
       _lastPersonalizedFetchLibraryId = null;

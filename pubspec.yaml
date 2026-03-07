@@ -12,6 +12,7 @@ dependencies:
   
   # Networking
   http: ^1.1.0
+  socket_io_client: ^3.0.2
   
   # State Management
   provider: ^6.1.1
@@ -71,12 +72,14 @@ dependencies:
   # Homescreen widget
   home_widget: ^0.7.0
 
+  # Splash screen (preserve during init)
+  flutter_native_splash: ^2.4.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.1
   flutter_launcher_icons: ^0.14.3
-  flutter_native_splash: ^2.4.4
   change_app_package_name: ^1.5.0
   rename_app: ^1.6.5
 
