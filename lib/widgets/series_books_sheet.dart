@@ -67,16 +67,51 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
   bool _isMarkingAll = false;
   bool _autoDownloadEnabled = false;
 
+  bool _didAutoScroll = false;
+
   @override
   void initState() {
     super.initState();
     // Use passed books as initial data
     _books = _unwrapBooks(widget.books);
     _sortBooks();
-    if (_books.isNotEmpty) _isLoading = false;
+    if (_books.isNotEmpty) {
+      _isLoading = false;
+      _scrollToUpNext();
+    }
     // Fetch full data from API for proper sequence info
     _fetchFromApi();
     _loadAutoDownloadState();
+  }
+
+  void _scrollToUpNext() {
+    if (_didAutoScroll || _books.isEmpty) return;
+    _didAutoScroll = true;
+    final lib = context.read<LibraryProvider>();
+    int firstUnfinished = -1;
+    for (int i = 0; i < _books.length; i++) {
+      final bookId = _books[i]['id'] as String? ?? '';
+      if (lib.getProgressData(bookId)?['isFinished'] != true) {
+        firstUnfinished = i;
+        break;
+      }
+    }
+    // If all finished, scroll to bottom; if first is unfinished, stay at top
+    final targetIndex = firstUnfinished == -1 ? _books.length - 1 : firstUnfinished;
+    if (targetIndex <= 0) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.scrollController.hasClients) return;
+      // Each book card is ~88px (80 height + 8 bottom padding)
+      final offset = (targetIndex * 88.0).clamp(
+        0.0,
+        widget.scrollController.position.maxScrollExtent,
+      );
+      widget.scrollController.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   void _loadAutoDownloadState() {
@@ -179,6 +214,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
           _sortBooks();
           _isLoading = false;
         });
+        _scrollToUpNext();
         return;
       }
     }
@@ -561,10 +597,13 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                     child: InkWell(
                       onTap: () {
                         if (bookId.isNotEmpty) {
+                          // Close series sheet before opening book to prevent infinite stacking
+                          final nav = Navigator.of(context);
+                          nav.pop();
                           if (lib.isPodcastLibrary) {
-                            EpisodeListSheet.show(context, book);
+                            EpisodeListSheet.show(nav.context, book);
                           } else {
-                            showBookDetailSheet(context, bookId);
+                            showBookDetailSheet(nav.context, bookId);
                           }
                         }
                       },

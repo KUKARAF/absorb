@@ -51,7 +51,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
   String? _lastItemId;
   bool _expandedIsOpen = false;
   bool _wasCasting = false;
-
+  DateTime? _lastBackPress;
 
   // Lazily build tabs so startup on Absorbing does not initialize Home/Library
   // work until the user actually visits those tabs.
@@ -268,9 +268,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
           return;
         }
 
-        // If already on Absorbing tab, move app to background (keep playback alive)
+        // If already on Absorbing tab, require double-back to exit
         if (_currentIndex == 2) {
-          SystemChannels.platform.invokeMethod('SystemNavigator.pop', true);
+          final now = DateTime.now();
+          if (_lastBackPress != null && now.difference(_lastBackPress!) < const Duration(seconds: 2)) {
+            SystemChannels.platform.invokeMethod('SystemNavigator.pop', true);
+            return;
+          }
+          _lastBackPress = now;
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Text('Press back again to exit'),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ));
           return;
         }
 

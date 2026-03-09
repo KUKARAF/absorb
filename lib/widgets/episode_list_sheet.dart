@@ -893,8 +893,9 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
             const SizedBox(height: 16),
             GestureDetector(
               onTap: () {
-                Navigator.pop(context);
-                EpisodeListSheet.show(context, widget.podcastItem);
+                final nav = Navigator.of(context);
+                nav.pop();
+                EpisodeListSheet.show(nav.context, widget.podcastItem);
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1154,7 +1155,12 @@ class _EpisodeRowState extends State<_EpisodeRow> {
     }
 
     return InkWell(
-      onTap: () => EpisodeDetailSheet.show(context, widget.podcastItem, ep),
+      onTap: () {
+        // Close episode list before opening detail to prevent infinite stacking
+        final nav = Navigator.of(context);
+        nav.pop();
+        EpisodeDetailSheet.show(nav.context, widget.podcastItem, ep);
+      },
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
         child: Column(
