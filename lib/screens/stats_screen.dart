@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../widgets/absorb_page_header.dart';
@@ -37,33 +39,71 @@ class _StatsScreenState extends State<StatsScreen>
     super.dispose();
   }
 
+  static const _kStats = 'cached_stats';
+  static const _kSessions = 'cached_sessions';
+
   Future<void> _loadStats() async {
     final api = context.read<AuthProvider>().apiService;
     final lib = context.read<LibraryProvider>();
+    final prefs = await SharedPreferences.getInstance();
+
+    // Load cached data first so the page renders immediately even offline.
+    if (_isLoading) {
+      final cachedStats = prefs.getString(_kStats);
+      final cachedSessions = prefs.getString(_kSessions);
+      if (cachedStats != null) {
+        final stats = jsonDecode(cachedStats) as Map<String, dynamic>;
+        final sessions = cachedSessions != null
+            ? (jsonDecode(cachedSessions) as List<dynamic>)
+            : <dynamic>[];
+        if (mounted) {
+          setState(() {
+            _stats = stats;
+            _sessions = sessions;
+            _booksFinished = lib.finishedCount;
+            _isLoading = false;
+          });
+          _animController.reset();
+          _animController.forward();
+        }
+      }
+    }
+
     if (api == null) {
       if (mounted) setState(() => _isLoading = false);
       return;
     }
 
-    // Phase 1: load core stats quickly so page can render fast.
+    // Phase 1: load core stats from network and cache them.
     final stats = await api.getListeningStats();
     final finished = lib.finishedCount;
 
+    if (stats != null) {
+      prefs.setString(_kStats, jsonEncode(stats));
+    }
+
     if (mounted) {
       setState(() {
-        _stats = stats;
+        _stats = stats ?? _stats; // keep cached if network failed
         _booksFinished = finished;
         _isLoading = false;
       });
-      _animController.reset();
-      _animController.forward();
+      if (_animController.status != AnimationStatus.forward &&
+          _animController.status != AnimationStatus.completed) {
+        _animController.reset();
+        _animController.forward();
+      }
     }
 
-    // Phase 2: load heavier sessions list in background.
+    // Phase 2: load heavier sessions list in background and cache.
     final sessionsData = await api.getListeningSessions(itemsPerPage: 15);
+    final sessions = sessionsData?['sessions'] as List<dynamic>? ?? [];
+    if (sessions.isNotEmpty) {
+      prefs.setString(_kSessions, jsonEncode(sessions));
+    }
     if (mounted) {
       setState(() {
-        _sessions = sessionsData?['sessions'] as List<dynamic>? ?? [];
+        if (sessions.isNotEmpty) _sessions = sessions;
       });
     }
   }
