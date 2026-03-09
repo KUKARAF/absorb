@@ -1647,12 +1647,11 @@ class AudioPlayerService extends ChangeNotifier {
 
   void _pushMediaItem(String itemId, String title, String author,
       String? coverUrl, double totalDuration, {String? chapter}) {
-    // When offline, use local content:// URI so the Now Playing cover still shows.
-    // When online, pass the HTTP URL through for better palette extraction.
-    String? effectiveCoverUrl = coverUrl;
-    if (_isOfflineMode && DownloadService().isDownloaded(itemId)) {
-      effectiveCoverUrl = 'content://$_coverAuthority/cover/$itemId';
-    }
+    // Always use content:// URI for Now Playing artwork - some OEMs (e.g. Vivo)
+    // don't load HTTP URLs in MediaSession. The CoverContentProvider handles
+    // both downloaded covers (local file) and streamed covers (fetches from
+    // server and caches automatically), so this works for all cases.
+    final effectiveCoverUrl = 'content://$_coverAuthority/cover/$itemId';
     _updateNotificationMediaItem(itemId, title, author, effectiveCoverUrl, totalDuration, chapter: chapter);
   }
 
