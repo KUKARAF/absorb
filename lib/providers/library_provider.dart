@@ -604,6 +604,15 @@ class LibraryProvider extends ChangeNotifier {
     // Don't let a stale socket event overwrite a local mark-finished.
     // The server will confirm isFinished on the next full refresh.
     if (_locallyFinishedItems.contains(key) && mp['isFinished'] != true) return;
+    // Don't let socket echoes overwrite local progress for the currently
+    // playing item. The player is the source of truth while active.
+    // This prevents rollbacks when the network drops and reconnects with
+    // stale server progress.
+    final player = AudioPlayerService();
+    final playingKey = player.currentEpisodeId != null
+        ? '${player.currentItemId}-${player.currentEpisodeId}'
+        : player.currentItemId;
+    if (key == playingKey && player.hasBook) return;
     _progressMap[key] = mp;
     _localProgressOverrides.remove(key);
     _resetItems.remove(key);
