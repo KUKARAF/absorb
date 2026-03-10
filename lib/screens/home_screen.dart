@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
+import '../services/download_service.dart';
 import '../widgets/home_section.dart';
 import '../widgets/absorb_page_header.dart';
 import '../widgets/shimmer.dart';
@@ -306,6 +307,61 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: AbsorbPageHeader(
                     title: 'Home',
                     actions: [
+                      GestureDetector(
+                        onTap: () {
+                          final newVal = !lib.isManualOffline;
+                          lib.setManualOffline(newVal);
+                          if (newVal) {
+                            final dl = DownloadService();
+                            final player = AudioPlayerService();
+                            final itemId = player.currentItemId;
+                            final epId = player.currentEpisodeId;
+                            final dlKey = epId != null && itemId != null
+                                ? '$itemId-$epId'
+                                : itemId;
+                            if (dlKey == null || !dl.isDownloaded(dlKey)) {
+                              player.stop();
+                            }
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOutCubic,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: lib.isOffline
+                                ? Colors.orange.withValues(alpha: 0.15)
+                                : cs.onSurface.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: lib.isOffline
+                                  ? Colors.orange.withValues(alpha: 0.3)
+                                  : cs.onSurface.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                lib.isOffline
+                                    ? Icons.airplanemode_active_rounded
+                                    : Icons.airplanemode_inactive_rounded,
+                                size: 14,
+                                color: lib.isOffline ? Colors.orange : cs.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                lib.isOffline ? 'Offline' : 'Online',
+                                style: TextStyle(
+                                  color: lib.isOffline ? Colors.orange : cs.onSurfaceVariant,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                       if (!lib.isOffline && allLibraries.length > 1)
                         Material(
                           color: cs.onSurface.withValues(alpha: 0.06),
