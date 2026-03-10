@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/library_provider.dart';
@@ -71,8 +72,20 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
   @override
   void initState() {
     super.initState();
+    _loadSortOrder();
     _loadEpisodes();
     _loadAutoDownloadState();
+  }
+
+  void _loadSortOrder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getBool('podcast_sort_newest_$_itemId');
+    if (saved != null && mounted) {
+      setState(() {
+        _newestFirst = saved;
+        _episodes = _sortEpisodes(_episodes);
+      });
+    }
   }
 
   void _loadAutoDownloadState() {
@@ -130,6 +143,9 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     setState(() {
       _newestFirst = !_newestFirst;
       _episodes = _sortEpisodes(_episodes);
+    });
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setBool('podcast_sort_newest_$_itemId', _newestFirst);
     });
   }
 
@@ -856,7 +872,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      isFinished ? 'Finished' : 'Mark Finished',
+                      isFinished ? 'Fully Absorbed' : 'Fully Absorb',
                       style: TextStyle(
                         color: isFinished ? Colors.green : cs.onSurfaceVariant,
                         fontSize: 12, fontWeight: FontWeight.w500,
