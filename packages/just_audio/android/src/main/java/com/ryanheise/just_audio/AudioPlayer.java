@@ -105,8 +105,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     private Map<String, Object> pendingPlaybackEvent;
 
     private ExoPlayer player;
-    private androidx.media3.exoplayer.audio.ChannelMixingAudioProcessor monoProcessor;
-    private static androidx.media3.exoplayer.audio.ChannelMixingAudioProcessor sMonoProcessor;
+    private androidx.media3.common.audio.ChannelMixingAudioProcessor monoProcessor;
+    private static androidx.media3.common.audio.ChannelMixingAudioProcessor sMonoProcessor;
     private Integer audioSessionId;
     private MediaSource mediaSource;
     private Integer currentIndex;
@@ -776,8 +776,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     private void ensurePlayerInitialized() {
         if (player == null) {
             androidx.media3.common.audio.SonicAudioProcessor sonicAudioProcessor = new androidx.media3.common.audio.SonicAudioProcessor();
-            monoProcessor = new androidx.media3.exoplayer.audio.ChannelMixingAudioProcessor();
+            monoProcessor = new androidx.media3.common.audio.ChannelMixingAudioProcessor();
+            // Set identity matrix so audio passes through by default
+            monoProcessor.putChannelMixingMatrix(
+                new androidx.media3.common.audio.ChannelMixingMatrix(2, 2, new float[]{1f, 0f, 0f, 1f}));
             sMonoProcessor = monoProcessor;
+            MonoController.register(AudioPlayer::setMonoEnabled);
             RenderersFactory renderersFactory = new DefaultRenderersFactory(context) {
                 @Override
                 protected AudioSink buildAudioSink(
@@ -1015,16 +1019,16 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         player.setSkipSilenceEnabled(enabled);
     }
 
-    public static void setMonoEnabled(final boolean enabled) {
+    private static void setMonoEnabled(final boolean enabled) {
         if (sMonoProcessor == null) return;
         if (enabled) {
             // Mix both input channels equally into both output channels
             sMonoProcessor.putChannelMixingMatrix(
-                new androidx.media3.exoplayer.audio.ChannelMixingMatrix(2, 2, new float[]{0.5f, 0.5f, 0.5f, 0.5f}));
+                new androidx.media3.common.audio.ChannelMixingMatrix(2, 2, new float[]{0.5f, 0.5f, 0.5f, 0.5f}));
         } else {
             // Identity matrix - passthrough
             sMonoProcessor.putChannelMixingMatrix(
-                new androidx.media3.exoplayer.audio.ChannelMixingMatrix(2, 2, new float[]{1f, 0f, 0f, 1f}));
+                new androidx.media3.common.audio.ChannelMixingMatrix(2, 2, new float[]{1f, 0f, 0f, 1f}));
         }
     }
 

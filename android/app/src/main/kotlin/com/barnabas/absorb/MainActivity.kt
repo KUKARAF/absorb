@@ -12,7 +12,7 @@ import android.os.Environment
 import android.os.StatFs
 import android.util.Log
 import com.ryanheise.audioservice.AudioServiceActivity
-import com.ryanheise.just_audio.AudioPlayer
+import com.ryanheise.just_audio.MonoController
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -67,7 +67,7 @@ class MainActivity : AudioServiceActivity() {
                     }
                     "setMono" -> {
                         val enabled = call.argument<Boolean>("enabled") ?: false
-                        AudioPlayer.setMonoEnabled(enabled)
+                        MonoController.setMonoEnabled(enabled)
                         result.success(true)
                     }
                     else -> result.notImplemented()
