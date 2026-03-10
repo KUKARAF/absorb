@@ -15,6 +15,7 @@ void showSeriesBooksSheet(BuildContext context, {
   List<dynamic> books = const [],
   String? serverUrl,
   String? token,
+  String? libraryId,
 }) {
   FocusManager.instance.primaryFocus?.unfocus();
   showModalBottomSheet(
@@ -32,6 +33,7 @@ void showSeriesBooksSheet(BuildContext context, {
         books: books,
         serverUrl: serverUrl,
         token: token,
+        libraryId: libraryId,
         scrollController: scrollController,
       ),
     ),
@@ -44,6 +46,7 @@ class SeriesBooksSheet extends StatefulWidget {
   final List<dynamic> books;
   final String? serverUrl;
   final String? token;
+  final String? libraryId;
   final ScrollController scrollController;
 
   const SeriesBooksSheet({
@@ -53,6 +56,7 @@ class SeriesBooksSheet extends StatefulWidget {
     required this.books,
     required this.serverUrl,
     required this.token,
+    this.libraryId,
     required this.scrollController,
   });
 
@@ -204,7 +208,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
       return;
     }
     final lib = context.read<LibraryProvider>();
-    final data = await api.getSeries(seriesId, libraryId: lib.selectedLibraryId);
+    final data = await api.getSeries(seriesId, libraryId: widget.libraryId ?? lib.selectedLibraryId);
     if (data != null && mounted) {
       final rawBooks = data['books'] ?? data['libraryItems'] ?? [];
       if (rawBooks is List && rawBooks.isNotEmpty) {

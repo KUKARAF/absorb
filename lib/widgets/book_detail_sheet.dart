@@ -562,6 +562,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   Future<void> _openSeries(BuildContext context, String? seriesId, String seriesName) async {
     if (seriesId == null) return;
     final auth = context.read<AuthProvider>();
+    final itemLibraryId = _item?['libraryId'] as String?;
     // Close current sheet before opening series to prevent infinite stacking
     final nav = Navigator.of(context);
     nav.pop();
@@ -571,6 +572,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       seriesId: seriesId,
       serverUrl: auth.serverUrl,
       token: auth.token,
+      libraryId: itemLibraryId,
     );
   }
 
