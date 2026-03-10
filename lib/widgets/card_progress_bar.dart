@@ -274,12 +274,12 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
               )),
             ] else ...[
               Row(children: [
-                Text(_fmt(_bookDragValue != null ? _bookDragValue! * totalDur : posS), style: tt.labelSmall?.copyWith(color: _bookDragValue != null ? cs.onSurface.withValues(alpha: 0.6) : cs.onSurface.withValues(alpha: 0.38), fontSize: 11, fontWeight: FontWeight.w500)),
+                Text(_fmt(_bookDragValue != null ? _bookDragValue! * totalDur : posS), style: tt.labelSmall?.copyWith(color: _bookDragValue != null ? cs.onSurface.withValues(alpha: 0.6) : cs.onSurface.withValues(alpha: 0.5), fontSize: 11, fontWeight: FontWeight.w500, shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
                 const SizedBox(width: 8),
                 Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(value: bookProgress, minHeight: 3, backgroundColor: cs.onSurface.withValues(alpha: 0.08), valueColor: AlwaysStoppedAnimation(widget.accent.withValues(alpha: 0.5))))),
                 const SizedBox(width: 8),
-                Text('-${_fmt(_bookDragValue != null ? (1.0 - _bookDragValue!) * totalDur : bookRemaining)}', style: tt.labelSmall?.copyWith(color: _bookDragValue != null ? cs.onSurface.withValues(alpha: 0.6) : cs.onSurface.withValues(alpha: 0.38), fontSize: 11, fontWeight: FontWeight.w500)),
+                Text('-${_fmt(_bookDragValue != null ? (1.0 - _bookDragValue!) * totalDur : bookRemaining)}', style: tt.labelSmall?.copyWith(color: _bookDragValue != null ? cs.onSurface.withValues(alpha: 0.6) : cs.onSurface.withValues(alpha: 0.5), fontSize: 11, fontWeight: FontWeight.w500, shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
               ]),
               const SizedBox(height: 10),
             ],
@@ -338,12 +338,14 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
                   style: tt.labelSmall?.copyWith(
                     color: _chapterDragValue != null ? widget.accent : cs.onSurface.withValues(alpha: 0.54),
                     fontSize: 11, fontWeight: FontWeight.w600,
-                    fontFeatures: const [FontFeature.tabularFigures()])),
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
                 Text('-${_fmt(_chapterDragValue != null ? ((1.0 - _chapterDragValue!) * chapterDur) / speedDiv : chapterRemaining)}',
                   style: tt.labelSmall?.copyWith(
-                    color: _chapterDragValue != null ? widget.accent : cs.onSurface.withValues(alpha: 0.38),
+                    color: _chapterDragValue != null ? widget.accent : cs.onSurface.withValues(alpha: 0.5),
                     fontSize: 11, fontWeight: FontWeight.w500,
-                    fontFeatures: const [FontFeature.tabularFigures()])),
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
               ],
             )),
             ], // end showChapterBar

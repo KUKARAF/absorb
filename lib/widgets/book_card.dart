@@ -34,17 +34,16 @@ class BookCard extends StatelessWidget {
     final coverUrl = lib.getCoverUrl(itemId);
 
     // Progress from LibraryProvider (fetched via /api/me, same source as book detail)
-    double progress = 0;
-    if (showProgress) {
-      progress = lib.getProgress(itemId);
-    }
+    final progress = lib.getProgress(itemId);
+    final isFinished = lib.getProgressData(itemId)?['isFinished'] == true;
+    final isDownloaded = DownloadService().isDownloaded(itemId ?? '');
 
     final headers = lib.mediaHeaders;
 
     if (isWide) {
       return _buildWideCard(context, cs, tt, title, authorName, coverUrl, progress, headers);
     }
-    return _buildCompactCard(context, cs, tt, title, authorName, coverUrl, progress, headers);
+    return _buildCompactCard(context, cs, tt, title, authorName, coverUrl, progress, headers, isFinished: isFinished, isDownloaded: isDownloaded);
   }
 
   void _navigateToDetail(BuildContext context) {
@@ -181,8 +180,10 @@ class BookCard extends StatelessWidget {
     String authorName,
     String? coverUrl,
     double progress,
-    Map<String, String> headers,
-  ) {
+    Map<String, String> headers, {
+    bool isFinished = false,
+    bool isDownloaded = false,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -205,20 +206,7 @@ class BookCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   _CoverImage(coverUrl: coverUrl, cs: cs, httpHeaders: headers),
-                  if (DownloadService().isDownloaded(item['id'] as String? ?? ''))
-                    Positioned(
-                      top: 4, right: 4,
-                      child: Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Icon(Icons.download_done_rounded,
-                            size: 14, color: cs.primary),
-                      ),
-                    ),
-                  if (showProgress && progress > 0)
+                  if (progress > 0 && !isFinished)
                     Positioned(
                       left: 0,
                       right: 0,
@@ -229,9 +217,57 @@ class BookCard extends StatelessWidget {
                         ),
                         child: LinearProgressIndicator(
                           value: progress.clamp(0, 1),
-                          minHeight: 4,
+                          minHeight: 3,
                           backgroundColor: Colors.transparent,
                           valueColor: AlwaysStoppedAnimation(cs.primary),
+                        ),
+                      ),
+                    ),
+                  if (isFinished || isDownloaded)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.85),
+                              Colors.black.withValues(alpha: 0.0),
+                            ],
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isFinished) ...[
+                              Icon(Icons.check_circle_rounded,
+                                  size: 10, color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700),
+                              const SizedBox(width: 3),
+                              Text('Done',
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700)),
+                            ],
+                            if (isFinished && isDownloaded)
+                              const SizedBox(width: 6),
+                            if (isDownloaded) ...[
+                              Icon(Icons.download_done_rounded,
+                                  size: 10, color: cs.primary),
+                              const SizedBox(width: 3),
+                              Text('Saved',
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w600,
+                                      color: cs.primary)),
+                            ],
+                          ],
                         ),
                       ),
                     ),

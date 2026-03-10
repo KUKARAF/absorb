@@ -269,7 +269,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
 
             return FilledButton.icon(
               onPressed: showAbsorbingState
-                  ? null
+                  ? () {}
                   : () {
                       setState(() => _isAbsorbing = true);
                       _startAbsorb(

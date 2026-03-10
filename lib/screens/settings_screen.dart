@@ -81,7 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Future.delayed(const Duration(milliseconds: 350), () {
         final ctx = _keyFor(section).currentContext;
         if (ctx != null && mounted) {
-          Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 250), curve: Curves.easeOut, alignment: 0.0);
+          Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 250), curve: Curves.easeOut, alignment: 0.3);
         }
       });
     }

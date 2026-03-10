@@ -23,6 +23,7 @@ class EqualizerService extends ChangeNotifier {
   double _bassBoost = 0.0; // 0.0–1.0
   double _virtualizer = 0.0; // 0.0–1.0
   double _loudnessGain = 0.0; // 0.0–1.0
+  bool _mono = false;
 
   // Built-in presets (EQ curve shapes)
   static const Map<String, List<double>> presets = {
@@ -47,6 +48,7 @@ class EqualizerService extends ChangeNotifier {
   double get bassBoost => _bassBoost;
   double get virtualizer => _virtualizer;
   double get loudnessGain => _loudnessGain;
+  bool get mono => _mono;
 
   /// Initialize — try to connect to platform EQ, fall back to software presets.
   Future<void> init() async {
@@ -154,6 +156,16 @@ class EqualizerService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Toggle mono audio mixing.
+  Future<void> setMono(bool value) async {
+    _mono = value;
+    try {
+      await _channel.invokeMethod('setMono', {'enabled': _mono});
+    } catch (_) {}
+    await _saveSettings();
+    notifyListeners();
+  }
+
   /// Set loudness enhancer gain (0.0–1.0).
   Future<void> setLoudnessGain(double value) async {
     _loudnessGain = value.clamp(0.0, 1.0);
@@ -173,6 +185,7 @@ class EqualizerService extends ChangeNotifier {
     _bassBoost = 0.0;
     _virtualizer = 0.0;
     _loudnessGain = 0.0;
+    _mono = false;
     if (_enabled) {
       _applyCurrentSettings();
     }
@@ -204,6 +217,7 @@ class EqualizerService extends ChangeNotifier {
       await _channel.invokeMethod('setVirtualizer', {'strength': (_virtualizer * 1000).round()});
       await _channel.invokeMethod('setLoudness', {'gain': (_loudnessGain * 1500).round()});
       await _channel.invokeMethod('setEnabled', {'enabled': _enabled});
+      await _channel.invokeMethod('setMono', {'enabled': _mono});
     } catch (_) {}
   }
 
@@ -219,6 +233,7 @@ class EqualizerService extends ChangeNotifier {
   Future<void> _resetPlatform() async {
     try {
       await _channel.invokeMethod('setEnabled', {'enabled': false});
+      await _channel.invokeMethod('setMono', {'enabled': _mono});
     } catch (_) {}
   }
 
@@ -230,6 +245,7 @@ class EqualizerService extends ChangeNotifier {
     _bassBoost = await ScopedPrefs.getDouble('eq_bassBoost') ?? 0.0;
     _virtualizer = await ScopedPrefs.getDouble('eq_virtualizer') ?? 0.0;
     _loudnessGain = await ScopedPrefs.getDouble('eq_loudnessGain') ?? 0.0;
+    _mono = await ScopedPrefs.getBool('eq_mono') ?? false;
 
     final bandStr = await ScopedPrefs.getString('eq_bands');
     if (bandStr != null) {
@@ -245,6 +261,7 @@ class EqualizerService extends ChangeNotifier {
     await ScopedPrefs.setDouble('eq_bassBoost', _bassBoost);
     await ScopedPrefs.setDouble('eq_virtualizer', _virtualizer);
     await ScopedPrefs.setDouble('eq_loudnessGain', _loudnessGain);
+    await ScopedPrefs.setBool('eq_mono', _mono);
     await ScopedPrefs.setString('eq_bands', _bandLevels.map((l) => l.toStringAsFixed(1)).join(','));
   }
 

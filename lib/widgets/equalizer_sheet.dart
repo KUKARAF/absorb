@@ -213,6 +213,36 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                   enabled: _eq.enabled,
                   onChanged: (v) => _eq.setLoudnessGain(v),
                 ),
+                const SizedBox(height: 8),
+
+                // Mono toggle
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: cs.onSurface.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.headphones_rounded, size: 18,
+                        color: _eq.mono ? accent.withValues(alpha: 0.7) : cs.onSurface.withValues(alpha: 0.2)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text('Mono Audio', style: TextStyle(
+                          color: _eq.mono ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurface.withValues(alpha: 0.24),
+                          fontSize: 12, fontWeight: FontWeight.w500)),
+                      ),
+                      Transform.scale(
+                        scale: 0.8,
+                        child: Switch(
+                          value: _eq.mono,
+                          activeTrackColor: accent,
+                          onChanged: (v) => _eq.setMono(v),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
                 const SizedBox(height: 20),
 

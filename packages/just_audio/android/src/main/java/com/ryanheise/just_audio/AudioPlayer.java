@@ -105,6 +105,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     private Map<String, Object> pendingPlaybackEvent;
 
     private ExoPlayer player;
+    private androidx.media3.exoplayer.audio.ChannelMixingAudioProcessor monoProcessor;
+    private static androidx.media3.exoplayer.audio.ChannelMixingAudioProcessor sMonoProcessor;
     private Integer audioSessionId;
     private MediaSource mediaSource;
     private Integer currentIndex;
@@ -451,6 +453,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 setSkipSilenceEnabled((Boolean) call.argument("enabled"));
                 result.success(new HashMap<String, Object>());
                 break;
+            case "setMono":
+                setMonoEnabled((Boolean) call.argument("enabled"));
+                result.success(new HashMap<String, Object>());
+                break;
             case "setLoopMode":
                 setLoopMode((Integer) call.argument("loopMode"));
                 result.success(new HashMap<String, Object>());
@@ -770,17 +776,19 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     private void ensurePlayerInitialized() {
         if (player == null) {
             androidx.media3.common.audio.SonicAudioProcessor sonicAudioProcessor = new androidx.media3.common.audio.SonicAudioProcessor();
+            monoProcessor = new androidx.media3.exoplayer.audio.ChannelMixingAudioProcessor();
+            sMonoProcessor = monoProcessor;
             RenderersFactory renderersFactory = new DefaultRenderersFactory(context) {
                 @Override
                 protected AudioSink buildAudioSink(
                         Context context,
                         boolean enableFloatOutput,
                         boolean enableAudioTrackPlaybackParams) {
-                    Log.i(TAG, "PATCH ACTIVE: buildAudioSink with SonicAudioProcessor, AudioTrack speed DISABLED");
+                    Log.i(TAG, "PATCH ACTIVE: buildAudioSink with SonicAudioProcessor + MonoProcessor, AudioTrack speed DISABLED");
                     return new DefaultAudioSink.Builder(context)
                         .setEnableFloatOutput(enableFloatOutput)
                         .setEnableAudioTrackPlaybackParams(false)
-                        .setAudioProcessors(new androidx.media3.common.audio.AudioProcessor[]{sonicAudioProcessor})
+                        .setAudioProcessors(new androidx.media3.common.audio.AudioProcessor[]{sonicAudioProcessor, monoProcessor})
                         .build();
                 }
             };
@@ -1005,6 +1013,19 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
     public void setSkipSilenceEnabled(final boolean enabled) {
         player.setSkipSilenceEnabled(enabled);
+    }
+
+    public static void setMonoEnabled(final boolean enabled) {
+        if (sMonoProcessor == null) return;
+        if (enabled) {
+            // Mix both input channels equally into both output channels
+            sMonoProcessor.putChannelMixingMatrix(
+                new androidx.media3.exoplayer.audio.ChannelMixingMatrix(2, 2, new float[]{0.5f, 0.5f, 0.5f, 0.5f}));
+        } else {
+            // Identity matrix - passthrough
+            sMonoProcessor.putChannelMixingMatrix(
+                new androidx.media3.exoplayer.audio.ChannelMixingMatrix(2, 2, new float[]{1f, 0f, 0f, 1f}));
+        }
     }
 
     public void setLoopMode(final int mode) {
