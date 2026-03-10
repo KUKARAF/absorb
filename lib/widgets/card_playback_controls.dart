@@ -175,8 +175,13 @@ class _CardPlaybackControlsState extends State<CardPlaybackControls> with Single
     return StreamBuilder<PlayerState>(
       stream: widget.isActive ? widget.player.playerStateStream : const Stream.empty(),
       builder: (_, snapshot) {
-        final isPlaying = widget.isActive && (snapshot.data?.playing ?? false);
-        final isLoading = widget.isActive && (snapshot.data?.processingState == ProcessingState.loading || snapshot.data?.processingState == ProcessingState.buffering);
+        // Use synchronous player state as fallback — broadcast streams don't
+        // replay the last event, so after an app-resume the snapshot can be
+        // null even though audio is actively playing.
+        final playing = snapshot.data?.playing ?? widget.player.isPlaying;
+        final processingState = snapshot.data?.processingState ?? ProcessingState.ready;
+        final isPlaying = widget.isActive && playing;
+        final isLoading = widget.isActive && (processingState == ProcessingState.loading || processingState == ProcessingState.buffering);
 
         if (isPlaying) {
           _playPauseController.forward();
