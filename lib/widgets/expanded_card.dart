@@ -1050,7 +1050,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
         );
       case 'equalizer':
         return CardWideButton(
-          icon: Icons.equalizer_rounded, label: 'Audio Enhancements',
+          icon: Icons.equalizer_rounded, label: 'Equalizer',
           accent: accent, isActive: true, alwaysEnabled: true, large: large,
           onTap: () => showEqualizerSheet(context, accent),
         );
@@ -1153,7 +1153,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
         );
       case 'equalizer':
         return MoreMenuItem(
-          icon: Icons.equalizer_rounded, label: 'Audio Enhancements', accent: accent,
+          icon: Icons.equalizer_rounded, label: 'Equalizer', accent: accent,
           onTap: () { Navigator.pop(ctx); showEqualizerSheet(context, accent); },
         );
       case 'cast':

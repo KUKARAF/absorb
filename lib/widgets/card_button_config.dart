@@ -13,7 +13,7 @@ const allCardButtons = [
   CardButtonDef('sleep', 'Sleep Timer', Icons.bedtime_outlined),
   CardButtonDef('bookmarks', 'Bookmarks', Icons.bookmark_outline_rounded),
   CardButtonDef('details', 'Book Details', Icons.info_outline_rounded),
-  CardButtonDef('equalizer', 'Audio Enhancements', Icons.equalizer_rounded),
+  CardButtonDef('equalizer', 'Equalizer', Icons.equalizer_rounded),
   CardButtonDef('cast', 'Cast to Device', Icons.cast_rounded),
   CardButtonDef('history', 'Playback History', Icons.history_rounded),
   CardButtonDef('remove', 'Remove from Absorbing', Icons.remove_circle_outline_rounded),

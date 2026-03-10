@@ -67,9 +67,9 @@ class CardWideButton extends StatelessWidget {
           children: [
             Icon(icon, size: large ? 18 : 15, color: enabled ? cs.onSurfaceVariant : cs.onSurface.withValues(alpha: 0.24)),
             const SizedBox(width: 6),
-            Text(label, style: TextStyle(
+            Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: TextStyle(
               color: enabled ? cs.onSurfaceVariant : cs.onSurface.withValues(alpha: 0.24),
-              fontSize: large ? 13 : 11, fontWeight: FontWeight.w500)),
+              fontSize: large ? 13 : 11, fontWeight: FontWeight.w500))),
           ],
         ),
       ),
