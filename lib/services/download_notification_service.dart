@@ -39,7 +39,12 @@ class DownloadNotificationService {
     if (_initialized) return;
 
     const androidSettings = AndroidInitializationSettings('drawable/ic_notification');
-    const settings = InitializationSettings(android: androidSettings);
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const settings = InitializationSettings(android: androidSettings, iOS: iosSettings);
     await _plugin.initialize(settings);
 
     // Create notification channels (Android 8+)

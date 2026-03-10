@@ -663,7 +663,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                   ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 // ── Chapter pill-scrubber (same width as book bar) ──
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -741,7 +741,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                           },
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
                     ],
                   ),
                   ),

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -312,10 +313,16 @@ class _AuthGateState extends State<AuthGate> {
     await ApiService.initDeviceId();
     await ApiService.initVersion();
     try {
-      final info = await DeviceInfoPlugin().androidInfo;
-      ApiService.deviceManufacturer = info.manufacturer;
-      ApiService.deviceModel = info.model;
-      ApiService.deviceSdkInt = info.version.sdkInt;
+      if (Platform.isAndroid) {
+        final info = await DeviceInfoPlugin().androidInfo;
+        ApiService.deviceManufacturer = info.manufacturer;
+        ApiService.deviceModel = info.model;
+        ApiService.deviceSdkInt = info.version.sdkInt;
+      } else if (Platform.isIOS) {
+        final info = await DeviceInfoPlugin().iosInfo;
+        ApiService.deviceManufacturer = 'Apple';
+        ApiService.deviceModel = info.utsname.machine;
+      }
     } catch (_) {}
 
     // Downloads must be loaded before the audio handler so getChildren()

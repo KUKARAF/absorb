@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'api_service.dart';
@@ -66,7 +67,14 @@ class ChromecastService extends ChangeNotifier {
     try {
       const appId = GoogleCastDiscoveryCriteria.kDefaultApplicationId;
       debugPrint('[Cast] Using appId: $appId');
-      final options = GoogleCastOptionsAndroid(appId: appId);
+      final GoogleCastOptions options;
+      if (Platform.isIOS) {
+        options = IOSGoogleCastOptions(
+          GoogleCastDiscoveryCriteriaInitialize.initWithApplicationID(appId),
+        );
+      } else {
+        options = GoogleCastOptionsAndroid(appId: appId);
+      }
       GoogleCastContext.instance.setSharedInstanceWithOptions(options);
       debugPrint('[Cast] Context initialized OK');
     } catch (e, st) {
