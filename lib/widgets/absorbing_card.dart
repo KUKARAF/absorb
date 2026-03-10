@@ -448,11 +448,14 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
             ),
           ),
           // Layer 3: Content
-          Column(
+          LayoutBuilder(
+          builder: (context, cardConstraints) {
+          final compact = cardConstraints.maxHeight < 600;
+          return Column(
             children: [
               // ── Stats row ──
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+                padding: EdgeInsets.fromLTRB(24, compact ? 6 : 10, 24, 0),
                 child: Row(
                   children: [
                     Text('${(bookProgress * 100).clamp(0, 100).toStringAsFixed(1)}%',
@@ -477,7 +480,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: CardDualProgressBar(player: widget.player, accent: accent, isActive: _isActive, staticProgress: progress, staticDuration: _effectiveDuration, chapters: _chapters, showBookBar: (!_isPodcastEpisode || _chapters.isNotEmpty) && (!lib.isPodcastLibrary || _chapters.isNotEmpty), showChapterBar: false, itemId: _itemId),
               ),
-                const SizedBox(height: 10),
+                SizedBox(height: compact ? 4 : 10),
                 // ── Cover with title/author/chapter overlaid + download badge ──
                 Flexible(
                   child: Padding(
@@ -663,7 +666,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                   ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: compact ? 6 : 16),
                 // ── Chapter pill-scrubber (same width as book bar) ──
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -675,7 +678,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
                     children: [
-                      const Spacer(flex: 2),
+                      Spacer(flex: compact ? 1 : 2),
                       CardPlaybackControls(
                         player: widget.player,
                         accent: accent,
@@ -684,8 +687,28 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                         onStart: _startPlayback,
                         itemId: _itemId,
                       ),
-                      const Spacer(flex: 3),
+                      Spacer(flex: compact ? 1 : 3),
                       // ── Button grid (hugs bottom) ──
+                      if (compact) Transform(
+                        alignment: Alignment.bottomCenter,
+                        transform: Matrix4.identity()..scale(1.0, 0.85),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(children: [
+                              Expanded(child: _buildCardButton(_buttonOrder[0], accent, tt)),
+                              const SizedBox(width: 8),
+                              Expanded(child: _buildCardButton(_buttonOrder[1], accent, tt)),
+                            ]),
+                            const SizedBox(height: 4),
+                            Row(children: [
+                              Expanded(child: _buildCardButton(_buttonOrder[2], accent, tt)),
+                              const SizedBox(width: 8),
+                              Expanded(child: _buildCardButton(_buttonOrder[3], accent, tt)),
+                            ]),
+                          ],
+                        ),
+                      ) else ...[
                       Row(children: [
                         Expanded(child: _buildCardButton(_buttonOrder[0], accent, tt)),
                         const SizedBox(width: 8),
@@ -697,7 +720,8 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                         const SizedBox(width: 8),
                         Expanded(child: _buildCardButton(_buttonOrder[3], accent, tt)),
                       ]),
-                      const SizedBox(height: 8),
+                      ],
+                      SizedBox(height: compact ? 2 : 8),
                       // More menu / Cast controls (centered below buttons)
                       Center(
                         child: ListenableBuilder(
@@ -717,7 +741,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                                       )
                                   : () => _showMoreMenu(context, accent, tt),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                                padding: EdgeInsets.symmetric(horizontal: compact ? 16 : 20, vertical: compact ? 5 : 8),
                                 decoration: BoxDecoration(
                                   color: castActive ? accent.withValues(alpha: 0.15) : cs.onSurface.withValues(alpha: 0.08),
                                   borderRadius: BorderRadius.circular(20),
@@ -741,13 +765,14 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                           },
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      if (!compact) const SizedBox(height: 4),
                     ],
                   ),
                   ),
                 ),
               ],
-            ),
+            );
+          }),
         ],
       ),
       ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -1062,6 +1063,8 @@ class AudioPlayerService extends ChangeNotifier {
       _initCompleter = Completer<void>();
     }
     try {
+      final fwdSkip = await PlayerSettings.getForwardSkip();
+      final backSkip = await PlayerSettings.getBackSkip();
       _handler = await AudioService.init<AudioPlayerHandler>(
         builder: () => AudioPlayerHandler(),
         config: AudioServiceConfig(
@@ -1071,6 +1074,8 @@ class AudioPlayerService extends ChangeNotifier {
           // killing audio after notification interruptions on locked screen.
           androidStopForegroundOnPause: false,
           androidNotificationIcon: 'drawable/ic_notification',
+          fastForwardInterval: Duration(seconds: fwdSkip),
+          rewindInterval: Duration(seconds: backSkip),
           androidBrowsableRootExtras: {
             AndroidContentStyle.supportedKey: true,
             AndroidContentStyle.browsableHintKey:
@@ -1666,11 +1671,13 @@ class AudioPlayerService extends ChangeNotifier {
 
   void _pushMediaItem(String itemId, String title, String author,
       String? coverUrl, double totalDuration, {String? chapter}) {
-    // Always use content:// URI for Now Playing artwork - some OEMs (e.g. Vivo)
-    // don't load HTTP URLs in MediaSession. The CoverContentProvider handles
-    // both downloaded covers (local file) and streamed covers (fetches from
-    // server and caches automatically), so this works for all cases.
-    final effectiveCoverUrl = 'content://$_coverAuthority/cover/$itemId';
+    // Android: Always use content:// URI for Now Playing artwork - some OEMs
+    // (e.g. Vivo) don't load HTTP URLs in MediaSession. The CoverContentProvider
+    // handles both downloaded and streamed covers.
+    // iOS: Use the HTTP URL directly — content:// is Android-only.
+    final effectiveCoverUrl = Platform.isIOS
+        ? coverUrl
+        : 'content://$_coverAuthority/cover/$itemId';
     _updateNotificationMediaItem(itemId, title, author, effectiveCoverUrl, totalDuration, chapter: chapter);
   }
 
