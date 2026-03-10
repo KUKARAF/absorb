@@ -18,6 +18,7 @@ import 'services/download_notification_service.dart';
 import 'services/progress_sync_service.dart';
 import 'services/equalizer_service.dart';
 import 'services/sleep_timer_service.dart';
+import 'services/scoped_prefs.dart';
 import 'services/user_account_service.dart';
 import 'services/android_auto_service.dart';
 import 'services/chromecast_service.dart';
@@ -302,6 +303,10 @@ class _AuthGateState extends State<AuthGate> {
     // correct scoped keys. Without this, settings read before init() would
     // fall back to un-scoped keys and appear as defaults.
     await UserAccountService().init();
+
+    // One-time migration: copy any settings that were written under unscoped
+    // keys (before scope was active) to the current user's scoped keys.
+    await ScopedPrefs.migrateToScope();
 
     // Start auth restoration immediately — it doesn't depend on audio/cast/
     // download services and must not be blocked by a hanging service init.

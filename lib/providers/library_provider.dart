@@ -1612,6 +1612,7 @@ class LibraryProvider extends ChangeNotifier {
     // Skip when user manually marks an item finished (not natural playback completion).
     if (!skipAutoAdvance) {
       PlayerSettings.getQueueMode().then((mode) {
+        debugPrint('[AutoAdvance] queueMode=$mode for finished item $itemId');
         if (mode == 'manual') {
           _manualQueueAdvance(itemId);
         } else if (mode == 'auto_next') {
@@ -1814,7 +1815,10 @@ class LibraryProvider extends ChangeNotifier {
   /// Manual queue auto-advance: scan absorbing list from after the finished
   /// item, find the first non-finished card, and play it.
   void _manualQueueAdvance(String finishedKey) async {
-    if (AudioPlayerService.wasNoisyPause) return;
+    if (AudioPlayerService.wasNoisyPause) {
+      debugPrint('[AutoAdvance] Skipping manual advance - noisy pause active');
+      return;
+    }
 
     final merged = await PlayerSettings.getMergeAbsorbingLibraries();
 
@@ -1874,15 +1878,19 @@ class LibraryProvider extends ChangeNotifier {
           chapters: chapters,
         );
       }
+      debugPrint('[AutoAdvance] Manual queue: starting next item $key');
       return; // started the next item
     }
-    // All remaining cards are finished — playback stops naturally.
+    debugPrint('[AutoAdvance] Manual queue: no next item found after $finishedKey');
   }
 
   /// Offline auto-advance: find the next downloaded book in series or next
   /// downloaded podcast episode and auto-play it without any server calls.
   void _autoAdvanceOffline(String finishedKey) {
-    if (AudioPlayerService.wasNoisyPause) return;
+    if (AudioPlayerService.wasNoisyPause) {
+      debugPrint('[AutoAdvance] Skipping auto advance - noisy pause active');
+      return;
+    }
 
     final isCompound = finishedKey.length > 36;
     if (isCompound) {

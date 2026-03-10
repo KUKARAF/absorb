@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'user_account_service.dart';
 
@@ -16,6 +17,69 @@ class ScopedPrefs {
   /// (i.e. pre-multi-user migration). Once scoped, a missing key means
   /// the account has no data — not that it should inherit another account's.
   static bool get _shouldFallback => !UserAccountService().hasScope;
+
+  /// Keys that are global (not per-user) and should NOT be copied during
+  /// the unscoped-to-scoped migration.
+  static const _globalKeys = <String>{
+    'saved_accounts', 'active_account_scope',
+    'server_url', 'token', 'username', 'user_id', 'default_library_id',
+    'custom_headers',
+    'loggingEnabled', 'manual_offline_mode',
+    'custom_download_path', 'downloads',
+    'absorb_device_id',
+    'widget_item_id', 'widget_episode_id',
+    'cached_stats', 'cached_sessions',
+    'update_last_check', 'update_dismissed_version',
+  };
+
+  /// One-time migration: copy unscoped settings to the active scope.
+  /// This handles the case where settings were written before scope was
+  /// active (first login, or old init order where UserAccountService
+  /// initialized after settings reads).
+  static Future<void> migrateToScope() async {
+    final scope = UserAccountService().activeScopeKey;
+    if (scope.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final flag = '$scope:_scope_migrated';
+    if (prefs.getBool(flag) == true) return;
+
+    int copied = 0;
+    for (final key in prefs.getKeys()) {
+      // Skip keys that already have a scope prefix (contain ':')
+      if (key.contains(':')) continue;
+      // Skip known global keys
+      if (_globalKeys.contains(key)) continue;
+      // Skip Flutter framework keys
+      if (key.startsWith('flutter.')) continue;
+      // Skip per-podcast sort keys (global, keyed by item ID)
+      if (key.startsWith('podcast_sort_newest_')) continue;
+
+      final scopedKey = '$scope:$key';
+      if (prefs.containsKey(scopedKey)) continue; // already exists
+
+      final value = prefs.get(key);
+      if (value is String) {
+        await prefs.setString(scopedKey, value);
+      } else if (value is bool) {
+        await prefs.setBool(scopedKey, value);
+      } else if (value is int) {
+        await prefs.setInt(scopedKey, value);
+      } else if (value is double) {
+        await prefs.setDouble(scopedKey, value);
+      } else if (value is List<String>) {
+        await prefs.setStringList(scopedKey, value);
+      } else {
+        continue;
+      }
+      copied++;
+    }
+
+    await prefs.setBool(flag, true);
+    if (copied > 0) {
+      debugPrint('[ScopedPrefs] Migrated $copied unscoped settings to scope: $scope');
+    }
+  }
 
   // ── String ──
 
