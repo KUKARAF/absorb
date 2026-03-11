@@ -50,6 +50,12 @@ import androidx.media3.exoplayer.trackselection.TrackSelectionArray;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.cache.Cache;
+import androidx.media3.datasource.cache.CacheDataSink;
+import androidx.media3.datasource.cache.CacheDataSource;
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor;
+import androidx.media3.datasource.cache.SimpleCache;
+import androidx.media3.database.StandaloneDatabaseProvider;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.Util;
 import io.flutter.Log;
@@ -60,6 +66,7 @@ import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -74,6 +81,51 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     static final String TAG = "AudioPlayer";
 
     private static Random random = new Random();
+
+    // Streaming cache — shared across all player instances
+    private static SimpleCache sCache;
+    private static File sCacheDir;
+
+    @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
+    static synchronized void configureCache(Context context, long maxBytes) {
+        if (maxBytes <= 0) {
+            releaseCache();
+            return;
+        }
+        File baseDir = context.getExternalCacheDir();
+        if (baseDir == null || !baseDir.exists() || !baseDir.canWrite()) {
+            baseDir = context.getCacheDir();
+        }
+        File cacheDir = new File(baseDir, "streaming_cache");
+        // Already initialized at this location — skip
+        if (sCache != null && cacheDir.equals(sCacheDir)) return;
+        releaseCache();
+        sCacheDir = cacheDir;
+        sCache = new SimpleCache(
+            cacheDir,
+            new LeastRecentlyUsedCacheEvictor(maxBytes),
+            new StandaloneDatabaseProvider(context));
+        Log.d(TAG, "Streaming cache enabled: " + (maxBytes / 1024 / 1024) + " MB at " + cacheDir);
+    }
+
+    @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
+    static synchronized void releaseCache() {
+        if (sCache != null) {
+            try { sCache.release(); } catch (Exception e) { /* ignore */ }
+            sCache = null;
+            sCacheDir = null;
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
+    static synchronized void clearCache() {
+        if (sCache != null) {
+            for (String key : new java.util.HashSet<>(sCache.getKeys())) {
+                sCache.removeResource(key);
+            }
+            Log.d(TAG, "Streaming cache cleared");
+        }
+    }
 
     private final Context context;
     private final MethodChannel methodChannel;
@@ -726,6 +778,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         audioEffectsMap.clear();
     }
 
+    @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
     private DataSource.Factory buildDataSourceFactory(Map<?, ?> headers) {
         final Map<String, String> stringHeaders = castToStringMap(headers);
         String userAgent = null;
@@ -740,11 +793,26 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
         DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
-            .setAllowCrossProtocolRedirects(true);
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(30000)
+            .setReadTimeoutMs(30000);
         if (stringHeaders != null && stringHeaders.size() > 0) {
             httpDataSourceFactory.setDefaultRequestProperties(stringHeaders);
         }
-        return new DefaultDataSource.Factory(context, httpDataSourceFactory);
+        DataSource.Factory baseFactory = new DefaultDataSource.Factory(context, httpDataSourceFactory);
+
+        // Wrap with disk cache if enabled
+        if (sCache != null) {
+            return new CacheDataSource.Factory()
+                .setCache(sCache)
+                .setUpstreamDataSourceFactory(baseFactory)
+                .setCacheWriteDataSinkFactory(
+                    new CacheDataSink.Factory()
+                        .setCache(sCache)
+                        .setFragmentSize(CacheDataSink.DEFAULT_FRAGMENT_SIZE))
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);
+        }
+        return baseFactory;
     }
 
     private void load(final MediaSource mediaSource, final long initialPosition, final Integer initialIndex, final Result result) {
@@ -780,6 +848,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             // Set identity matrix so audio passes through by default
             monoProcessor.putChannelMixingMatrix(
                 new androidx.media3.common.audio.ChannelMixingMatrix(2, 2, new float[]{1f, 0f, 0f, 1f}));
+            // Upmix mono sources to stereo so Android AudioTrack handles them reliably
+            monoProcessor.putChannelMixingMatrix(
+                new androidx.media3.common.audio.ChannelMixingMatrix(1, 2, new float[]{1f, 1f}));
             sMonoProcessor = monoProcessor;
             MonoController.register(AudioPlayer::setMonoEnabled);
             RenderersFactory renderersFactory = new DefaultRenderersFactory(context) {
@@ -1022,7 +1093,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     private static void setMonoEnabled(final boolean enabled) {
         if (sMonoProcessor == null) return;
         if (enabled) {
-            // Mix both input channels equally into both output channels
+            // Mix both stereo input channels equally into both output channels
             sMonoProcessor.putChannelMixingMatrix(
                 new androidx.media3.common.audio.ChannelMixingMatrix(2, 2, new float[]{0.5f, 0.5f, 0.5f, 0.5f}));
         } else {
@@ -1030,6 +1101,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             sMonoProcessor.putChannelMixingMatrix(
                 new androidx.media3.common.audio.ChannelMixingMatrix(2, 2, new float[]{1f, 0f, 0f, 1f}));
         }
+        // Always keep mono source upmix matrix regardless of mode
+        sMonoProcessor.putChannelMixingMatrix(
+            new androidx.media3.common.audio.ChannelMixingMatrix(1, 2, new float[]{1f, 1f}));
     }
 
     public void setLoopMode(final int mode) {

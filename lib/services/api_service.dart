@@ -410,34 +410,36 @@ class ApiService {
   /// Start a playback session for a library item.
   /// POST /api/items/:id/play
   /// Returns the full session object including audioTracks with contentUrl.
-  Future<Map<String, dynamic>?> startPlaybackSession(String itemId, {String? episodeId}) async {
+  Future<Map<String, dynamic>?> startPlaybackSession(String itemId, {String? episodeId, bool forceDirectPlay = false, bool forceTranscode = false, double? startOffset}) async {
     try {
       final epPath = episodeId != null ? '/$episodeId' : '';
       final url = '$_cleanBaseUrl/api/items/$itemId/play$epPath';
-      debugPrint('[ABS] Starting playback session: POST $url');
+      debugPrint('[ABS] Starting playback session: POST $url (forceDirectPlay: $forceDirectPlay, forceTranscode: $forceTranscode)');
+      final body = <String, dynamic>{
+        'deviceInfo': {
+          'clientName': 'Absorb',
+          'clientVersion': appVersion,
+          'deviceId': deviceId,
+          'deviceName': '${deviceManufacturer.isNotEmpty ? "$deviceManufacturer " : ""}$deviceModel'.trim(),
+          'manufacturer': deviceManufacturer,
+          'model': deviceModel,
+        },
+        'forceDirectPlay': forceDirectPlay,
+        'forceTranscode': forceTranscode,
+        'mediaPlayer': 'unknown',
+        'supportedMimeTypes': [
+          'audio/flac',
+          'audio/mpeg',
+          'audio/mp4',
+          'audio/ogg',
+          'audio/aac',
+        ],
+      };
+      if (startOffset != null && startOffset > 0) body['startOffset'] = startOffset;
       final response = await http.post(
         Uri.parse(url),
         headers: _headers,
-        body: jsonEncode({
-          'deviceInfo': {
-            'clientName': 'Absorb',
-            'clientVersion': appVersion,
-            'deviceId': deviceId,
-            'deviceName': '${deviceManufacturer.isNotEmpty ? "$deviceManufacturer " : ""}$deviceModel'.trim(),
-            'manufacturer': deviceManufacturer,
-            'model': deviceModel,
-          },
-          'forceDirectPlay': true,
-          'forceTranscode': false,
-          'mediaPlayer': 'unknown',
-          'supportedMimeTypes': [
-            'audio/flac',
-            'audio/mpeg',
-            'audio/mp4',
-            'audio/ogg',
-            'audio/aac',
-          ],
-        }),
+        body: jsonEncode(body),
       ).timeout(const Duration(seconds: 20));
 
       debugPrint('[ABS] Play session response: ${response.statusCode}');

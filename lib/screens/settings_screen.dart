@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:just_audio/just_audio.dart' show AudioPlayer;
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -56,6 +57,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loggingEnabled = false;
   bool _fullScreenPlayer = false;
   String _themeMode = 'dark';
+  int _streamingCacheSizeMb = 0;
   bool _loaded = false;
   String _downloadLocationLabel = 'App Internal Storage (Default)';
   int _totalDownloadSizeBytes = 0;
@@ -124,6 +126,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       DownloadService.getDeviceStorage(),                     // 26
       AutoSleepSettings.load(),                               // 27
       PackageInfo.fromPlatform(),                             // 28
+      PlayerSettings.getStreamingCacheSizeMb(),               // 29
     ]);
     final s = results[0] as AutoRewindSettings;
     final speed = results[1] as double;
@@ -154,6 +157,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final deviceStorage = results[26] as Map<String, int>?;
     final autoSleep = results[27] as AutoSleepSettings;
     final pkgInfo = results[28] as PackageInfo;
+    final cacheSizeMb = results[29] as int;
     if (mounted) setState(() {
       _rewindSettings = s;
       _defaultSpeed = speed;
@@ -187,6 +191,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       _autoSleepSettings = autoSleep;
       _appVersion = pkgInfo.version;
+      _streamingCacheSizeMb = cacheSizeMb;
       _loaded = true;
     });
   }
@@ -1222,6 +1227,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => const DownloadsScreen())),
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 12),
+                          Text('Streaming cache', style: tt.bodyMedium?.copyWith(color: cs.onSurface)),
+                          const SizedBox(height: 4),
+                          Text(
+                            _streamingCacheSizeMb == 0
+                                ? 'Off — audio is streamed without caching'
+                                : '$_streamingCacheSizeMb MB — recently streamed audio is cached to disk',
+                            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                          const SizedBox(height: 8),
+                          SizedBox(width: double.infinity, child: SegmentedButton<int>(
+                            segments: const [
+                              ButtonSegment(value: 0, label: Text('Off')),
+                              ButtonSegment(value: 128, label: Text('128 MB')),
+                              ButtonSegment(value: 256, label: Text('256 MB')),
+                              ButtonSegment(value: 512, label: Text('512 MB')),
+                            ],
+                            selected: {_streamingCacheSizeMb},
+                            onSelectionChanged: (v) {
+                              setState(() => _streamingCacheSizeMb = v.first);
+                              PlayerSettings.setStreamingCacheSizeMb(v.first);
+                            },
+                          )),
+                          if (_streamingCacheSizeMb > 0) ...[
+                            const SizedBox(height: 8),
+                            TextButton.icon(
+                              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                              label: const Text('Clear cache'),
+                              onPressed: () async {
+                                await AudioPlayer.clearStreamingCache();
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Streaming cache cleared')));
+                                }
+                              },
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                        ],
+                      ),
                     ),
                   ],
                 ),

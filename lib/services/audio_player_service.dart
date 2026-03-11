@@ -178,6 +178,22 @@ class PlayerSettings {
   static Future<bool> getCollapseSeries() => _get('collapseSeries', false);
   static Future<void> setCollapseSeries(bool value) => _set('collapseSeries', value, notify: true);
 
+  // ── Streaming cache ──
+
+  /// 0 = disabled, > 0 = cache size in MB (LRU eviction)
+  static Future<int> getStreamingCacheSizeMb() => _get('streamingCacheSizeMb', 0);
+  static Future<void> setStreamingCacheSizeMb(int value) async {
+    debugPrint('[Settings] Streaming cache set to: $value MB');
+    await _set('streamingCacheSizeMb', value);
+    // Reconfigure the native cache immediately
+    try {
+      await AudioPlayer.configureStreamingCache(value);
+      debugPrint('[Settings] Streaming cache configured on native side');
+    } catch (e) {
+      debugPrint('[Settings] Streaming cache configure failed: $e');
+    }
+  }
+
   // ── Library sort/filter persistence ──
 
   static Future<String> getLibrarySort() => _get('librarySort', 'recentlyAdded');
@@ -272,6 +288,12 @@ class PlayerSettings {
 class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player = AudioPlayer(
     handleInterruptions: false,
+    audioLoadConfiguration: const AudioLoadConfiguration(
+      androidLoadControl: AndroidLoadControl(
+        bufferForPlaybackDuration: Duration(milliseconds: 500),
+        bufferForPlaybackAfterRebufferDuration: Duration(milliseconds: 2000),
+      ),
+    ),
   );
   AudioPlayerService? _service; // back-reference for auto-rewind
 
@@ -1090,6 +1112,17 @@ class AudioPlayerService extends ChangeNotifier {
       // Bind service so handler routes play/pause through service (for auto-rewind)
       _handler!.bindService(_instance);
       debugPrint('[Player] AudioService initialized');
+      // Configure streaming cache if enabled
+      final cacheSizeMb = await PlayerSettings.getStreamingCacheSizeMb();
+      debugPrint('[Player] Streaming cache setting: $cacheSizeMb MB');
+      if (cacheSizeMb > 0) {
+        try {
+          await AudioPlayer.configureStreamingCache(cacheSizeMb);
+          debugPrint('[Player] Streaming cache configured: $cacheSizeMb MB');
+        } catch (e) {
+          debugPrint('[Player] Streaming cache init failed: $e');
+        }
+      }
       // Load notification chapter progress setting and watch for changes
       _instance._notifChapterMode = await PlayerSettings.getNotificationChapterProgress();
       PlayerSettings.settingsChanged.addListener(_instance._onSettingsChanged);
@@ -1474,13 +1507,14 @@ class AudioPlayerService extends ChangeNotifier {
     }
 
     try {
+      _currentTrackIndex = 0;
+
       // Build multi-file track offsets for absolute position tracking
       if (audioTracks != null) {
         _buildTrackOffsets(audioTracks);
       } else {
         _trackStartOffsets = [0.0]; // single file fallback
       }
-      _currentTrackIndex = 0;
 
       AudioSource source;
       if (localPaths.length == 1) {
@@ -1546,7 +1580,7 @@ class AudioPlayerService extends ChangeNotifier {
     }
 
     _playbackSessionId = sessionData['id'] as String?;
-    final audioTracks = sessionData['audioTracks'] as List<dynamic>?;
+    var audioTracks = sessionData['audioTracks'] as List<dynamic>?;
     if (audioTracks == null || audioTracks.isEmpty) {
       _clearState();
       return 'No audio files found - this item may be missing on the server';
@@ -1562,6 +1596,7 @@ class AudioPlayerService extends ChangeNotifier {
         debugPrint('[Player] Loaded ${sessionChapters.length} chapters from session');
       }
     }
+
 
     // Update totalDuration from session if it was unknown (e.g. podcast episodes
     // where the embedded recentEpisode didn't include a duration field)
@@ -1588,12 +1623,11 @@ class AudioPlayerService extends ChangeNotifier {
     }
 
     try {
-      // Build multi-file track offsets for absolute position tracking
-      _buildTrackOffsets(audioTracks);
       _currentTrackIndex = 0;
-
       final audioHeaders = api.mediaHeaders;
 
+      // Build audio source — one source per track file
+      _buildTrackOffsets(audioTracks);
       AudioSource source;
       if (audioTracks.length == 1) {
         final track = audioTracks.first as Map<String, dynamic>;

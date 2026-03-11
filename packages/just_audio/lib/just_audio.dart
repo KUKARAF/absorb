@@ -55,6 +55,20 @@ JustAudioPlatform get _pluginPlatform {
 /// You must call [dispose] to release the resources used by this player,
 /// including any temporary files created to cache assets.
 class AudioPlayer {
+  static const MethodChannel _mainChannel =
+      MethodChannel('com.ryanheise.just_audio.methods');
+
+  /// Configure the Android streaming disk cache.
+  /// [sizeMb] = 0 disables the cache. Values > 0 enable LRU caching.
+  static Future<void> configureStreamingCache(int sizeMb) async {
+    await _mainChannel.invokeMethod('configureStreamingCache', {'sizeMb': sizeMb});
+  }
+
+  /// Clear all cached streaming data without disabling the cache.
+  static Future<void> clearStreamingCache() async {
+    await _mainChannel.invokeMethod('clearStreamingCache');
+  }
+
   /// The user agent to set on all HTTP requests.
   final String? _userAgent;
 
