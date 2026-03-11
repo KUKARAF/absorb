@@ -746,79 +746,88 @@ class _ExpandedCardState extends State<ExpandedCard> {
                       ),
                       // ── Controls + buttons ──
                       Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 28),
-                          child: Column(
-                            children: [
-                              const Spacer(flex: 2),
-                              CardPlaybackControls(
-                                player: widget.player,
-                                accent: accent,
-                                isActive: _isActive,
-                                isStarting: _isStarting,
-                                onStart: _startPlayback,
-                                itemId: _itemId,
-                              ),
-                              const Spacer(flex: 4),
-                              // ── Button grid ──
-                              Row(children: [
-                                Expanded(child: _buildCardButton(_buttonOrder[0], accent, tt)),
-                                const SizedBox(width: 10),
-                                Expanded(child: _buildCardButton(_buttonOrder[1], accent, tt)),
-                              ]),
-                              const SizedBox(height: 14),
-                              Row(children: [
-                                Expanded(child: _buildCardButton(_buttonOrder[2], accent, tt)),
-                                const SizedBox(width: 10),
-                                Expanded(child: _buildCardButton(_buttonOrder[3], accent, tt)),
-                              ]),
-                              const SizedBox(height: 14),
-                              // More menu / Cast controls
-                              Center(
-                                child: ListenableBuilder(
-                                  listenable: ChromecastService(),
-                                  builder: (context, _) {
-                                    final castActive = ChromecastService().isCasting && !_buttonOrder.take(4).contains('cast');
-                                    return GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onTap: castActive
-                                          ? () => showModalBottomSheet(
-                                                context: context,
-                                                backgroundColor: Theme.of(context).bottomSheetTheme.backgroundColor,
-                                                shape: const RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                                                ),
-                                                builder: (_) => const CastControlSheet(),
-                                              )
-                                          : () => _showMoreMenu(context, accent, tt),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                                        decoration: BoxDecoration(
-                                          color: castActive ? accent.withValues(alpha: 0.15) : cs.onSurface.withValues(alpha: 0.08),
-                                          borderRadius: BorderRadius.circular(22),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: castActive
-                                              ? [
-                                                  Icon(Icons.cast_connected_rounded, size: 20, color: accent),
-                                                  const SizedBox(width: 6),
-                                                  Text('Casting', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: accent)),
-                                                ]
-                                              : [
-                                                  Icon(Icons.more_horiz_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.54)),
-                                                  const SizedBox(width: 6),
-                                                  Text('More', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: cs.onSurface.withValues(alpha: 0.54))),
-                                                ],
-                                        ),
+                        child: LayoutBuilder(
+                          builder: (context, lc) {
+                            return FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.center,
+                              child: SizedBox(
+                                width: lc.maxWidth - 56,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(height: 18),
+                                    CardPlaybackControls(
+                                      player: widget.player,
+                                      accent: accent,
+                                      isActive: _isActive,
+                                      isStarting: _isStarting,
+                                      onStart: _startPlayback,
+                                      itemId: _itemId,
+                                    ),
+                                    const SizedBox(height: 24),
+                                    // ── Button grid ──
+                                    Row(children: [
+                                      Expanded(child: _buildCardButton(_buttonOrder[0], accent, tt)),
+                                      const SizedBox(width: 10),
+                                      Expanded(child: _buildCardButton(_buttonOrder[1], accent, tt)),
+                                    ]),
+                                    const SizedBox(height: 14),
+                                    Row(children: [
+                                      Expanded(child: _buildCardButton(_buttonOrder[2], accent, tt)),
+                                      const SizedBox(width: 10),
+                                      Expanded(child: _buildCardButton(_buttonOrder[3], accent, tt)),
+                                    ]),
+                                    const SizedBox(height: 14),
+                                    // More menu / Cast controls
+                                    Center(
+                                      child: ListenableBuilder(
+                                        listenable: ChromecastService(),
+                                        builder: (context, _) {
+                                          final castActive = ChromecastService().isCasting && !_buttonOrder.take(4).contains('cast');
+                                          return GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTap: castActive
+                                                ? () => showModalBottomSheet(
+                                                      context: context,
+                                                      backgroundColor: Theme.of(context).bottomSheetTheme.backgroundColor,
+                                                      shape: const RoundedRectangleBorder(
+                                                        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                                                      ),
+                                                      builder: (_) => const CastControlSheet(),
+                                                    )
+                                                : () => _showMoreMenu(context, accent, tt),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                                              decoration: BoxDecoration(
+                                                color: castActive ? accent.withValues(alpha: 0.15) : cs.onSurface.withValues(alpha: 0.08),
+                                                borderRadius: BorderRadius.circular(22),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: castActive
+                                                    ? [
+                                                        Icon(Icons.cast_connected_rounded, size: 20, color: accent),
+                                                        const SizedBox(width: 6),
+                                                        Text('Casting', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: accent)),
+                                                      ]
+                                                    : [
+                                                        Icon(Icons.more_horiz_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.54)),
+                                                        const SizedBox(width: 6),
+                                                        Text('More', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: cs.onSurface.withValues(alpha: 0.54))),
+                                                      ],
+                                              ),
+                                            ),
+                                          );
+                                        },
                                       ),
-                                    );
-                                  },
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                            ],
-                          ),
+                            );
+                          },
                         ),
                       ),
                     ],

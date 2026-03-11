@@ -35,19 +35,33 @@ class AbsorbPageHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Branding row — ABSORB + optional actions
-          Row(
-            children: [
-              Text(
-                'A B S O R B',
-                style: tt.labelSmall?.copyWith(
-                  color: bColor,
-                  letterSpacing: 4,
-                  fontWeight: FontWeight.w300,
-                ),
-              ),
-              const Spacer(),
-              if (actions != null) ...actions!,
-            ],
+          LayoutBuilder(
+            builder: (ctx, lc) {
+              return Row(
+                children: [
+                  Text(
+                    'A B S O R B',
+                    style: tt.labelSmall?.copyWith(
+                      color: bColor,
+                      letterSpacing: 4,
+                      fontWeight: FontWeight.w300,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (actions != null)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: (lc.maxWidth - 140).clamp(0.0, double.infinity),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: actions!),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 4),
           // Page title

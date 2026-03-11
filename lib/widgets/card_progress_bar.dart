@@ -20,7 +20,8 @@ class CardDualProgressBar extends StatefulWidget {
   final int chapterIndex;
   final int totalChapters;
   final String? itemId;
-  const CardDualProgressBar({super.key, required this.player, required this.accent, required this.isActive, required this.staticProgress, required this.staticDuration, required this.chapters, this.showBookBar = true, this.showChapterBar = true, this.chapterName, this.chapterIndex = 0, this.totalChapters = 0, this.itemId});
+  final bool compact;
+  const CardDualProgressBar({super.key, required this.player, required this.accent, required this.isActive, required this.staticProgress, required this.staticDuration, required this.chapters, this.showBookBar = true, this.showChapterBar = true, this.chapterName, this.chapterIndex = 0, this.totalChapters = 0, this.itemId, this.compact = false});
   @override State<CardDualProgressBar> createState() => _CardDualProgressBarState();
 }
 
@@ -281,13 +282,13 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
                 const SizedBox(width: 8),
                 Text('-${_fmt(_bookDragValue != null ? (1.0 - _bookDragValue!) * totalDur : bookRemaining)}', style: tt.labelSmall?.copyWith(color: _bookDragValue != null ? cs.onSurface.withValues(alpha: 0.6) : cs.onSurface.withValues(alpha: 0.5), fontSize: 11, fontWeight: FontWeight.w500, shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
               ]),
-              const SizedBox(height: 10),
+              SizedBox(height: widget.compact ? 4 : 10),
             ],
             ], // end showBookBar
             // Chapter bar
             if (widget.showChapterBar) ...[
             // ── Chapter pill-scrubber ──
-            SizedBox(height: 30, child: LayoutBuilder(builder: (_, cons) {
+            SizedBox(height: widget.compact ? 22 : 30, child: LayoutBuilder(builder: (_, cons) {
               final w = cons.maxWidth;
               final p = _chapterDragValue ?? chapterProgress;
               final isDragging = _chapterDragValue != null;
@@ -331,7 +332,7 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
               );
             })),
             // Time labels below pill — update during drag
-            Padding(padding: const EdgeInsets.only(top: 3), child: Row(
+            Padding(padding: EdgeInsets.only(top: widget.compact ? 1 : 3), child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(_fmt(_chapterDragValue != null ? (_chapterDragValue! * chapterDur) / speedDiv : chapterElapsed),
@@ -525,15 +526,19 @@ class MarqueeText extends StatefulWidget {
 class _MarqueeTextState extends State<MarqueeText> with SingleTickerProviderStateMixin {
   late ScrollController _scrollController;
   late AnimationController _animController;
-  double _maxScroll = 0;
+  bool _duplicated = false;
+  double _loopWidth = 0; // distance to scroll for one seamless loop
+
+  static const double _gap = 48.0;   // space between the two text copies
+  static const double _speed = 38.0; // pixels per second
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    _animController = AnimationController(vsync: this, duration: const Duration(seconds: 6));
+    _animController = AnimationController(vsync: this, duration: const Duration(seconds: 8));
     _animController.addListener(_onTick);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkOverflow());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
   }
 
   @override
@@ -542,36 +547,40 @@ class _MarqueeTextState extends State<MarqueeText> with SingleTickerProviderStat
     if (old.text != widget.text) {
       _animController.stop();
       _animController.reset();
+      _duplicated = false;
+      _loopWidth = 0;
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _checkOverflow());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
     }
+  }
+
+  void _measure() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    if (maxScroll <= 0) return; // text fits, nothing to do
+
+    // In single-text mode: maxScroll = textWidth - viewportWidth
+    // loopWidth = textWidth + gap (one seamless cycle in duplicated mode)
+    _loopWidth = maxScroll + _scrollController.position.viewportDimension + _gap;
+
+    setState(() => _duplicated = true);
+
+    // After duplicated layout settles, start the continuous loop
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final durationMs = (_loopWidth / _speed * 1000).round();
+      _animController.duration = Duration(milliseconds: durationMs);
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _animController.repeat();
+      });
+    });
   }
 
   void _onTick() {
-    if (_scrollController.hasClients && _maxScroll > 0) {
-      _scrollController.jumpTo(_animController.value * _maxScroll);
-    }
-  }
-
-  void _checkOverflow() {
-    if (!mounted || !_scrollController.hasClients) return;
-    _maxScroll = _scrollController.position.maxScrollExtent;
-    if (_maxScroll > 0) {
-      final dur = Duration(milliseconds: (_maxScroll * 25).round().clamp(2000, 15000));
-      _animController.duration = dur;
-      _startLoop();
-    }
-  }
-
-  void _startLoop() async {
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-    await _animController.forward(from: 0);
-    if (!mounted) return;
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-    if (_scrollController.hasClients) _scrollController.jumpTo(0);
-    _startLoop();
+    if (!_scrollController.hasClients || _loopWidth <= 0) return;
+    // value 0→1 maps to 0→loopWidth; repeat() resets value to 0 seamlessly
+    final pos = _animController.value * _loopWidth;
+    _scrollController.jumpTo(pos.clamp(0.0, _scrollController.position.maxScrollExtent));
   }
 
   @override
@@ -582,16 +591,24 @@ class _MarqueeTextState extends State<MarqueeText> with SingleTickerProviderStat
     super.dispose();
   }
 
+  Widget _textSpan() => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Text(widget.text, style: widget.style, maxLines: 1, softWrap: false),
+  );
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       controller: _scrollController,
       scrollDirection: Axis.horizontal,
       physics: const NeverScrollableScrollPhysics(),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Text(widget.text, style: widget.style, maxLines: 1, softWrap: false),
-      ),
+      child: _duplicated
+          ? Row(mainAxisSize: MainAxisSize.min, children: [
+              _textSpan(),
+              const SizedBox(width: _gap),
+              _textSpan(),
+            ])
+          : _textSpan(),
     );
   }
 }

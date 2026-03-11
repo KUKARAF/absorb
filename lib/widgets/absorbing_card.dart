@@ -450,7 +450,8 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
           // Layer 3: Content
           LayoutBuilder(
           builder: (context, cardConstraints) {
-          final compact = cardConstraints.maxHeight < 600;
+          final textScale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.5);
+          final compact = cardConstraints.maxHeight < 600 * textScale;
           return Column(
             children: [
               // ── Stats row ──
@@ -461,7 +462,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                     Text('${(bookProgress * 100).clamp(0, 100).toStringAsFixed(1)}%',
                       style: tt.labelMedium?.copyWith(
                         color: isDark ? Colors.white.withValues(alpha: 0.95) : Colors.black.withValues(alpha: 0.85),
-                        fontWeight: FontWeight.w800, fontSize: 15,
+                        fontWeight: FontWeight.w800, fontSize: compact ? 12 : 15,
                         shadows: [Shadow(color: isDark ? Colors.black.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.6), blurRadius: 4)],
                       )),
                     const Spacer(),
@@ -469,7 +470,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                       Text('Ch ${(chapterIdx + 1).clamp(1, totalChapters)} / $totalChapters',
                         style: tt.labelMedium?.copyWith(
                           color: isDark ? Colors.white.withValues(alpha: 0.85) : Colors.black.withValues(alpha: 0.75),
-                          fontWeight: FontWeight.w700, fontSize: 14,
+                          fontWeight: FontWeight.w700, fontSize: compact ? 11 : 14,
                           shadows: [Shadow(color: isDark ? Colors.black.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.6), blurRadius: 4)],
                         )),
                   ],
@@ -478,7 +479,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
               // ── Book progress bar ──
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: CardDualProgressBar(player: widget.player, accent: accent, isActive: _isActive, staticProgress: progress, staticDuration: _effectiveDuration, chapters: _chapters, showBookBar: (!_isPodcastEpisode || _chapters.isNotEmpty) && (!lib.isPodcastLibrary || _chapters.isNotEmpty), showChapterBar: false, itemId: _itemId),
+                child: CardDualProgressBar(player: widget.player, accent: accent, isActive: _isActive, staticProgress: progress, staticDuration: _effectiveDuration, chapters: _chapters, showBookBar: (!_isPodcastEpisode || _chapters.isNotEmpty) && (!lib.isPodcastLibrary || _chapters.isNotEmpty), showChapterBar: false, itemId: _itemId, compact: compact),
               ),
                 SizedBox(height: compact ? 4 : 10),
                 // ── Cover with title/author/chapter overlaid + download badge ──
@@ -588,69 +589,77 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                                   Positioned.fill(
                                     child: Padding(
                                       padding: const EdgeInsets.symmetric(horizontal: 14),
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Icon(Icons.check_circle_rounded, size: 32, color: isDark ? Colors.green.shade400 : Colors.green.shade700),
-                                          const SizedBox(height: 6),
-                                          const Text('Finished',
-                                            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
-                                          const SizedBox(height: 18),
-                                          SizedBox(
-                                            width: double.infinity,
-                                            child: GestureDetector(
-                                              onTap: _listenAgain,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(vertical: 9),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white.withValues(alpha: 0.18),
-                                                  borderRadius: BorderRadius.circular(11),
-                                                  border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-                                                ),
-                                                child: const Text('Listen Again',
-                                                  textAlign: TextAlign.center,
-                                                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          if (isDownloaded)
-                                            Padding(
-                                              padding: const EdgeInsets.only(bottom: 8),
-                                              child: SizedBox(
-                                                width: double.infinity,
-                                                child: GestureDetector(
-                                                  onTap: () => _deleteDownload(dlKey),
-                                                  child: Container(
-                                                    padding: const EdgeInsets.symmetric(vertical: 9),
-                                                    decoration: BoxDecoration(
-                                                      borderRadius: BorderRadius.circular(11),
-                                                      border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                                      child: LayoutBuilder(
+                                        builder: (ctx, lc) => FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: SizedBox(
+                                            width: lc.maxWidth,
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.check_circle_rounded, size: 32, color: isDark ? Colors.green.shade400 : Colors.green.shade700),
+                                                const SizedBox(height: 6),
+                                                const Text('Finished',
+                                                  style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                                                const SizedBox(height: 18),
+                                                SizedBox(
+                                                  width: lc.maxWidth,
+                                                  child: GestureDetector(
+                                                    onTap: _listenAgain,
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(vertical: 9),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white.withValues(alpha: 0.18),
+                                                        borderRadius: BorderRadius.circular(11),
+                                                        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+                                                      ),
+                                                      child: const Text('Listen Again',
+                                                        textAlign: TextAlign.center,
+                                                        style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
                                                     ),
-                                                    child: const Text('Delete Download',
-                                                      textAlign: TextAlign.center,
-                                                      style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
                                                   ),
                                                 ),
-                                              ),
-                                            ),
-                                          SizedBox(
-                                            width: double.infinity,
-                                            child: GestureDetector(
-                                              onTap: _removeFromAbsorbing,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(vertical: 9),
-                                                decoration: BoxDecoration(
-                                                  borderRadius: BorderRadius.circular(11),
-                                                  border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                                                const SizedBox(height: 8),
+                                                if (isDownloaded)
+                                                  Padding(
+                                                    padding: const EdgeInsets.only(bottom: 8),
+                                                    child: SizedBox(
+                                                      width: lc.maxWidth,
+                                                      child: GestureDetector(
+                                                        onTap: () => _deleteDownload(dlKey),
+                                                        child: Container(
+                                                          padding: const EdgeInsets.symmetric(vertical: 9),
+                                                          decoration: BoxDecoration(
+                                                            borderRadius: BorderRadius.circular(11),
+                                                            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                                                          ),
+                                                          child: const Text('Delete Download',
+                                                            textAlign: TextAlign.center,
+                                                            style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                SizedBox(
+                                                  width: lc.maxWidth,
+                                                  child: GestureDetector(
+                                                    onTap: _removeFromAbsorbing,
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(vertical: 9),
+                                                      decoration: BoxDecoration(
+                                                        borderRadius: BorderRadius.circular(11),
+                                                        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                                                      ),
+                                                      child: const Text('Remove from Absorbing',
+                                                        textAlign: TextAlign.center,
+                                                        style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
+                                                    ),
+                                                  ),
                                                 ),
-                                                child: const Text('Remove from Absorbing',
-                                                  textAlign: TextAlign.center,
-                                                  style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
-                                              ),
+                                              ],
                                             ),
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -670,105 +679,92 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                 // ── Chapter pill-scrubber (same width as book bar) ──
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: CardDualProgressBar(player: widget.player, accent: accent, isActive: _isActive, staticProgress: (_isPodcastEpisode && _chapters.isEmpty) ? 0.0 : progress, staticDuration: (_isPodcastEpisode && _chapters.isEmpty) ? widget.player.totalDuration : _effectiveDuration, chapters: _chapters, showBookBar: false, showChapterBar: true, chapterName: (_isPodcastEpisode && _chapters.isEmpty) ? (widget.player.currentEpisodeTitle ?? widget.player.currentTitle ?? _title) : (_episodeId != null && !_isActive ? (_recentEpisode?['title'] as String? ?? _title) : _chapterName(chapterIdx)), chapterIndex: chapterIdx, totalChapters: totalChapters, itemId: _itemId),
+                  child: CardDualProgressBar(player: widget.player, accent: accent, isActive: _isActive, staticProgress: (_isPodcastEpisode && _chapters.isEmpty) ? 0.0 : progress, staticDuration: (_isPodcastEpisode && _chapters.isEmpty) ? widget.player.totalDuration : _effectiveDuration, chapters: _chapters, showBookBar: false, showChapterBar: true, chapterName: (_isPodcastEpisode && _chapters.isEmpty) ? (widget.player.currentEpisodeTitle ?? widget.player.currentTitle ?? _title) : (_episodeId != null && !_isActive ? (_recentEpisode?['title'] as String? ?? _title) : _chapterName(chapterIdx)), chapterIndex: chapterIdx, totalChapters: totalChapters, itemId: _itemId, compact: compact),
                 ),
                 // ── Controls + buttons ──
                 Expanded(
-                  child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    children: [
-                      Spacer(flex: compact ? 1 : 2),
-                      CardPlaybackControls(
-                        player: widget.player,
-                        accent: accent,
-                        isActive: _isActive,
-                        isStarting: _isStarting,
-                        onStart: _startPlayback,
-                        itemId: _itemId,
+                  child: LayoutBuilder(
+                  builder: (context, lc) {
+                  return FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.center,
+                    child: SizedBox(
+                      width: lc.maxWidth - 40,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(height: compact ? 10 : 18),
+                          CardPlaybackControls(
+                            player: widget.player,
+                            accent: accent,
+                            isActive: _isActive,
+                            isStarting: _isStarting,
+                            onStart: _startPlayback,
+                            itemId: _itemId,
+                          ),
+                          SizedBox(height: compact ? 10 : 18),
+                          // ── Button grid ──
+                          Row(children: [
+                            Expanded(child: _buildCardButton(_buttonOrder[0], accent, tt)),
+                            const SizedBox(width: 8),
+                            Expanded(child: _buildCardButton(_buttonOrder[1], accent, tt)),
+                          ]),
+                          const SizedBox(height: 6),
+                          Row(children: [
+                            Expanded(child: _buildCardButton(_buttonOrder[2], accent, tt)),
+                            const SizedBox(width: 8),
+                            Expanded(child: _buildCardButton(_buttonOrder[3], accent, tt)),
+                          ]),
+                          const SizedBox(height: 6),
+                          // More menu / Cast controls
+                          Center(
+                            child: ListenableBuilder(
+                              listenable: ChromecastService(),
+                              builder: (context, _) {
+                                final castActive = ChromecastService().isCasting && !_buttonOrder.take(4).contains('cast');
+                                return GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: castActive
+                                      ? () => showModalBottomSheet(
+                                            context: context,
+                                            backgroundColor: Theme.of(context).bottomSheetTheme.backgroundColor,
+                                            shape: const RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                                            ),
+                                            builder: (_) => const CastControlSheet(),
+                                          )
+                                      : () => _showMoreMenu(context, accent, tt),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: castActive ? accent.withValues(alpha: 0.15) : cs.onSurface.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: castActive
+                                          ? [
+                                              Icon(Icons.cast_connected_rounded, size: 18, color: accent),
+                                              const SizedBox(width: 4),
+                                              Text('Casting', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: accent)),
+                                            ]
+                                          : [
+                                              Icon(Icons.more_horiz_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.54)),
+                                              const SizedBox(width: 4),
+                                              Text('More', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: cs.onSurface.withValues(alpha: 0.54))),
+                                            ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                        ],
                       ),
-                      Spacer(flex: compact ? 1 : 3),
-                      // ── Button grid (hugs bottom) ──
-                      if (compact) Transform(
-                        alignment: Alignment.bottomCenter,
-                        transform: Matrix4.identity()..scale(1.0, 0.85),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(children: [
-                              Expanded(child: _buildCardButton(_buttonOrder[0], accent, tt)),
-                              const SizedBox(width: 8),
-                              Expanded(child: _buildCardButton(_buttonOrder[1], accent, tt)),
-                            ]),
-                            const SizedBox(height: 4),
-                            Row(children: [
-                              Expanded(child: _buildCardButton(_buttonOrder[2], accent, tt)),
-                              const SizedBox(width: 8),
-                              Expanded(child: _buildCardButton(_buttonOrder[3], accent, tt)),
-                            ]),
-                          ],
-                        ),
-                      ) else ...[
-                      Row(children: [
-                        Expanded(child: _buildCardButton(_buttonOrder[0], accent, tt)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildCardButton(_buttonOrder[1], accent, tt)),
-                      ]),
-                      const SizedBox(height: 8),
-                      Row(children: [
-                        Expanded(child: _buildCardButton(_buttonOrder[2], accent, tt)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildCardButton(_buttonOrder[3], accent, tt)),
-                      ]),
-                      ],
-                      SizedBox(height: compact ? 2 : 8),
-                      // More menu / Cast controls (centered below buttons)
-                      Center(
-                        child: ListenableBuilder(
-                          listenable: ChromecastService(),
-                          builder: (context, _) {
-                            final castActive = ChromecastService().isCasting && !_buttonOrder.take(4).contains('cast');
-                            return GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: castActive
-                                  ? () => showModalBottomSheet(
-                                        context: context,
-                                        backgroundColor: Theme.of(context).bottomSheetTheme.backgroundColor,
-                                        shape: const RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                                        ),
-                                        builder: (_) => const CastControlSheet(),
-                                      )
-                                  : () => _showMoreMenu(context, accent, tt),
-                              child: Container(
-                                padding: EdgeInsets.symmetric(horizontal: compact ? 16 : 20, vertical: compact ? 5 : 8),
-                                decoration: BoxDecoration(
-                                  color: castActive ? accent.withValues(alpha: 0.15) : cs.onSurface.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: castActive
-                                      ? [
-                                          Icon(Icons.cast_connected_rounded, size: 18, color: accent),
-                                          const SizedBox(width: 4),
-                                          Text('Casting', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: accent)),
-                                        ]
-                                      : [
-                                          Icon(Icons.more_horiz_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.54)),
-                                          const SizedBox(width: 4),
-                                          Text('More', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: cs.onSurface.withValues(alpha: 0.54))),
-                                        ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      if (!compact) const SizedBox(height: 4),
-                    ],
-                  ),
-                  ),
+                    ),
+                  );
+                  }),
                 ),
               ],
             );
