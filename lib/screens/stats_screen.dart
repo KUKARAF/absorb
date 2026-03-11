@@ -7,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../widgets/absorb_page_header.dart';
 import '../widgets/absorb_wave_icon.dart';
+import '../main.dart' show oledNotifier;
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -116,7 +117,7 @@ class _StatsScreenState extends State<StatsScreen>
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Container(
-        decoration: BoxDecoration(
+        decoration: oledNotifier.value ? null : BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -287,7 +288,7 @@ class _StatsScreenState extends State<StatsScreen>
       padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
+        gradient: oledNotifier.value ? null : LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
@@ -295,7 +296,7 @@ class _StatsScreenState extends State<StatsScreen>
             cs.primary.withValues(alpha: 0.04),
           ],
         ),
-        border: Border.all(color: cs.primary.withValues(alpha: 0.15)),
+        border: Border.all(color: cs.primary.withValues(alpha: oledNotifier.value ? 0.08 : 0.15)),
       ),
       child: Column(children: [
         Text('TOTAL LISTENING TIME',

@@ -12,6 +12,7 @@ import '../services/backup_service.dart';
 import '../services/oidc_service.dart';
 import '../services/user_account_service.dart';
 import '../widgets/absorb_wave_icon.dart';
+import '../main.dart' show oledNotifier;
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -180,9 +181,7 @@ class _LoginScreenState extends State<LoginScreen>
           }
         });
 
-        Future.delayed(const Duration(milliseconds: 200), () {
-          if (mounted) _usernameFocus.requestFocus();
-        });
+        // Don't auto-focus — user may still be typing IP:port
       }
     } catch (e) {
       if (!mounted) return;
@@ -196,8 +195,16 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _handleLogin() async {
-    if (!_serverValid) return;
     if (!_formKey.currentState!.validate()) return;
+
+    // Validate server first if not yet checked
+    if (!_serverValid) {
+      await _checkServer();
+      if (!_serverValid) {
+        setState(() => _loginError = _serverError ?? 'Could not reach server');
+        return;
+      }
+    }
 
     setState(() {
       _isConnecting = true;
@@ -289,8 +296,9 @@ class _LoginScreenState extends State<LoginScreen>
     final tt = Theme.of(context).textTheme;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Container(
-        decoration: BoxDecoration(
+        decoration: oledNotifier.value ? null : BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -304,11 +312,14 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
         child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                 children: [
                   // ── Logo + Tagline ──
                   FadeTransition(
@@ -411,11 +422,18 @@ class _LoginScreenState extends State<LoginScreen>
                                   _buildInputField(
                                     controller: _serverController,
                                     label: 'Server address',
-                                    hint: 'abs.example.com',
+                                    hint: 'my.server.com',
+                                    helperText: 'IP:port works too (e.g. 192.168.1.5:13378)',
                                     keyboardType: TextInputType.url,
                                     textInputAction: TextInputAction.next,
                                     onFieldSubmitted: (_) {
-                                      if (!_serverValid && !_serverChecking) _checkServer();
+                                      if (!_serverValid && !_serverChecking) {
+                                        _checkServer().then((_) {
+                                          if (mounted && _serverValid) _usernameFocus.requestFocus();
+                                        });
+                                      } else if (_serverValid) {
+                                        _usernameFocus.requestFocus();
+                                      }
                                     },
                                     cs: cs,
                                     prefixIcon: Padding(
@@ -568,7 +586,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     ),
                                   ],
 
-                                  // SSO / OIDC button — shown right below server URL so keyboard doesn't hide it
+                                  // SSO / OIDC button — only shown when server supports it
                                   AnimatedSize(
                                     duration: const Duration(milliseconds: 350),
                                     curve: Curves.easeOutCubic,
@@ -578,15 +596,8 @@ class _LoginScreenState extends State<LoginScreen>
                                         : const SizedBox.shrink(),
                                   ),
 
-                                  // Credentials — animated in when server is valid
-                                  AnimatedSize(
-                                    duration: const Duration(milliseconds: 350),
-                                    curve: Curves.easeOutCubic,
-                                    alignment: Alignment.topCenter,
-                                    child: _serverValid
-                                        ? _buildCredentialFields(cs, tt)
-                                        : const SizedBox.shrink(),
-                                  ),
+                                  // Credentials — always visible
+                                  _buildCredentialFields(cs, tt),
                                 ],
                               ),
                             ),
@@ -636,6 +647,7 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
       ),
+    ),
     );
   }
 
@@ -831,6 +843,7 @@ class _LoginScreenState extends State<LoginScreen>
     required String label,
     required ColorScheme cs,
     String? hint,
+    String? helperText,
     TextInputType? keyboardType,
     TextInputAction? textInputAction,
     FocusNode? focusNode,
@@ -854,6 +867,9 @@ class _LoginScreenState extends State<LoginScreen>
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
+        helperText: helperText,
+        helperStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 11),
+        helperMaxLines: 2,
         prefixIcon: prefixIcon,
         suffixIcon: suffixIcon,
         errorText: errorText,

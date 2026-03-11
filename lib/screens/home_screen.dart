@@ -12,6 +12,7 @@ import '../widgets/shimmer.dart';
 import '../widgets/book_detail_sheet.dart';
 import '../widgets/card_buttons.dart';
 import '../widgets/episode_list_sheet.dart';
+import '../main.dart' show oledNotifier;
 import 'app_shell.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -282,7 +283,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: scaffoldBg,
       body: Container(
-        decoration: BoxDecoration(
+        decoration: oledNotifier.value ? null : BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,

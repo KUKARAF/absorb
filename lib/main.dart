@@ -31,6 +31,9 @@ import 'widgets/absorb_wave_icon.dart';
 /// Global notifier so any widget (e.g. settings) can change the theme instantly.
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 
+/// Whether OLED (pure black) dark theme is active.
+final ValueNotifier<bool> oledNotifier = ValueNotifier(false);
+
 /// Global key so non-widget code (e.g. providers) can show snackbars.
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
@@ -39,8 +42,14 @@ ThemeMode parseThemeMode(String value) {
   switch (value) {
     case 'light': return ThemeMode.light;
     case 'system': return ThemeMode.system;
+    case 'oled': return ThemeMode.dark;
     default: return ThemeMode.dark;
   }
+}
+
+void applyThemeMode(String value) {
+  themeNotifier.value = parseThemeMode(value);
+  oledNotifier.value = value == 'oled';
 }
 
 void main() async {
@@ -64,7 +73,7 @@ void main() async {
   // Load saved theme preference so we render the correct theme immediately
   try {
     final savedTheme = await PlayerSettings.getThemeMode();
-    themeNotifier.value = parseThemeMode(savedTheme);
+    applyThemeMode(savedTheme);
   } catch (_) {}
 
   // Capture Flutter framework errors (widget build failures, etc.)
@@ -106,6 +115,9 @@ class AbsorbApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (context, currentMode, _) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: oledNotifier,
+          builder: (context, isOled, _) {
         // Set system chrome to match active theme
         final isDark = currentMode == ThemeMode.dark ||
             (currentMode == ThemeMode.system &&
@@ -128,6 +140,18 @@ class AbsorbApp extends StatelessWidget {
               darkScheme = ColorScheme.fromSeed(
                 seedColor: const Color(0xFF7C6FBF), // deep muted purple
                 brightness: Brightness.dark,
+              );
+            }
+
+            // OLED: pure black surfaces so OLED pixels turn fully off
+            if (isOled) {
+              darkScheme = darkScheme.copyWith(
+                surface: Colors.black,
+                surfaceContainerLowest: Colors.black,
+                surfaceContainerLow: Colors.black,
+                surfaceContainer: const Color(0xFF050505),
+                surfaceContainerHigh: const Color(0xFF0A0A0A),
+                surfaceContainerHighest: const Color(0xFF0F0F0F),
               );
             }
 
@@ -213,7 +237,7 @@ class AbsorbApp extends StatelessWidget {
               darkTheme: ThemeData(
                 useMaterial3: true,
                 colorScheme: darkScheme,
-                scaffoldBackgroundColor: const Color(0xFF0E0E0E),
+                scaffoldBackgroundColor: isOled ? Colors.black : const Color(0xFF0E0E0E),
                 cardTheme: CardThemeData(
                   color: darkScheme.surfaceContainerHigh,
                   elevation: 0,
@@ -222,7 +246,7 @@ class AbsorbApp extends StatelessWidget {
                   ),
                 ),
                 navigationBarTheme: NavigationBarThemeData(
-                  backgroundColor: const Color(0xFF0E0E0E),
+                  backgroundColor: isOled ? Colors.black : const Color(0xFF0E0E0E),
                   indicatorColor: darkScheme.primary.withValues(alpha: 0.15),
                   labelTextStyle: WidgetStatePropertyAll(
                     TextStyle(
@@ -233,7 +257,7 @@ class AbsorbApp extends StatelessWidget {
                   ),
                 ),
                 appBarTheme: AppBarTheme(
-                  backgroundColor: const Color(0xFF0E0E0E),
+                  backgroundColor: isOled ? Colors.black : const Color(0xFF0E0E0E),
                   surfaceTintColor: Colors.transparent,
                   scrolledUnderElevation: 0,
                 ),
@@ -248,8 +272,8 @@ class AbsorbApp extends StatelessWidget {
                     ),
                   ),
                 ),
-                bottomSheetTheme: const BottomSheetThemeData(
-                  backgroundColor: Color(0xFF1A1A1A),
+                bottomSheetTheme: BottomSheetThemeData(
+                  backgroundColor: isOled ? Colors.black : const Color(0xFF1A1A1A),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                   ),
@@ -268,6 +292,8 @@ class AbsorbApp extends StatelessWidget {
               home: const AuthGate(),
             );
           },
+        );
+        },
         );
       },
     );

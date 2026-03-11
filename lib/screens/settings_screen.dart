@@ -21,7 +21,7 @@ import '../screens/app_shell.dart';
 import '../screens/admin_screen.dart';
 import '../screens/downloads_screen.dart';
 import '../screens/bookmarks_screen.dart';
-import '../main.dart' show themeNotifier, parseThemeMode;
+import '../main.dart' show applyThemeMode, oledNotifier;
 import '../widgets/absorb_page_header.dart';
 import '../widgets/absorb_slider.dart';
 
@@ -350,7 +350,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: oledNotifier.value ? null : BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
@@ -384,9 +384,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
+                        gradient: oledNotifier.value ? null : LinearGradient(
                           colors: [cs.primaryContainer, cs.tertiaryContainer],
                         ),
+                        color: oledNotifier.value ? cs.surfaceContainerHigh : null,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Row(
@@ -414,45 +415,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // ── User Profile ──
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundColor: cs.primaryContainer,
-                        child: Text(
-                          (auth.username ?? 'U')[0].toUpperCase(),
-                          style: tt.headlineSmall?.copyWith(
-                            color: cs.onPrimaryContainer,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      Row(
                         children: [
-                          Text(auth.username ?? 'User', style: tt.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 2),
-                          Text(
-                            auth.serverUrl?.replaceAll(RegExp(r'^https?://'), '').replaceAll(RegExp(r'/+$'), '') ?? '',
-                            maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                          Expanded(child: Text(auth.username ?? 'User', style: tt.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700))),
                           if (auth.isAdmin)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: auth.isRoot ? Colors.amber.withValues(alpha: 0.12) : cs.primary.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(auth.isRoot ? 'Root Admin' : 'Admin', style: tt.labelSmall?.copyWith(
-                                  color: auth.isRoot ? Colors.amber : cs.primary, fontWeight: FontWeight.w600, fontSize: 10)),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: auth.isRoot ? Colors.amber.withValues(alpha: 0.12) : cs.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
                               ),
+                              child: Text(auth.isRoot ? 'Root Admin' : 'Admin', style: tt.labelSmall?.copyWith(
+                                color: auth.isRoot ? Colors.amber : cs.primary, fontWeight: FontWeight.w600, fontSize: 10)),
                             ),
                         ],
-                      )),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        auth.serverUrl?.replaceAll(RegExp(r'^https?://'), '').replaceAll(RegExp(r'/+$'), '') ?? '',
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                     ],
                   ),
                 ),
@@ -515,17 +501,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: SegmentedButton<String>(
+                              showSelectedIcon: false,
                               segments: const [
-                                ButtonSegment(value: 'dark', icon: Icon(Icons.dark_mode_rounded), label: Text('Dark')),
-                                ButtonSegment(value: 'light', icon: Icon(Icons.light_mode_rounded), label: Text('Light')),
-                                ButtonSegment(value: 'system', icon: Icon(Icons.brightness_auto_rounded), label: Text('System')),
+                                ButtonSegment(value: 'dark', label: Text('Dark')),
+                                ButtonSegment(value: 'oled', label: Text('OLED')),
+                                ButtonSegment(value: 'light', label: Text('Light')),
+                                ButtonSegment(value: 'system', label: Text('Auto')),
                               ],
                               selected: {_themeMode},
                               onSelectionChanged: _loaded ? (selected) {
                                 final mode = selected.first;
                                 setState(() => _themeMode = mode);
                                 PlayerSettings.setThemeMode(mode);
-                                themeNotifier.value = parseThemeMode(mode);
+                                applyThemeMode(mode);
                               } : null,
                               style: const ButtonStyle(
                                 visualDensity: VisualDensity.compact,
@@ -2130,7 +2118,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Apply theme immediately
       final theme = data['settings']?['themeMode'] as String?;
       if (theme != null) {
-        themeNotifier.value = parseThemeMode(theme);
+        applyThemeMode(theme);
       }
 
       // Refresh UI
