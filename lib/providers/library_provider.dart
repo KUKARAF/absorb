@@ -1038,7 +1038,7 @@ class LibraryProvider extends ChangeNotifier {
     ]);
     // Clear stale local overrides — server data is now authoritative
     _localProgressOverrides.clear();
-    // Update local SharedPreferences from fresh server data so they stay in sync
+    // Cache fresh server data locally (without marking as pending syncs)
     final sync = ProgressSyncService();
     for (final entry in _progressMap.entries) {
       final itemId = entry.key;
@@ -1046,16 +1046,13 @@ class LibraryProvider extends ChangeNotifier {
       final currentTime = (mp['currentTime'] as num?)?.toDouble() ?? 0;
       final duration = (mp['duration'] as num?)?.toDouble() ?? 0;
       if (duration > 0 && currentTime > 0) {
-        await sync.saveLocal(
+        await sync.cacheServerProgress(
           itemId: itemId,
           currentTime: currentTime,
           duration: duration,
-          speed: 1.0,
         );
       }
     }
-    // Clear pending syncs since we just pulled fresh server data
-    await ScopedPrefs.setStringList('pending_syncs', []);
     notifyListeners();
   }
 

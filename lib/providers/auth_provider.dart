@@ -142,7 +142,7 @@ class AuthProvider extends ChangeNotifier {
     }
 
     // Attempt login
-    final result = await ApiService.login(
+    final (result, statusCode) = await ApiService.login(
       serverUrl: url,
       username: username,
       password: password,
@@ -150,7 +150,9 @@ class AuthProvider extends ChangeNotifier {
     );
 
     if (result == null) {
-      _errorMessage = 'Invalid username or password';
+      _errorMessage = statusCode == 401
+          ? 'Invalid username or password'
+          : 'Login failed - check your server address and credentials';
       return false;
     }
 

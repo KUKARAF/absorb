@@ -35,7 +35,7 @@ class ProgressSyncService {
 
   bool get isOnline => _isOnline;
 
-  /// Save progress locally. Always succeeds.
+  /// Save progress locally and mark it as a pending change to sync.
   Future<void> saveLocal({
     required String itemId,
     required double currentTime,
@@ -56,6 +56,22 @@ class ProgressSyncService {
       pendingList.add(itemId);
       await ScopedPrefs.setStringList('pending_syncs', pendingList);
     }
+  }
+
+  /// Cache server-known progress locally without marking it as a pending sync.
+  Future<void> cacheServerProgress({
+    required String itemId,
+    required double currentTime,
+    required double duration,
+  }) async {
+    final data = {
+      'itemId': itemId,
+      'currentTime': currentTime,
+      'duration': duration,
+      'speed': 1.0,
+      'timestamp': 0,
+    };
+    await ScopedPrefs.setString('progress_$itemId', jsonEncode(data));
   }
 
   /// Get locally saved progress for an item.
@@ -178,11 +194,10 @@ class ProgressSyncService {
 
             if (serverTimestamp > localTimestamp) {
               debugPrint('[Sync] Server is newer for $itemId: server=$serverTime s ($serverTimestamp) vs local=$localTime s ($localTimestamp) — pulling');
-              await saveLocal(
+              await cacheServerProgress(
                 itemId: itemId,
                 currentTime: serverTime,
                 duration: localDuration,
-                speed: (data['speed'] as num?)?.toDouble() ?? 1.0,
               );
               final updated = await ScopedPrefs.getStringList('pending_syncs');
               updated.remove(itemId);
@@ -220,6 +235,12 @@ class ProgressSyncService {
           await ScopedPrefs.setStringList('pending_syncs', updated);
         } catch (e) {
           debugPrint('[Sync] Flush failed for $itemId: $e');
+          // Stop the batch if we lost connectivity
+          if (e.toString().contains('SocketException') ||
+              e.toString().contains('connection abort')) {
+            debugPrint('[Sync] Network error — stopping flush');
+            break;
+          }
         }
       }
     } finally {

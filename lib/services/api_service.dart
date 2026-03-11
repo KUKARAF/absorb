@@ -63,8 +63,8 @@ class ApiService {
   String get _cleanBaseUrl =>
       baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
 
-  /// Login and return the full response JSON (contains user, token, etc.)
-  static Future<Map<String, dynamic>?> login({
+  /// Login and return the full response JSON (contains user, token, etc.) and HTTP status code.
+  static Future<(Map<String, dynamic>?, int)> login({
     required String serverUrl,
     required String username,
     required String password,
@@ -82,11 +82,11 @@ class ApiService {
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
+        return (jsonDecode(response.body) as Map<String, dynamic>, 200);
       }
-      return null;
+      return (null, response.statusCode);
     } catch (e) {
-      return null;
+      return (null, 0);
     }
   }
 
