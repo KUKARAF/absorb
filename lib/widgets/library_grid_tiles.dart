@@ -491,16 +491,17 @@ class GridAuthorTile extends StatelessWidget {
           // Circular avatar
           AspectRatio(
             aspectRatio: 1,
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: cs.secondaryContainer,
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  imageUrl != null
+            child: Stack(
+              fit: StackFit.expand,
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: cs.secondaryContainer,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: imageUrl != null
                       ? CachedNetworkImage(
                           imageUrl: imageUrl,
                           fit: BoxFit.cover,
@@ -509,23 +510,30 @@ class GridAuthorTile extends StatelessWidget {
                           errorWidget: (_, __, ___) => _placeholder(cs),
                         )
                       : _placeholder(cs),
-                  if (numBooks > 0)
-                    Positioned(
-                      bottom: 4,
-                      right: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: cs.primaryContainer,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text('$numBooks',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                            color: cs.onPrimaryContainer)),
+                ),
+                if (numBooks > 0)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.auto_stories_rounded, size: 11, color: cs.onPrimaryContainer),
+                          const SizedBox(width: 3),
+                          Text('$numBooks',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                              color: cs.onPrimaryContainer)),
+                        ],
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 5),

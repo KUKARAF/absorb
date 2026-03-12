@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import '../services/download_service.dart';
 import 'author_books_sheet.dart';
 import 'book_detail_sheet.dart';
 import 'episode_list_sheet.dart';
@@ -12,12 +13,16 @@ class BookResultTile extends StatelessWidget {
   final Map<String, dynamic> item;
   final String? serverUrl;
   final String? token;
+  final bool popOnTap;
+  final String? subtitle;
 
   const BookResultTile({
     super.key,
     required this.item,
     required this.serverUrl,
     required this.token,
+    this.popOnTap = false,
+    this.subtitle,
   });
 
   @override
@@ -30,6 +35,10 @@ class BookResultTile extends StatelessWidget {
     final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
     final title = metadata['title'] as String? ?? 'Unknown';
     final authorName = metadata['authorName'] as String? ?? '';
+    final lib = context.watch<LibraryProvider>();
+    final isDownloaded = itemId != null && DownloadService().isDownloaded(itemId);
+    final isFinished = itemId != null && lib.getProgressData(itemId)?['isFinished'] == true;
+    final greenColor = Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400]! : Colors.green.shade700;
 
     String? coverUrl;
     if (itemId != null && serverUrl != null && token != null) {
@@ -52,11 +61,14 @@ class BookResultTile extends StatelessWidget {
           onTap: () {
             FocusManager.instance.primaryFocus?.unfocus();
             if (itemId != null) {
-              final lib = context.read<LibraryProvider>();
+              final nav = Navigator.of(context);
+              if (popOnTap) nav.pop();
+              final ctx = popOnTap ? nav.context : context;
+              final lib = ctx.read<LibraryProvider>();
               if (lib.isPodcastLibrary) {
-                EpisodeListSheet.show(context, item);
+                EpisodeListSheet.show(ctx, item);
               } else {
-                showBookDetailSheet(context, itemId);
+                showBookDetailSheet(ctx, itemId);
               }
             }
           },
@@ -66,15 +78,51 @@ class BookResultTile extends StatelessWidget {
               SizedBox(
                 width: 56,
                 height: 56,
-                child: coverUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: coverUrl,
-                        fit: BoxFit.cover,
-                        httpHeaders: context.read<LibraryProvider>().mediaHeaders,
-                        placeholder: (_, __) => _ph(cs),
-                        errorWidget: (_, __, ___) => _ph(cs),
-                      )
-                    : _ph(cs),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    coverUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: coverUrl,
+                            fit: BoxFit.cover,
+                            httpHeaders: lib.mediaHeaders,
+                            placeholder: (_, __) => _ph(cs),
+                            errorWidget: (_, __, ___) => _ph(cs),
+                          )
+                        : _ph(cs),
+                    if (isFinished || isDownloaded)
+                      Positioned(
+                        left: 0, right: 0, bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [Colors.black.withValues(alpha: 0.85), Colors.black.withValues(alpha: 0.0)],
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isFinished) ...[
+                                Icon(Icons.check_circle_rounded, size: 8, color: greenColor),
+                                const SizedBox(width: 2),
+                                Text('Done', style: TextStyle(fontSize: 7, fontWeight: FontWeight.w600, color: greenColor)),
+                              ],
+                              if (isFinished && isDownloaded) const SizedBox(width: 4),
+                              if (isDownloaded) ...[
+                                Icon(Icons.download_done_rounded, size: 8, color: cs.primary),
+                                const SizedBox(width: 2),
+                                Text('Saved', style: TextStyle(fontSize: 7, fontWeight: FontWeight.w600, color: cs.primary)),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               Expanded(
                 child: Padding(
@@ -90,6 +138,12 @@ class BookResultTile extends StatelessWidget {
                           style: tt.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w600,
                               color: cs.onSurface)),
+                      if (subtitle != null)
+                        Text(subtitle!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: tt.bodySmall?.copyWith(
+                                color: cs.primary, fontSize: 11)),
                       if (authorName.isNotEmpty)
                         Text(authorName,
                             maxLines: 1,

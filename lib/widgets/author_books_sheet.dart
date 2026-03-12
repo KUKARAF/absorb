@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -79,13 +77,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
       return;
     }
 
-    // Fetch author details and books in parallel
-    final futures = await Future.wait([
-      api.getAuthorById(widget.authorId, libraryId: widget.libraryId),
-      _fetchBooks(auth),
-    ]);
-
-    final authorData = futures[0] as Map<String, dynamic>?;
+    final authorData = await api.getAuthorById(widget.authorId, libraryId: widget.libraryId);
 
     if (mounted) {
       setState(() {
@@ -95,38 +87,13 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
             final ts = (authorData['updatedAt'] as num?)?.toInt();
             _imageUrl = api.getAuthorImageUrl(widget.authorId, updatedAt: ts);
           }
+          // libraryItems from the author endpoint include full metadata with series info
+          final rawItems = authorData['libraryItems'] as List<dynamic>? ?? [];
+          _books = rawItems.whereType<Map<String, dynamic>>().toList();
         }
         _isLoading = false;
       });
     }
-  }
-
-  Future<List<Map<String, dynamic>>> _fetchBooks(AuthProvider auth) async {
-    try {
-      final filterValue = base64Encode(utf8.encode(widget.authorId));
-      final cleanUrl = (auth.serverUrl ?? '').endsWith('/')
-          ? auth.serverUrl!.substring(0, auth.serverUrl!.length - 1)
-          : auth.serverUrl!;
-      final url =
-          '$cleanUrl/api/libraries/${widget.libraryId}/items'
-          '?filter=authors.$filterValue&sort=media.metadata.title&limit=200&collapseseries=0';
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Authorization': 'Bearer ${auth.token}',
-        },
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200 && mounted) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final results = (data['results'] as List<dynamic>?) ?? [];
-        final books = results.whereType<Map<String, dynamic>>().toList();
-        if (mounted) setState(() => _books = books);
-        return books;
-      }
-    } catch (_) {}
-    return [];
   }
 
   @override
@@ -146,41 +113,149 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
       );
     }
 
-    // Single scrollable list: header + description + books
     final bottomPad = 24 + MediaQuery.of(context).viewPadding.bottom;
     final hasDesc = _description != null && _description!.isNotEmpty;
-    // header + optional description + books (or empty message)
-    final itemCount = 1 + (hasDesc ? 1 : 0) + (_books.isEmpty ? 1 : _books.length);
-    final descOffset = 1;
-    final booksOffset = 1 + (hasDesc ? 1 : 0);
+    final sections = _buildSections();
+
+    // Flatten sections into list items: header, description, then section widgets
+    final items = <Widget>[
+      _buildHeader(cs, tt, headers),
+      if (hasDesc) _buildDescription(cs, tt),
+    ];
+
+    if (_books.isEmpty) {
+      items.add(Center(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 48),
+          child: Text('No books found',
+              style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
+        ),
+      ));
+    } else {
+      for (final section in sections) {
+        final label = section.label;
+        final books = section.books;
+        // Section header with divider
+        items.add(Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Row(children: [
+            Expanded(child: Divider(color: cs.outlineVariant)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(label,
+                style: tt.labelMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                )),
+            ),
+            Expanded(child: Divider(color: cs.outlineVariant)),
+          ]),
+        ));
+        for (final book in books) {
+          items.add(Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: BookResultTile(
+              item: book,
+              serverUrl: widget.serverUrl,
+              token: widget.token,
+              popOnTap: true,
+              subtitle: _sequenceFor(book, label),
+            ),
+          ));
+        }
+      }
+    }
 
     return ListView.builder(
       controller: widget.scrollController,
       padding: EdgeInsets.fromLTRB(0, 0, 0, bottomPad),
-      itemCount: itemCount,
-      itemBuilder: (context, index) {
-        if (index == 0) return _buildHeader(cs, tt, headers);
-        if (hasDesc && index == descOffset) return _buildDescription(cs, tt);
-        if (_books.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 48),
-              child: Text('No books found',
-                  style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
-            ),
-          );
-        }
-        final bookIndex = index - booksOffset;
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: BookResultTile(
-            item: _books[bookIndex],
-            serverUrl: widget.serverUrl,
-            token: widget.token,
-          ),
-        );
-      },
+      itemCount: items.length,
+      itemBuilder: (context, index) => items[index],
     );
+  }
+
+  List<_BookSection> _buildSections() {
+    final seriesMap = <String, _BookSection>{};
+    final standalones = <Map<String, dynamic>>[];
+
+    for (final book in _books) {
+      final media = book['media'] as Map<String, dynamic>? ?? {};
+      final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+      final seriesNameRaw = metadata['seriesName'] as String? ?? '';
+
+      // Split comma-separated series entries like "Mistborn #3, Cosmere #6"
+      final entries = seriesNameRaw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      bool addedToSeries = false;
+
+      for (final entry in entries) {
+        final name = entry.replaceFirst(RegExp(r'\s*#\s*[\d.]+$'), '').trim();
+        if (name.isEmpty) continue;
+        seriesMap.putIfAbsent(name, () => _BookSection(label: name, books: []));
+        seriesMap[name]!.books.add(book);
+        addedToSeries = true;
+      }
+
+      if (!addedToSeries) {
+        standalones.add(book);
+      }
+    }
+
+    // Sort books within each series by their sequence in that specific series
+    final seqPattern = RegExp(r'#\s*([\d.]+)$');
+    for (final entry in seriesMap.entries) {
+      final seriesName = entry.key;
+      entry.value.books.sort((a, b) {
+        final snA = ((a['media'] as Map<String, dynamic>?)?['metadata'] as Map<String, dynamic>?)?['seriesName'] as String? ?? '';
+        final snB = ((b['media'] as Map<String, dynamic>?)?['metadata'] as Map<String, dynamic>?)?['seriesName'] as String? ?? '';
+        final seqA = _extractSequenceFor(snA, seriesName, seqPattern);
+        final seqB = _extractSequenceFor(snB, seriesName, seqPattern);
+        return seqA.compareTo(seqB);
+      });
+    }
+
+    // Series sections sorted alphabetically, then standalone group at the end
+    final seriesSections = seriesMap.values.toList()
+      ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+
+    // Sort standalones alphabetically by title
+    standalones.sort((a, b) {
+      final tA = ((a['media'] as Map<String, dynamic>?)?['metadata'] as Map<String, dynamic>?)?['title'] as String? ?? '';
+      final tB = ((b['media'] as Map<String, dynamic>?)?['metadata'] as Map<String, dynamic>?)?['title'] as String? ?? '';
+      return tA.toLowerCase().compareTo(tB.toLowerCase());
+    });
+
+    final allSections = <_BookSection>[...seriesSections];
+    if (standalones.isNotEmpty) {
+      allSections.add(_BookSection(label: 'Standalone', books: standalones));
+    }
+    return allSections;
+  }
+
+  /// Get just the "#N" for a book within a specific series.
+  String? _sequenceFor(Map<String, dynamic> book, String seriesName) {
+    final sn = ((book['media'] as Map<String, dynamic>?)?['metadata'] as Map<String, dynamic>?)?['seriesName'] as String? ?? '';
+    final pattern = RegExp(r'#\s*([\d.]+)');
+    for (final entry in sn.split(',').map((e) => e.trim())) {
+      final name = entry.replaceFirst(RegExp(r'\s*#\s*[\d.]+$'), '').trim();
+      if (name.toLowerCase() == seriesName.toLowerCase()) {
+        final match = pattern.firstMatch(entry);
+        if (match != null) return '#${match.group(1)}';
+      }
+    }
+    return null;
+  }
+
+  /// Extract the sequence number for a specific series from the seriesName string.
+  double _extractSequenceFor(String seriesNameRaw, String targetSeries, RegExp seqPattern) {
+    final entries = seriesNameRaw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty);
+    for (final entry in entries) {
+      final name = entry.replaceFirst(seqPattern, '').trim();
+      if (name.toLowerCase() == targetSeries.toLowerCase()) {
+        final match = seqPattern.firstMatch(entry);
+        if (match != null) return double.tryParse(match.group(1)!) ?? double.maxFinite;
+      }
+    }
+    return double.maxFinite;
   }
 
   Widget _buildHeader(ColorScheme cs, TextTheme tt, Map<String, String> headers) {
@@ -268,4 +343,10 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
           size: 32, color: cs.onSecondaryContainer.withValues(alpha: 0.5)),
     );
   }
+}
+
+class _BookSection {
+  final String label;
+  final List<Map<String, dynamic>> books;
+  _BookSection({required this.label, required this.books});
 }

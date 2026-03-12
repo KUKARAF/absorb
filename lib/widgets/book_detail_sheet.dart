@@ -20,6 +20,7 @@ import '../services/progress_sync_service.dart';
 import '../services/metadata_override_service.dart';
 import '../services/scoped_prefs.dart';
 import '../screens/app_shell.dart';
+import 'author_books_sheet.dart';
 import 'series_books_sheet.dart';
 import 'absorbing_shared.dart';
 import 'html_description.dart';
@@ -225,7 +226,14 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
       Text(title, textAlign: TextAlign.center, style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)),
       const SizedBox(height: 4),
-      Text(authorName, textAlign: TextAlign.center, style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.6))),
+      GestureDetector(
+        onTap: () => _openAuthor(context, metadata),
+        child: Text(authorName, textAlign: TextAlign.center, style: tt.bodyMedium?.copyWith(
+          color: cs.primary,
+          decoration: TextDecoration.underline,
+          decorationColor: cs.primary.withValues(alpha: 0.4),
+        )),
+      ),
       if (narrator.isNotEmpty) ...[const SizedBox(height: 2),
         Text('Narrated by $narrator', textAlign: TextAlign.center, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))],
       // ─── AUDIBLE RATING (space always reserved) ─────────
@@ -627,6 +635,28 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     );
   }
 
+  void _openAuthor(BuildContext context, Map<String, dynamic> metadata) {
+    // Get first author with an ID from the authors array
+    final authors = metadata['authors'] as List<dynamic>? ?? [];
+    String? authorId;
+    String authorName = metadata['authorName'] as String? ?? '';
+    for (final a in authors) {
+      if (a is Map<String, dynamic>) {
+        final id = a['id'] as String? ?? '';
+        if (id.isNotEmpty) {
+          authorId = id;
+          authorName = a['name'] as String? ?? authorName;
+          break;
+        }
+      }
+    }
+    if (authorId == null || authorName.isEmpty) return;
+    // Close current sheet before opening author sheet
+    final nav = Navigator.of(context);
+    nav.pop();
+    showAuthorDetailSheet(nav.context, authorId: authorId, authorName: authorName);
+  }
+
   Future<void> _openSeries(BuildContext context, String? seriesId, String seriesName) async {
     if (seriesId == null) return;
     final auth = context.read<AuthProvider>();
@@ -933,19 +963,8 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   }
 
   void _openGoodreads(String title, String author) async {
-    final metadata = (_item?['media'] as Map<String, dynamic>?)?['metadata'] as Map<String, dynamic>? ?? {};
-    final isbn = metadata['isbn'] as String? ?? '';
-    final asin = metadata['asin'] as String? ?? '';
-    // ISBN goes directly to the book page; ASIN is a close second; search as fallback
-    final Uri uri;
-    if (isbn.isNotEmpty) {
-      uri = Uri.https('www.goodreads.com', '/book/isbn/$isbn');
-    } else if (asin.isNotEmpty) {
-      uri = Uri.https('www.goodreads.com', '/search', {'q': asin});
-    } else {
-      final q = author.isNotEmpty ? '$title $author' : title;
-      uri = Uri.https('www.goodreads.com', '/search', {'q': q});
-    }
+    final q = author.isNotEmpty ? '$title $author' : title;
+    final uri = Uri.https('www.goodreads.com', '/search', {'q': q});
     try {
       // Open in Goodreads app if installed
       if (!await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication)) {
