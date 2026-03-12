@@ -787,7 +787,9 @@ class DownloadService extends ChangeNotifier {
         final isStorageFull = e.toString().contains('No space left') ||
             e.toString().contains('ENOSPC');
         final isPermissionDenied = e.toString().contains('Permission denied') ||
-            e.toString().contains('error = 13');
+            e.toString().contains('Operation not permitted') ||
+            e.toString().contains('error = 13') ||
+            e.toString().contains('errno = 1');
         final errorMsg = isStorageFull
             ? 'Not enough storage space'
             : isPermissionDenied

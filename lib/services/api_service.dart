@@ -902,7 +902,7 @@ class ApiService {
   }
 
   /// Fetch Audible rating from Audnexus API using ASIN.
-  /// Returns { rating } or null.
+  /// Returns { rating, asin } or null.
   static Future<Map<String, dynamic>?> getAudibleRating(String asin) async {
     try {
       final response = await http.get(
@@ -915,6 +915,7 @@ class ApiService {
         if (rating != null) {
           return {
             'rating': double.tryParse(rating) ?? 0.0,
+            'asin': asin,
           };
         }
       }

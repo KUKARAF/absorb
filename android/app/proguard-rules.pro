@@ -18,7 +18,8 @@
 
 # flutter_local_notifications + Gson generic signatures
 -keep class com.dexterous.flutterlocalnotifications.** { *; }
--keep class * extends com.google.gson.reflect.TypeToken
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken { *; }
 
 # Prevent stripping of native methods
 -keepclasseswithmembernames class * {

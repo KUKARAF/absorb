@@ -1883,11 +1883,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: const Text('Choose folder'),
                 onPressed: () async {
                   Navigator.pop(ctx);
-                  // Request storage permission (needed on Android 9 and below).
-                  // On Android 10+, this permission is deprecated - we skip blocking
-                  // and let the write test below catch any actual access issues.
                   if (Platform.isAndroid) {
-                    final status = await Permission.storage.status;
+                    // Android 11+ needs MANAGE_EXTERNAL_STORAGE for custom paths.
+                    // Android 9-10 use WRITE_EXTERNAL_STORAGE.
+                    // If manageExternalStorage is restricted, the OS doesn't
+                    // support it (Android 10 or below) so fall back to storage.
+                    final manageStatus = await Permission.manageExternalStorage.status;
+                    final Permission perm = manageStatus == PermissionStatus.restricted
+                        ? Permission.storage
+                        : Permission.manageExternalStorage;
+                    final status = await perm.status;
                     if (status.isPermanentlyDenied) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -1904,14 +1909,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       return;
                     }
                     if (!status.isGranted) {
-                      await Permission.storage.request();
-                      // Don't block - proceed regardless
+                      final result = await perm.request();
+                      if (!result.isGranted) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: const Text('Storage permission is required for custom download locations'),
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          ));
+                        }
+                        return;
+                      }
                     }
                   }
                   final result = await FilePicker.platform.getDirectoryPath(
                     dialogTitle: 'Choose download folder',
                   );
                   if (result != null) {
+                    // Write test - verify we can actually create files here
+                    try {
+                      final testDir = Directory(result);
+                      if (!testDir.existsSync()) testDir.createSync(recursive: true);
+                      final testFile = File('${testDir.path}/.absorb_write_test');
+                      testFile.writeAsStringSync('test');
+                      testFile.deleteSync();
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('Cannot write to that folder - choose another location or grant file access in system settings'),
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                          action: SnackBarAction(
+                            label: 'Open Settings',
+                            onPressed: openAppSettings,
+                          ),
+                        ));
+                      }
+                      return;
+                    }
                     await dl.setCustomDownloadPath(result);
                     final label = await dl.downloadLocationLabel;
                     if (mounted) {

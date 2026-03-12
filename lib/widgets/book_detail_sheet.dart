@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -48,6 +49,7 @@ class _BookDetailSheetContent extends StatefulWidget {
 class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   Map<String, dynamic>? _item;
   Map<String, dynamic>? _rating;
+  String? _asin;
   bool _isLoading = true;
   bool _chaptersExpanded = false;
   bool _isAbsorbing = false;
@@ -106,7 +108,10 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
             }
           }
           if (rating != null && mounted) {
-            setState(() => _rating = rating);
+            setState(() {
+              _rating = rating;
+              _asin = rating?['asin'] as String? ?? asin;
+            });
           }
           return;
         }
@@ -225,19 +230,30 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         Text('Narrated by $narrator', textAlign: TextAlign.center, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))],
       // ─── AUDIBLE RATING (space always reserved) ─────────
       const SizedBox(height: 8),
-      SizedBox(
-        height: 20,
-        child: (_rating != null && (_rating!['rating'] as num).toDouble() > 0)
-          ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              ..._buildStars((_rating!['rating'] as num).toDouble(), cs),
-              const SizedBox(width: 6),
-              Text((_rating!['rating'] as num).toStringAsFixed(1),
-                style: tt.labelLarge?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: 0.7))),
-              const SizedBox(width: 4),
-              Text('on Audible', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
-            ])
-          : null,
-      ),
+      if (_rating != null && (_rating!['rating'] as num).toDouble() > 0)
+        Center(
+          child: GestureDetector(
+            onTap: _asin != null ? () => _showAudibleReviews(context) : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: cs.onSurface.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                ..._buildStars((_rating!['rating'] as num).toDouble(), cs),
+                const SizedBox(width: 6),
+                Text((_rating!['rating'] as num).toStringAsFixed(1),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
+                const SizedBox(width: 4),
+                Text('on Audible', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              ]),
+            ),
+          ),
+        )
+      else
+        const SizedBox(height: 20),
       const SizedBox(height: 12),
       if (progress > 0 && !isFinished) ...[
         ClipRRect(borderRadius: BorderRadius.circular(3),
@@ -557,6 +573,58 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       }
     }
     return stars;
+  }
+
+  void _showAudibleReviews(BuildContext context) {
+    final asin = _asin;
+    if (asin == null) return;
+    final url = 'https://www.audible.com/pd/$asin#customer-reviews';
+    final cs = Theme.of(context).colorScheme;
+
+    final controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(cs.surface)
+      ..loadRequest(Uri.parse(url));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      enableDrag: false,
+      builder: (ctx) => FractionallySizedBox(
+        heightFactor: 0.92,
+        child: Container(
+          clipBehavior: Clip.hardEdge,
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+              child: Row(children: [
+                const Spacer(),
+                Container(width: 32, height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.onSurface.withValues(alpha: 0.24),
+                    borderRadius: BorderRadius.circular(2))),
+                const Spacer(),
+                IconButton(
+                  icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ]),
+            ),
+            Expanded(
+              child: SizedBox.expand(
+                child: WebViewWidget(controller: controller),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   Future<void> _openSeries(BuildContext context, String? seriesId, String seriesName) async {
@@ -937,3 +1005,4 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     }
   }
 }
+
