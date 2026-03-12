@@ -933,8 +933,19 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   }
 
   void _openGoodreads(String title, String author) async {
-    final q = author.isNotEmpty ? '$title $author' : title;
-    final uri = Uri.https('www.goodreads.com', '/search', {'q': q});
+    final metadata = (_item?['media'] as Map<String, dynamic>?)?['metadata'] as Map<String, dynamic>? ?? {};
+    final isbn = metadata['isbn'] as String? ?? '';
+    final asin = metadata['asin'] as String? ?? '';
+    // ISBN goes directly to the book page; ASIN is a close second; search as fallback
+    final Uri uri;
+    if (isbn.isNotEmpty) {
+      uri = Uri.https('www.goodreads.com', '/book/isbn/$isbn');
+    } else if (asin.isNotEmpty) {
+      uri = Uri.https('www.goodreads.com', '/search', {'q': asin});
+    } else {
+      final q = author.isNotEmpty ? '$title $author' : title;
+      uri = Uri.https('www.goodreads.com', '/search', {'q': q});
+    }
     try {
       // Open in Goodreads app if installed
       if (!await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication)) {
