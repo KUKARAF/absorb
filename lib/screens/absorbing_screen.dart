@@ -895,11 +895,23 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
                           color: isFinished ? cs.onSurface.withValues(alpha: 0.3) : cs.primary,
                           fontWeight: FontWeight.w700,
                         ))),
-                      // Finished indicator
+                      // Progress indicator
                       if (isFinished)
                         Icon(Icons.check_circle_rounded, size: 16, color: Colors.green.withValues(alpha: 0.5))
-                      else
-                        Icon(Icons.circle_outlined, size: 16, color: cs.onSurface.withValues(alpha: 0.2)),
+                      else ...[
+                        () {
+                          final progress = widget.lib.getProgress(key);
+                          return progress > 0
+                              ? SizedBox(width: 16, height: 16,
+                                  child: CircularProgressIndicator(
+                                    value: progress,
+                                    strokeWidth: 2.5,
+                                    backgroundColor: cs.surfaceContainerHighest,
+                                    color: cs.primary,
+                                  ))
+                              : Icon(Icons.circle_outlined, size: 16, color: cs.onSurface.withValues(alpha: 0.2));
+                        }(),
+                      ],
                       const SizedBox(width: 8),
                       // Title + subtitle
                       Expanded(child: Column(
