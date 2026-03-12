@@ -467,7 +467,7 @@ class SleepTimerService extends ChangeNotifier {
   }
 
   void _onShake() async {
-    if (!isActive) return;
+    if (!isActive || !_isPlaybackActive) return;
     _shakeMode = await PlayerSettings.getShakeMode();
     if (_shakeMode == 'off') return;
     debugPrint('[SleepTimer] Shake detected! mode=$_shakeMode');
