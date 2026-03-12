@@ -36,6 +36,8 @@ class BackupService {
       'librarySortAsc': await PlayerSettings.getLibrarySortAsc(),
       'libraryFilter': await PlayerSettings.getLibraryFilter(),
       'libraryGenreFilter': await PlayerSettings.getLibraryGenreFilter(),
+      'podcastSort': await PlayerSettings.getPodcastSort(),
+      'podcastSortAsc': await PlayerSettings.getPodcastSortAsc(),
       'showGoodreadsButton': await PlayerSettings.getShowGoodreadsButton(),
       'loggingEnabled': await PlayerSettings.getLoggingEnabled(),
       'fullScreenPlayer': await PlayerSettings.getFullScreenPlayer(),
@@ -178,6 +180,8 @@ class BackupService {
     if (s['librarySortAsc'] != null) PlayerSettings.setLibrarySortAsc(s['librarySortAsc'] as bool);
     if (s['libraryFilter'] != null) PlayerSettings.setLibraryFilter(s['libraryFilter'] as String);
     if (s.containsKey('libraryGenreFilter')) PlayerSettings.setLibraryGenreFilter(s['libraryGenreFilter'] as String?);
+    if (s['podcastSort'] != null) PlayerSettings.setPodcastSort(s['podcastSort'] as String);
+    if (s['podcastSortAsc'] != null) PlayerSettings.setPodcastSortAsc(s['podcastSortAsc'] as bool);
     if (s['showGoodreadsButton'] != null) PlayerSettings.setShowGoodreadsButton(s['showGoodreadsButton'] as bool);
     if (s['loggingEnabled'] != null) PlayerSettings.setLoggingEnabled(s['loggingEnabled'] as bool);
     if (s['fullScreenPlayer'] != null) PlayerSettings.setFullScreenPlayer(s['fullScreenPlayer'] as bool);

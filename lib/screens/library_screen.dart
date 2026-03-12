@@ -82,6 +82,10 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   bool _seriesSortAsc = true;
   final _seriesScrollController = ScrollController();
 
+  // ── Podcast-specific sort (persisted separately) ──
+  LibrarySort _podcastSort = LibrarySort.recentlyAdded;
+  bool _podcastSortAsc = false;
+
   // ── Authors tab state ──
   List<Map<String, dynamic>> _authors = [];
   bool _isLoadingAuthors = false;
@@ -157,9 +161,6 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         _hasMore = true;
         _isLoadingPage = false;
         _availableGenres = [];
-        // Reset filter on library switch
-        _filter = LibraryFilter.none;
-        _genreFilter = null;
         // Clear series and author data
         _seriesItems.clear();
         _seriesPage = 0;
@@ -170,12 +171,13 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         _authorsLoaded = false;
         _isLoadingAuthors = false;
       });
-      PlayerSettings.setLibraryFilter('none');
-      PlayerSettings.setLibraryGenreFilter(null);
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
       if (_seriesScrollController.hasClients) _seriesScrollController.jumpTo(0);
       if (_authorsScrollController.hasClients) _authorsScrollController.jumpTo(0);
-      _loadPage();
+      // Restore sort/filter for the new library type, then load
+      _restoreSortFilter().then((_) {
+        if (mounted) _loadPage();
+      });
       _loadGenres();
     }
   }
@@ -212,6 +214,8 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
       PlayerSettings.getSeriesSortAsc(),
       PlayerSettings.getAuthorSort(),
       PlayerSettings.getAuthorSortAsc(),
+      PlayerSettings.getPodcastSort(),
+      PlayerSettings.getPodcastSortAsc(),
     ]);
     if (!mounted) return;
     final sortName = results[0] as String;
@@ -222,7 +226,11 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     final seriesSortAsc = results[5] as bool;
     final authorSortName = results[6] as String;
     final authorSortAsc = results[7] as bool;
+    final podcastSortName = results[8] as String;
+    final podcastSortAsc = results[9] as bool;
+    final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
     setState(() {
+      // Book library sort/filter
       _sort = LibrarySort.values.firstWhere(
         (s) => s.name == sortName,
         orElse: () => LibrarySort.recentlyAdded,
@@ -244,6 +252,19 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         orElse: () => LibrarySort.alphabetical,
       );
       _authorSortAsc = authorSortAsc;
+      // Podcast sort
+      _podcastSort = LibrarySort.values.firstWhere(
+        (s) => s.name == podcastSortName,
+        orElse: () => LibrarySort.recentlyAdded,
+      );
+      _podcastSortAsc = podcastSortAsc;
+      // Apply podcast settings if currently on a podcast library
+      if (isPodcast) {
+        _sort = _podcastSort;
+        _sortAsc = _podcastSortAsc;
+        _filter = LibraryFilter.none;
+        _genreFilter = null;
+      }
     });
   }
 
@@ -525,6 +546,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     if (_currentTab == 1) { _changeSeriesSort(newSort); return; }
     if (_currentTab == 2) { _changeAuthorSort(newSort); return; }
 
+    final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
     if (newSort == _sort) {
       // Tapping the same sort toggles direction (except Random)
       if (newSort == LibrarySort.random) return;
@@ -535,7 +557,12 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         _hasMore = true;
         _isLoadingPage = false;
       });
-      PlayerSettings.setLibrarySortAsc(_sortAsc);
+      if (isPodcast) {
+        _podcastSortAsc = _sortAsc;
+        PlayerSettings.setPodcastSortAsc(_sortAsc);
+      } else {
+        PlayerSettings.setLibrarySortAsc(_sortAsc);
+      }
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
       _loadPage();
       return;
@@ -552,8 +579,15 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         _randomSeed = Random().nextInt(100000);
       }
     });
-    PlayerSettings.setLibrarySort(_sort.name);
-    PlayerSettings.setLibrarySortAsc(_sortAsc);
+    if (isPodcast) {
+      _podcastSort = _sort;
+      _podcastSortAsc = _sortAsc;
+      PlayerSettings.setPodcastSort(_sort.name);
+      PlayerSettings.setPodcastSortAsc(_sortAsc);
+    } else {
+      PlayerSettings.setLibrarySort(_sort.name);
+      PlayerSettings.setLibrarySortAsc(_sortAsc);
+    }
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
     _loadPage();
   }
@@ -598,6 +632,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   void _changeFilter(LibraryFilter newFilter, {String? genre}) {
     final effective = (newFilter == _filter && genre == _genreFilter) ? LibraryFilter.none : newFilter;
     if (effective == _filter && genre == _genreFilter) return;
+    final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
     _loadGeneration++;
     setState(() {
       _filter = effective;
@@ -607,8 +642,10 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
       _hasMore = true;
       _isLoadingPage = false;
     });
-    PlayerSettings.setLibraryFilter(_filter.name);
-    PlayerSettings.setLibraryGenreFilter(_genreFilter);
+    if (!isPodcast) {
+      PlayerSettings.setLibraryFilter(_filter.name);
+      PlayerSettings.setLibraryGenreFilter(_genreFilter);
+    }
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
     _loadPage();
   }
@@ -835,6 +872,13 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
             if (_authorsScrollController.hasClients) _authorsScrollController.jumpTo(0);
           } else {
             setState(() { _sortAsc = !_sortAsc; _items.clear(); _page = 0; _hasMore = true; _isLoadingPage = false; });
+            final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
+            if (isPodcast) {
+              _podcastSortAsc = _sortAsc;
+              PlayerSettings.setPodcastSortAsc(_sortAsc);
+            } else {
+              PlayerSettings.setLibrarySortAsc(_sortAsc);
+            }
             if (_scrollController.hasClients) _scrollController.jumpTo(0);
             _loadPage();
           }
@@ -952,6 +996,13 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                       bottom: 12,
                       child: _buildFloatingTabBar(cs),
                     ),
+                  // Floating sort button for podcast libraries
+                  if (!hasTabs && !_isInSearchMode)
+                    Positioned(
+                      left: 0, right: 0,
+                      bottom: 12,
+                      child: Center(child: _buildFloatingSortButton(cs, tt)),
+                    ),
                 ],
               ),
             ),
@@ -1015,6 +1066,41 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                   ),
                 );
               }),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingSortButton(ColorScheme cs, TextTheme tt) {
+    return GestureDetector(
+      onTap: () => _showSortFilterSheet(context, cs, tt),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+            decoration: BoxDecoration(
+              color: cs.surface.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Sort',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: cs.primary,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.sort_rounded, size: 14, color: cs.primary),
+              ],
             ),
           ),
         ),

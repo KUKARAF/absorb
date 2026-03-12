@@ -208,6 +208,14 @@ class PlayerSettings {
   static Future<String> getLibraryGenreFilter() => _get('libraryGenreFilter', '');
   static Future<void> setLibraryGenreFilter(String? value) => _set('libraryGenreFilter', value ?? '');
 
+  // ── Podcast library sort persistence ──
+
+  static Future<String> getPodcastSort() => _get('podcastSort', 'recentlyAdded');
+  static Future<void> setPodcastSort(String value) => _set('podcastSort', value);
+
+  static Future<bool> getPodcastSortAsc() => _get('podcastSortAsc', false);
+  static Future<void> setPodcastSortAsc(bool value) => _set('podcastSortAsc', value);
+
   static Future<String> getSeriesSort() => _get('seriesSort', 'alphabetical');
   static Future<void> setSeriesSort(String value) => _set('seriesSort', value);
 

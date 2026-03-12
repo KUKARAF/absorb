@@ -48,7 +48,7 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
   bool _genreExpanded = false;
   late bool _collapseSeries;
 
-  bool get _showFilterTab => widget.libraryTab == LibraryTab.library;
+  bool get _showFilterTab => widget.libraryTab == LibraryTab.library && !widget.isPodcastLibrary;
 
   @override
   void initState() {
@@ -116,7 +116,7 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
   double _calcHeight() {
     if (widget.libraryTab == LibraryTab.series) return 230;
     if (widget.libraryTab == LibraryTab.authors) return 180;
-    return _genreExpanded ? 420 : (widget.isPodcastLibrary ? 320 : 400);
+    return _genreExpanded ? 420 : (widget.isPodcastLibrary ? 200 : 400);
   }
 
   Widget _buildSortTab(ColorScheme cs) {
@@ -197,6 +197,13 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
           (LibrarySort.totalDuration, 'Number of Books', Icons.auto_stories_rounded),
         ];
       case LibraryTab.library:
+        if (widget.isPodcastLibrary) {
+          return [
+            (LibrarySort.recentlyAdded, 'Date Added', Icons.schedule_rounded),
+            (LibrarySort.alphabetical, 'Title', Icons.sort_by_alpha_rounded),
+            (LibrarySort.random, 'Random', Icons.shuffle_rounded),
+          ];
+        }
         return [
           (LibrarySort.recentlyAdded, 'Date Added', Icons.schedule_rounded),
           (LibrarySort.alphabetical, 'Title', Icons.sort_by_alpha_rounded),
