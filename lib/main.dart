@@ -34,7 +34,7 @@ final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 /// Whether OLED (pure black) dark theme is active.
 final ValueNotifier<bool> oledNotifier = ValueNotifier(false);
 
-/// Whether to use instant page transitions instead of slide animations.
+/// Whether to disable the fade animation when switching bottom nav tabs.
 final ValueNotifier<bool> snappyTransitionsNotifier = ValueNotifier(false);
 
 /// Global key so non-widget code (e.g. providers) can show snackbars.
@@ -134,9 +134,6 @@ class AbsorbApp extends StatelessWidget {
           systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
         ));
 
-        return ValueListenableBuilder<bool>(
-          valueListenable: snappyTransitionsNotifier,
-          builder: (context, snappy, _) {
         return DynamicColorBuilder(
           builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
             // Absorb is dark-first — use dynamic dark colors or our custom palette
@@ -173,13 +170,7 @@ class AbsorbApp extends StatelessWidget {
               );
             }
 
-            // Page transition theme
-            final pageTransition = snappy
-                ? const PageTransitionsTheme(builders: {
-                    TargetPlatform.android: _InstantPageTransitionsBuilder(),
-                    TargetPlatform.iOS: _InstantPageTransitionsBuilder(),
-                  })
-                : const PageTransitionsTheme(builders: {
+            const pageTransition = PageTransitionsTheme(builders: {
                     TargetPlatform.android: CupertinoPageTransitionsBuilder(),
                     TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
                   });
@@ -305,25 +296,9 @@ class AbsorbApp extends StatelessWidget {
         );
         },
         );
-        },
-        );
       },
     );
   }
-}
-
-/// Instant page transitions (no animation) for snappy mode.
-class _InstantPageTransitionsBuilder extends PageTransitionsBuilder {
-  const _InstantPageTransitionsBuilder();
-
-  @override
-  Widget buildTransitions<T>(
-    PageRoute<T> route,
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-    Widget child,
-  ) => child;
 }
 
 class AuthGate extends StatefulWidget {

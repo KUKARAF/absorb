@@ -7,6 +7,7 @@ import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/chromecast_service.dart';
 import '../services/sleep_timer_service.dart';
+import '../main.dart' show snappyTransitionsNotifier;
 import '../services/android_auto_service.dart';
 import '../widgets/expanded_card.dart';
 import 'absorbing_screen.dart';
@@ -77,13 +78,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
       return;
     }
     _ensurePageBuilt(index);
-    _fadeController.reverse().then((_) {
-      if (!mounted) return;
-      setState(() {
-        _currentIndex = index;
+    if (snappyTransitionsNotifier.value) {
+      setState(() => _currentIndex = index);
+    } else {
+      _fadeController.reverse().then((_) {
+        if (!mounted) return;
+        setState(() {
+          _currentIndex = index;
+        });
+        _fadeController.forward();
       });
-      _fadeController.forward();
-    });
+    }
   }
 
   void _ensurePageBuilt(int index) {

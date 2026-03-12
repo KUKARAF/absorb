@@ -56,7 +56,11 @@ class AbsorbPageHeader extends StatelessWidget {
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerRight,
-                        child: Row(mainAxisSize: MainAxisSize.min, children: actions!),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          spacing: 8,
+                          children: actions!,
+                        ),
                       ),
                     ),
                 ],

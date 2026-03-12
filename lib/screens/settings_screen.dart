@@ -529,9 +529,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     SwitchListTile(
-                      title: const Text('Snappy transitions'),
+                      title: const Text('Disable page fade'),
                       subtitle: Text(
-                        _snappyTransitions ? 'On - instant page transitions' : 'Off - smooth slide animations',
+                        _snappyTransitions ? 'Pages switch instantly' : 'Pages fade when switching tabs',
                         style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                       value: _snappyTransitions,
                       onChanged: _loaded ? (v) {
