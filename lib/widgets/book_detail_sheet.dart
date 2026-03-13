@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -536,10 +537,26 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     final first = audioFiles.first as Map<String, dynamic>;
     final codec = (first['codec'] as String?)?.toUpperCase();
     final bitRate = (first['bitRate'] as num?)?.toInt();
+    // Sum size across all audio files
+    int totalSize = 0;
+    for (final af in audioFiles) {
+      if (af is Map<String, dynamic>) {
+        final meta = af['metadata'] as Map<String, dynamic>?;
+        totalSize += (meta?['size'] as num?)?.toInt() ?? 0;
+      }
+    }
     return [
       if (codec != null && codec.isNotEmpty) _chip(Icons.audio_file_rounded, codec),
       if (bitRate != null && bitRate > 0) _chip(Icons.speed_rounded, '${(bitRate / 1000).round()} kbps'),
+      if (totalSize > 0) _chip(Icons.storage_rounded, _fmtSize(totalSize)),
     ];
+  }
+
+  String _fmtSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1048576) return '${(bytes / 1024).round()} KB';
+    if (bytes < 1073741824) return '${(bytes / 1048576).toStringAsFixed(1)} MB';
+    return '${(bytes / 1073741824).toStringAsFixed(2)} GB';
   }
 
   Widget _chip(IconData icon, String text) {
@@ -583,10 +600,28 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     return stars;
   }
 
+  static String get _audibleDomain {
+    final code = (PlatformDispatcher.instance.locale.countryCode ?? 'US').toUpperCase();
+    const domains = {
+      'US': 'audible.com',
+      'GB': 'audible.co.uk',
+      'AU': 'audible.com.au',
+      'CA': 'audible.ca',
+      'DE': 'audible.de',
+      'FR': 'audible.fr',
+      'IT': 'audible.it',
+      'ES': 'audible.es',
+      'JP': 'audible.co.jp',
+      'IN': 'audible.in',
+      'BR': 'audible.com.br',
+    };
+    return domains[code] ?? 'audible.com';
+  }
+
   void _showAudibleReviews(BuildContext context) {
     final asin = _asin;
     if (asin == null) return;
-    final url = 'https://www.audible.com/pd/$asin#customer-reviews';
+    final url = 'https://www.$_audibleDomain/pd/$asin#customer-reviews';
     final cs = Theme.of(context).colorScheme;
 
     final controller = WebViewController()
@@ -599,7 +634,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      enableDrag: false,
+      enableDrag: true,
       builder: (ctx) => FractionallySizedBox(
         heightFactor: 0.92,
         child: Container(
@@ -610,23 +645,36 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
           ),
           child: Column(children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
-              child: Row(children: [
-                const Spacer(),
-                Container(width: 32, height: 4,
-                  decoration: BoxDecoration(
-                    color: cs.onSurface.withValues(alpha: 0.24),
-                    borderRadius: BorderRadius.circular(2))),
-                const Spacer(),
-                IconButton(
-                  icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant),
-                  onPressed: () => Navigator.pop(ctx),
-                ),
-              ]),
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(width: 32, height: 4,
+                    decoration: BoxDecoration(
+                      color: cs.onSurface.withValues(alpha: 0.24),
+                      borderRadius: BorderRadius.circular(2))),
+                  Row(
+                    children: [
+                      const Spacer(),
+                      IconButton(
+                        icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             Expanded(
               child: SizedBox.expand(
-                child: WebViewWidget(controller: controller),
+                child: WebViewWidget(
+                  controller: controller,
+                  gestureRecognizers: {
+                    Factory<VerticalDragGestureRecognizer>(
+                      () => VerticalDragGestureRecognizer(),
+                    ),
+                  },
+                ),
               ),
             ),
           ]),
