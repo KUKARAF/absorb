@@ -59,8 +59,9 @@ class BookmarkService {
 
   static const _keyPrefix = 'bookmarks_';
 
-  /// Get all bookmarks for a book, sorted by position.
-  Future<List<Bookmark>> getBookmarks(String itemId) async {
+  /// Get all bookmarks for a book.
+  /// [sort] is 'newest' (by creation time, newest first) or 'position' (by book position).
+  Future<List<Bookmark>> getBookmarks(String itemId, {String sort = 'newest'}) async {
     final stored = await ScopedPrefs.getStringList('$_keyPrefix$itemId');
 
     final bookmarks = <Bookmark>[];
@@ -72,7 +73,11 @@ class BookmarkService {
       }
     }
 
-    bookmarks.sort((a, b) => a.positionSeconds.compareTo(b.positionSeconds));
+    if (sort == 'position') {
+      bookmarks.sort((a, b) => a.positionSeconds.compareTo(b.positionSeconds));
+    } else {
+      bookmarks.sort((a, b) => b.created.compareTo(a.created));
+    }
     return bookmarks;
   }
 
@@ -160,7 +165,8 @@ class BookmarkService {
   }
 
   /// Get all bookmarks across all books for the current account, keyed by itemId.
-  Future<Map<String, List<Bookmark>>> getAllBookmarks() async {
+  /// [sort] is 'newest' (by creation time, newest first) or 'position' (by book position).
+  Future<Map<String, List<Bookmark>>> getAllBookmarks({String sort = 'newest'}) async {
     final prefs = await SharedPreferences.getInstance();
     final scope = UserAccountService().activeScopeKey;
     final scopedPrefix = scope.isNotEmpty ? '$scope:$_keyPrefix' : _keyPrefix;
@@ -177,9 +183,21 @@ class BookmarkService {
         } catch (_) {}
       }
       if (bookmarks.isNotEmpty) {
-        bookmarks.sort((a, b) => a.positionSeconds.compareTo(b.positionSeconds));
+        if (sort == 'position') {
+          bookmarks.sort((a, b) => a.positionSeconds.compareTo(b.positionSeconds));
+        } else {
+          bookmarks.sort((a, b) => b.created.compareTo(a.created));
+        }
         result[itemId] = bookmarks;
       }
+    }
+
+    // Sort book groups by most recent bookmark when in newest mode
+    if (sort == 'newest') {
+      final sorted = Map.fromEntries(
+        result.entries.toList()..sort((a, b) => b.value.first.created.compareTo(a.value.first.created)),
+      );
+      return sorted;
     }
 
     return result;

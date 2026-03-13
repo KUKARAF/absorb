@@ -48,6 +48,21 @@ class BackupService {
       'queueAutoDownload': await PlayerSettings.getQueueAutoDownload(),
       'mergeAbsorbingLibraries': await PlayerSettings.getMergeAbsorbingLibraries(),
       'maxConcurrentDownloads': await PlayerSettings.getMaxConcurrentDownloads(),
+      'colorSource': await PlayerSettings.getColorSource(),
+      'snappyTransitions': await PlayerSettings.getSnappyTransitions(),
+      'bookmarkSort': await PlayerSettings.getBookmarkSort(),
+      'autoDownloadOnStream': await PlayerSettings.getAutoDownloadOnStream(),
+      'notificationChapterProgress': await PlayerSettings.getNotificationChapterProgress(),
+      'sleepTimerMinutes': await PlayerSettings.getSleepTimerMinutes(),
+      'sleepTimerChapters': await PlayerSettings.getSleepTimerChapters(),
+      'streamingCacheSizeMb': await PlayerSettings.getStreamingCacheSizeMb(),
+      'seriesSort': await PlayerSettings.getSeriesSort(),
+      'seriesSortAsc': await PlayerSettings.getSeriesSortAsc(),
+      'authorSort': await PlayerSettings.getAuthorSort(),
+      'authorSortAsc': await PlayerSettings.getAuthorSortAsc(),
+      'disableAudioFocus': await PlayerSettings.getDisableAudioFocus(),
+      'localServerEnabled': await PlayerSettings.getLocalServerEnabled(),
+      'localServerUrl': await PlayerSettings.getLocalServerUrl(),
     };
 
     // AutoRewind (scoped)
@@ -196,6 +211,21 @@ class BackupService {
     if (s['queueAutoDownload'] != null) PlayerSettings.setQueueAutoDownload(s['queueAutoDownload'] as bool);
     if (s['mergeAbsorbingLibraries'] != null) PlayerSettings.setMergeAbsorbingLibraries(s['mergeAbsorbingLibraries'] as bool);
     if (s['maxConcurrentDownloads'] != null) PlayerSettings.setMaxConcurrentDownloads(s['maxConcurrentDownloads'] as int);
+    if (s['colorSource'] != null) PlayerSettings.setColorSource(s['colorSource'] as String);
+    if (s['snappyTransitions'] != null) PlayerSettings.setSnappyTransitions(s['snappyTransitions'] as bool);
+    if (s['bookmarkSort'] != null) PlayerSettings.setBookmarkSort(s['bookmarkSort'] as String);
+    if (s['autoDownloadOnStream'] != null) PlayerSettings.setAutoDownloadOnStream(s['autoDownloadOnStream'] as bool);
+    if (s['notificationChapterProgress'] != null) PlayerSettings.setNotificationChapterProgress(s['notificationChapterProgress'] as bool);
+    if (s['sleepTimerMinutes'] != null) PlayerSettings.setSleepTimerMinutes(s['sleepTimerMinutes'] as int);
+    if (s['sleepTimerChapters'] != null) PlayerSettings.setSleepTimerChapters(s['sleepTimerChapters'] as int);
+    if (s['streamingCacheSizeMb'] != null) PlayerSettings.setStreamingCacheSizeMb(s['streamingCacheSizeMb'] as int);
+    if (s['seriesSort'] != null) PlayerSettings.setSeriesSort(s['seriesSort'] as String);
+    if (s['seriesSortAsc'] != null) PlayerSettings.setSeriesSortAsc(s['seriesSortAsc'] as bool);
+    if (s['authorSort'] != null) PlayerSettings.setAuthorSort(s['authorSort'] as String);
+    if (s['authorSortAsc'] != null) PlayerSettings.setAuthorSortAsc(s['authorSortAsc'] as bool);
+    if (s['disableAudioFocus'] != null) PlayerSettings.setDisableAudioFocus(s['disableAudioFocus'] as bool);
+    if (s['localServerEnabled'] != null) PlayerSettings.setLocalServerEnabled(s['localServerEnabled'] as bool);
+    if (s['localServerUrl'] != null) PlayerSettings.setLocalServerUrl(s['localServerUrl'] as String);
 
     // AutoRewind (scoped via save())
     final r = data['autoRewind'] as Map<String, dynamic>?;

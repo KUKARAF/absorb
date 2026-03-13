@@ -447,6 +447,7 @@ class LibraryProvider extends ChangeNotifier {
       AudioPlayerService.setOnPlayStartedCallback((key) {
         _checkRollingDownloads(key);
         _checkQueueAutoDownloads(key);
+        _checkAutoDownloadOnStream(key);
       });
       AudioPlayerService.setOnPlaybackStateChangedCallback((playing) {
         if (playing) {
@@ -2320,6 +2321,32 @@ class LibraryProvider extends ChangeNotifier {
     final epId = AudioPlayerService().currentEpisodeId;
     final key = epId != null ? '$itemId-$epId' : itemId;
     _checkQueueAutoDownloads(key);
+  }
+
+  /// Auto-download the currently streaming item if on WiFi.
+  void _checkAutoDownloadOnStream(String playingKey) async {
+    if (_api == null || isOffline) return;
+    final enabled = await PlayerSettings.getAutoDownloadOnStream();
+    if (!enabled) return;
+
+    final connectivity = await Connectivity().checkConnectivity();
+    if (!connectivity.contains(ConnectivityResult.wifi)) return;
+
+    final dl = DownloadService();
+    if (dl.isDownloaded(playingKey) || dl.isDownloading(playingKey)) return;
+
+    final player = AudioPlayerService();
+    final itemId = player.currentItemId;
+    if (itemId == null) return;
+
+    dl.downloadItem(
+      api: _api!,
+      itemId: itemId,
+      title: player.currentTitle ?? '',
+      author: player.currentAuthor ?? '',
+      coverUrl: player.currentCoverUrl,
+      episodeId: player.currentEpisodeId,
+    );
   }
 
   /// Download the next [count]-1 books in the same series as [bookId].

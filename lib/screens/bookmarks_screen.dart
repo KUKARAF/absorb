@@ -21,17 +21,23 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
   bool _loading = true;
   Map<String, List<Bookmark>> _allBookmarks = {};
   bool _selecting = false;
+  String _sort = 'newest';
   // Selected bookmarks as "itemId::bookmarkId" keys
   final Set<String> _selected = {};
 
   @override
   void initState() {
     super.initState();
+    _loadSort();
+  }
+
+  Future<void> _loadSort() async {
+    _sort = await PlayerSettings.getBookmarkSort();
     _load();
   }
 
   Future<void> _load() async {
-    final all = await BookmarkService().getAllBookmarks();
+    final all = await BookmarkService().getAllBookmarks(sort: _sort);
     if (mounted) setState(() { _allBookmarks = all; _loading = false; });
   }
 
@@ -248,12 +254,23 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                           onPressed: _exitSelection,
                         )
                       else ...[
-                        if (_allBookmarks.isNotEmpty)
+                        if (_allBookmarks.isNotEmpty) ...[
+                          IconButton(
+                            icon: Icon(_sort == 'newest' ? Icons.schedule_rounded : Icons.sort_rounded, color: cs.onSurfaceVariant),
+                            tooltip: _sort == 'newest' ? 'Sorted by newest' : 'Sorted by position',
+                            onPressed: () {
+                              final next = _sort == 'newest' ? 'position' : 'newest';
+                              setState(() => _sort = next);
+                              PlayerSettings.setBookmarkSort(next);
+                              _load();
+                            },
+                          ),
                           IconButton(
                             icon: Icon(Icons.checklist_rounded, color: cs.onSurfaceVariant),
                             tooltip: 'Select',
                             onPressed: () => setState(() => _selecting = true),
                           ),
+                        ],
                         IconButton(
                           icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant),
                           onPressed: () => Navigator.pop(context),

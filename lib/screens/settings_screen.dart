@@ -22,7 +22,7 @@ import '../screens/app_shell.dart';
 import '../screens/admin_screen.dart';
 import '../screens/downloads_screen.dart';
 import '../screens/bookmarks_screen.dart';
-import '../main.dart' show applyThemeMode, oledNotifier, snappyTransitionsNotifier;
+import '../main.dart' show applyThemeMode, oledNotifier, snappyTransitionsNotifier, colorSourceNotifier;
 import '../widgets/absorb_page_header.dart';
 import '../widgets/absorb_slider.dart';
 
@@ -37,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   AutoRewindSettings _rewindSettings = const AutoRewindSettings();
   double _defaultSpeed = 1.0;
   bool _wifiOnlyDownloads = false;
+  bool _autoDownloadOnStream = false;
   int _rollingDownloadCount = 3;
   bool _rollingDownloadDeleteFinished = false;
   bool _showBookSlider = false;
@@ -59,6 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _fullScreenPlayer = false;
   bool _snappyTransitions = false;
   String _themeMode = 'dark';
+  String _colorSource = 'wallpaper';
   int _streamingCacheSizeMb = 0;
   bool _localServerEnabled = false;
   String _localServerUrl = '';
@@ -136,6 +138,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PlayerSettings.getLocalServerEnabled(),                  // 31
       PlayerSettings.getLocalServerUrl(),                      // 32
       PlayerSettings.getDisableAudioFocus(),                   // 33
+      PlayerSettings.getAutoDownloadOnStream(),                  // 34
+      PlayerSettings.getColorSource(),                           // 35
     ]);
     final s = results[0] as AutoRewindSettings;
     final speed = results[1] as double;
@@ -171,10 +175,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final localEnabled = results[31] as bool;
     final localUrl = results[32] as String;
     final audioFocusOff = results[33] as bool;
+    final autoDlStream = results[34] as bool;
+    final colorSource = results[35] as String;
     if (mounted) setState(() {
       _rewindSettings = s;
       _defaultSpeed = speed;
       _wifiOnlyDownloads = wifiOnly;
+      _autoDownloadOnStream = autoDlStream;
       _rollingDownloadCount = rollingCount;
       _rollingDownloadDeleteFinished = rollingDelete;
       _showBookSlider = bookSlider;
@@ -197,6 +204,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _fullScreenPlayer = fullScreen;
       _snappyTransitions = snappyTrans;
       _themeMode = theme;
+      _colorSource = colorSource;
       _downloadLocationLabel = dlLabel;
       _totalDownloadSizeBytes = dlSize;
       if (deviceStorage != null) {
@@ -531,6 +539,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 setState(() => _themeMode = mode);
                                 PlayerSettings.setThemeMode(mode);
                                 applyThemeMode(mode);
+                              } : null,
+                              style: const ButtonStyle(
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text('Color source', style: tt.titleSmall),
+                          const SizedBox(height: 4),
+                          Text(
+                            _colorSource == 'cover'
+                                ? 'App colors follow the currently playing book cover'
+                                : 'App colors follow your system wallpaper',
+                            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: SegmentedButton<String>(
+                              showSelectedIcon: false,
+                              segments: const [
+                                ButtonSegment(value: 'wallpaper', label: Text('Wallpaper')),
+                                ButtonSegment(value: 'cover', label: Text('Now Playing')),
+                              ],
+                              selected: {_colorSource},
+                              onSelectionChanged: _loaded ? (selected) {
+                                final source = selected.first;
+                                setState(() => _colorSource = source);
+                                PlayerSettings.setColorSource(source);
+                                colorSourceNotifier.value = source;
                               } : null,
                               style: const ButtonStyle(
                                 visualDensity: VisualDensity.compact,
@@ -1137,6 +1175,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: _loaded ? (v) {
                         setState(() => _wifiOnlyDownloads = v);
                         PlayerSettings.setWifiOnlyDownloads(v);
+                      } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Auto download on Wi-Fi'),
+                      subtitle: Text(
+                        _autoDownloadOnStream
+                            ? 'Books download in the background when you start streaming on Wi-Fi'
+                            : 'Off',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _autoDownloadOnStream,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _autoDownloadOnStream = v);
+                        PlayerSettings.setAutoDownloadOnStream(v);
                       } : null,
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),

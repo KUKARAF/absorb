@@ -8,6 +8,7 @@ import '../services/chromecast_service.dart';
 import '../services/download_service.dart';
 import '../services/scoped_prefs.dart';
 import '../widgets/absorb_page_header.dart';
+import '../main.dart' show oledNotifier;
 import '../widgets/absorbing_card.dart';
 
 class AbsorbingScreen extends StatefulWidget {
@@ -413,6 +414,8 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
     _loadMergeLibraries(); // refresh in case setting changed
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final lowerFade = Color.lerp(cs.surface, scaffoldBg, 0.55) ?? scaffoldBg;
     final lib = context.watch<LibraryProvider>();
     final dl = DownloadService();
     var books = _getAbsorbingBooks(lib);
@@ -449,8 +452,22 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
     final subtleBorder = cs.onSurface.withValues(alpha: 0.08);
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
+      backgroundColor: scaffoldBg,
+      body: Container(
+        decoration: oledNotifier.value ? null : BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: const [0.0, 0.22, 0.72, 1.0],
+            colors: [
+              cs.primary.withValues(alpha: 0.06),
+              cs.surface,
+              lowerFade,
+              scaffoldBg,
+            ],
+          ),
+        ),
+        child: SafeArea(
         child: Column(
           children: [
             // ── Header ──
@@ -668,6 +685,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

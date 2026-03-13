@@ -425,9 +425,14 @@ class SimpleBookmarkSheet extends StatefulWidget {
 
 class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
   List<Bookmark>? _bookmarks;
-  @override void initState() { super.initState(); _load(); }
+  String _sort = 'newest';
+  @override void initState() { super.initState(); _loadSort(); }
+  Future<void> _loadSort() async {
+    _sort = await PlayerSettings.getBookmarkSort();
+    _load();
+  }
   Future<void> _load() async {
-    final bm = await BookmarkService().getBookmarks(widget.itemId);
+    final bm = await BookmarkService().getBookmarks(widget.itemId, sort: _sort);
     if (mounted) setState(() => _bookmarks = bm);
     widget.onChanged();
   }
@@ -445,6 +450,19 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
         Padding(padding: const EdgeInsets.symmetric(vertical: 12),
           child: Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Row(children: [
+          GestureDetector(
+            onTap: () {
+              final next = _sort == 'newest' ? 'position' : 'newest';
+              setState(() => _sort = next);
+              PlayerSettings.setBookmarkSort(next);
+              _load();
+            },
+            child: Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10)),
+              child: Icon(_sort == 'newest' ? Icons.schedule_rounded : Icons.sort_rounded, color: cs.onSurfaceVariant, size: 20),
+            ),
+          ),
           const Spacer(),
           Text('Bookmarks', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
           const Spacer(),

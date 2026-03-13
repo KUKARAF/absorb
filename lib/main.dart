@@ -37,6 +37,13 @@ final ValueNotifier<bool> oledNotifier = ValueNotifier(false);
 /// Whether to disable the fade animation when switching bottom nav tabs.
 final ValueNotifier<bool> snappyTransitionsNotifier = ValueNotifier(false);
 
+/// Color source: 'wallpaper' (system dynamic) or 'cover' (playing book art).
+final ValueNotifier<String> colorSourceNotifier = ValueNotifier('wallpaper');
+
+/// Cover-art-derived ColorScheme for the currently playing item.
+/// null when nothing is playing or cover hasn't loaded yet.
+final ValueNotifier<ColorScheme?> coverSchemeNotifier = ValueNotifier(null);
+
 /// Global key so non-widget code (e.g. providers) can show snackbars.
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
@@ -78,6 +85,7 @@ void main() async {
     final savedTheme = await PlayerSettings.getThemeMode();
     applyThemeMode(savedTheme);
     snappyTransitionsNotifier.value = await PlayerSettings.getSnappyTransitions();
+    colorSourceNotifier.value = await PlayerSettings.getColorSource();
   } catch (_) {}
 
   // Capture Flutter framework errors (widget build failures, etc.)
@@ -122,6 +130,12 @@ class AbsorbApp extends StatelessWidget {
         return ValueListenableBuilder<bool>(
           valueListenable: oledNotifier,
           builder: (context, isOled, _) {
+        return ValueListenableBuilder<String>(
+          valueListenable: colorSourceNotifier,
+          builder: (context, colorSource, _) {
+        return ValueListenableBuilder<ColorScheme?>(
+          valueListenable: coverSchemeNotifier,
+          builder: (context, coverScheme, _) {
         // Set system chrome to match active theme
         final isDark = currentMode == ThemeMode.dark ||
             (currentMode == ThemeMode.system &&
@@ -134,11 +148,18 @@ class AbsorbApp extends StatelessWidget {
           systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
         ));
 
+        final useCover = colorSource == 'cover' && coverScheme != null;
+
         return DynamicColorBuilder(
           builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
             // Absorb is dark-first — use dynamic dark colors or our custom palette
             ColorScheme darkScheme;
-            if (darkDynamic != null) {
+            if (useCover) {
+              darkScheme = ColorScheme.fromSeed(
+                seedColor: coverScheme.primary,
+                brightness: Brightness.dark,
+              );
+            } else if (darkDynamic != null) {
               darkScheme = darkDynamic.harmonized();
             } else {
               darkScheme = ColorScheme.fromSeed(
@@ -161,7 +182,12 @@ class AbsorbApp extends StatelessWidget {
 
             // Light scheme for users who prefer it
             ColorScheme lightScheme;
-            if (lightDynamic != null) {
+            if (useCover) {
+              lightScheme = ColorScheme.fromSeed(
+                seedColor: coverScheme.primary,
+                brightness: Brightness.light,
+              );
+            } else if (lightDynamic != null) {
               lightScheme = lightDynamic.harmonized();
             } else {
               lightScheme = ColorScheme.fromSeed(
@@ -296,6 +322,10 @@ class AbsorbApp extends StatelessWidget {
         );
         },
         );
+        },
+        );
+        },
+        );
       },
     );
   }
@@ -334,6 +364,11 @@ class _AuthGateState extends State<AuthGate> {
     // One-time migration: copy any settings that were written under unscoped
     // keys (before scope was active) to the current user's scoped keys.
     await ScopedPrefs.migrateToScope();
+
+    // Reload settings that were read in main() before scope was active
+    applyThemeMode(await PlayerSettings.getThemeMode());
+    snappyTransitionsNotifier.value = await PlayerSettings.getSnappyTransitions();
+    colorSourceNotifier.value = await PlayerSettings.getColorSource();
 
     // Start auth restoration immediately — it doesn't depend on audio/cast/
     // download services and must not be blocked by a hanging service init.

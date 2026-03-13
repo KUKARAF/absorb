@@ -24,6 +24,7 @@ class DownloadInfo {
   final String? author;
   final String? coverUrl;
   final String? localCoverPath;
+  final String? localDirPath;
 
   DownloadInfo({
     required this.itemId,
@@ -35,6 +36,7 @@ class DownloadInfo {
     this.author,
     this.coverUrl,
     this.localCoverPath,
+    this.localDirPath,
   });
 
   Map<String, dynamic> toJson() => {
@@ -46,6 +48,7 @@ class DownloadInfo {
         'author': author,
         'coverUrl': coverUrl,
         'localCoverPath': localCoverPath,
+        if (localDirPath != null) 'localDirPath': localDirPath,
       };
 
   factory DownloadInfo.fromJson(Map<String, dynamic> json) {
@@ -89,6 +92,7 @@ class DownloadInfo {
       author: author,
       coverUrl: coverUrl,
       localCoverPath: json['localCoverPath'] as String?,
+      localDirPath: json['localDirPath'] as String?,
     );
   }
 }
@@ -109,6 +113,19 @@ class _QueuedDownload {
     this.coverUrl,
     this.episodeId,
   });
+}
+
+/// Sanitize a string for use as a filesystem directory/file name.
+String _sanitizePath(String name) {
+  // Replace filesystem-illegal characters with underscore
+  var s = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+  // Collapse multiple underscores/spaces
+  s = s.replaceAll(RegExp(r'[_\s]+'), ' ').trim();
+  // Fallback for empty result
+  if (s.isEmpty) s = 'Unknown';
+  // Limit length to avoid filesystem issues
+  if (s.length > 100) s = s.substring(0, 100).trim();
+  return s;
 }
 
 class DownloadService extends ChangeNotifier {
@@ -580,6 +597,7 @@ class DownloadService extends ChangeNotifier {
       debugPrint('[Download] startDownload non-fatal error: $e');
     }
 
+    Directory? bookDir;
     try {
       // For episodes, itemId is a composite key like 'podcastId-episodeId'.
       // Extract the real library item ID for the API call.
@@ -597,7 +615,10 @@ class DownloadService extends ChangeNotifier {
       }
 
       final basePath = await downloadBasePath;
-      final bookDir = Directory('$basePath/$itemId');
+      final dirName = (author != null && author.isNotEmpty)
+          ? '${_sanitizePath(author)}/${_sanitizePath(title)}'
+          : _sanitizePath(title);
+      bookDir = Directory('$basePath/$dirName');
       if (!bookDir.existsSync()) {
         bookDir.createSync(recursive: true);
       }
@@ -672,17 +693,33 @@ class DownloadService extends ChangeNotifier {
         final contentUrl = track['contentUrl'] as String? ?? '';
         final fullUrl = api.buildTrackUrl(contentUrl);
 
-        final mimeType = track['mimeType'] as String? ?? 'audio/mpeg';
-        final ext = mimeType.contains('mp4')
-            ? 'm4a'
-            : mimeType.contains('flac')
-                ? 'flac'
-                : mimeType.contains('ogg')
-                    ? 'ogg'
-                    : 'mp3';
+        // Try to get the original filename from track metadata first
+        final trackMeta = track['metadata'] as Map<String, dynamic>?;
+        var originalName = trackMeta?['filename'] as String? ?? '';
+        // Fallback: extract from contentUrl path
+        if (originalName.isEmpty) {
+          final contentPath = Uri.tryParse(contentUrl)?.path ?? contentUrl;
+          originalName = Uri.decodeComponent(contentPath.split('/').last);
+          if (originalName.contains('?')) originalName = originalName.split('?').first;
+        }
 
-        final filePath =
-            '${bookDir.path}/track_${i.toString().padLeft(3, '0')}.$ext';
+        final String fileName;
+        if (originalName.isNotEmpty && originalName.contains('.')) {
+          fileName = _sanitizePath(originalName.replaceAll(RegExp(r'\.[^.]+$'), ''))
+              + originalName.substring(originalName.lastIndexOf('.'));
+        } else {
+          final mimeType = track['mimeType'] as String? ?? 'audio/mpeg';
+          final ext = mimeType.contains('mp4')
+              ? 'm4a'
+              : mimeType.contains('flac')
+                  ? 'flac'
+                  : mimeType.contains('ogg')
+                      ? 'ogg'
+                      : 'mp3';
+          fileName = 'track_${i.toString().padLeft(3, '0')}.$ext';
+        }
+
+        final filePath = '${bookDir!.path}/$fileName';
         final file = File(filePath);
 
         debugPrint('[Download] Track ${i + 1}/${audioTracks.length}: $fullUrl');
@@ -751,6 +788,7 @@ class DownloadService extends ChangeNotifier {
         author: author,
         coverUrl: coverUrl,
         localCoverPath: localCoverPath,
+        localDirPath: bookDir.path,
       );
       await _save();
       notifyListeners();
@@ -772,9 +810,13 @@ class DownloadService extends ChangeNotifier {
     } catch (e) {
       // Clean up partial files on any failure
       try {
-        final basePath = await downloadBasePath;
-        final bookDir = Directory('$basePath/$itemId');
-        if (bookDir.existsSync()) bookDir.deleteSync(recursive: true);
+        if (bookDir != null && bookDir.existsSync()) {
+          bookDir.deleteSync(recursive: true);
+          final parent = bookDir.parent;
+          if (parent.existsSync() && parent.listSync().isEmpty) {
+            parent.deleteSync();
+          }
+        }
       } catch (_) {}
 
       if (_cancelledIds.contains(itemId)) {
@@ -848,10 +890,22 @@ class DownloadService extends ChangeNotifier {
       } catch (_) {}
     }
 
+    // Remove the download directory (new-style path from DownloadInfo, or legacy UUID path)
     try {
-      final basePath = await downloadBasePath;
-      final bookDir = Directory('$basePath/$itemId');
-      if (bookDir.existsSync()) bookDir.deleteSync(recursive: true);
+      final dirPath = info.localDirPath;
+      if (dirPath != null && Directory(dirPath).existsSync()) {
+        Directory(dirPath).deleteSync(recursive: true);
+        // Clean up empty parent (Author folder) if it's now empty
+        final parent = Directory(dirPath).parent;
+        if (parent.existsSync() && parent.listSync().isEmpty) {
+          parent.deleteSync();
+        }
+      } else {
+        // Legacy fallback: UUID-based directory
+        final basePath = await downloadBasePath;
+        final bookDir = Directory('$basePath/$itemId');
+        if (bookDir.existsSync()) bookDir.deleteSync(recursive: true);
+      }
     } catch (_) {}
 
     // Clean up cached cover image (stored separately in internal storage)

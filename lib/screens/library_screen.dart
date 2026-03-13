@@ -11,6 +11,7 @@ import '../services/audio_player_service.dart';
 import '../widgets/absorb_page_header.dart';
 import '../widgets/library_grid_tiles.dart';
 import '../widgets/library_search_results.dart';
+import '../main.dart' show oledNotifier;
 import '../widgets/library_sort_filter_sheet.dart';
 
 // ─── Sort modes ──────────────────────────────────────────────
@@ -909,6 +910,8 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final lowerFade = Color.lerp(cs.surface, scaffoldBg, 0.55) ?? scaffoldBg;
     final lib = context.watch<LibraryProvider>();
     final allLibraries = lib.libraries;
     final hasMultipleLibraries = allLibraries.length > 1;
@@ -916,7 +919,22 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     final hasTabs = _tabController != null && !_isInSearchMode;
 
     return Scaffold(
-      body: SafeArea(
+      backgroundColor: scaffoldBg,
+      body: Container(
+        decoration: oledNotifier.value ? null : BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: const [0.0, 0.22, 0.72, 1.0],
+            colors: [
+              cs.primary.withValues(alpha: 0.06),
+              cs.surface,
+              lowerFade,
+              scaffoldBg,
+            ],
+          ),
+        ),
+        child: SafeArea(
         child: Column(
           children: [
             AbsorbPageHeader(
@@ -974,6 +992,9 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                 ],
                 onChanged: _onSearchChanged,
                 padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+                side: WidgetStatePropertyAll(
+                  BorderSide(color: cs.onSurface.withValues(alpha: 0.08)),
+                ),
               ),
             ),
 
@@ -1008,6 +1029,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
             ),
           ],
         ),
+      ),
       ),
     );
   }

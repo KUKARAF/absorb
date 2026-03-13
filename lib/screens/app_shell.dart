@@ -7,7 +7,9 @@ import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/chromecast_service.dart';
 import '../services/sleep_timer_service.dart';
-import '../main.dart' show snappyTransitionsNotifier;
+import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../main.dart' show snappyTransitionsNotifier, colorSourceNotifier, coverSchemeNotifier;
 import '../services/android_auto_service.dart';
 import '../widgets/expanded_card.dart';
 import 'absorbing_screen.dart';
@@ -53,6 +55,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
   bool _expandedIsOpen = false;
   bool _wasCasting = false;
   DateTime? _lastBackPress;
+  String? _lastCoverItemId; // tracks which item's cover we derived the scheme from
 
   // Lazily build tabs so startup on Absorbing does not initialize Home/Library
   // work until the user actually visits those tabs.
@@ -131,6 +134,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     _player.addListener(_onPlayerChanged);
     _wasCasting = _cast.isCasting;
     _cast.addListener(_onCastChanged);
+    colorSourceNotifier.addListener(_onColorSourceChanged);
+    // Try immediately; _onLibraryChanged picks it up once data loads.
+    _deriveCoverScheme();
+    context.read<LibraryProvider>().addListener(_onLibraryChanged);
   }
 
   @override
@@ -138,9 +145,71 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     _fadeController.dispose();
     _player.removeListener(_onPlayerChanged);
     _cast.removeListener(_onCastChanged);
+    colorSourceNotifier.removeListener(_onColorSourceChanged);
+    try { context.read<LibraryProvider>().removeListener(_onLibraryChanged); } catch (_) {}
     if (_instance == this) _instance = null;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _onColorSourceChanged() {
+    if (colorSourceNotifier.value == 'cover') {
+      _lastCoverItemId = null; // force re-derive
+      _deriveCoverScheme();
+    } else {
+      coverSchemeNotifier.value = null;
+    }
+  }
+
+  void _onLibraryChanged() {
+    // Once absorbing list loads, derive cover scheme if we haven't yet
+    if (colorSourceNotifier.value == 'cover' && coverSchemeNotifier.value == null) {
+      _deriveCoverScheme();
+    }
+  }
+
+  /// Attempt to derive cover scheme. Returns true if successful.
+  bool _deriveCoverScheme() {
+    if (colorSourceNotifier.value != 'cover') return false;
+    // Use player's current item, or fall back to absorbing list's first item
+    var itemId = _player.currentItemId;
+    if (itemId == null) {
+      final lib = context.read<LibraryProvider>();
+      final ids = lib.absorbingBookIds;
+      if (ids.isNotEmpty) {
+        final key = ids.first;
+        // Composite keys are "itemId-episodeId"; extract the item ID
+        itemId = key.length > 36 ? key.substring(0, 36) : key;
+      }
+    }
+    if (itemId == null) {
+      return false;
+    }
+    if (itemId == _lastCoverItemId && coverSchemeNotifier.value != null) return true;
+
+    final lib = context.read<LibraryProvider>();
+    final coverUrl = lib.getCoverUrl(itemId, width: 400);
+    if (coverUrl == null) {
+      return false;
+    }
+    _lastCoverItemId = itemId;
+
+    final ImageProvider provider;
+    if (coverUrl.startsWith('/')) {
+      provider = FileImage(File(coverUrl));
+    } else {
+      provider = CachedNetworkImageProvider(coverUrl, headers: lib.mediaHeaders);
+    }
+
+    final brightness = Theme.of(context).brightness;
+    ColorScheme.fromImageProvider(provider: provider, brightness: brightness)
+        .then((scheme) {
+      coverSchemeNotifier.value = scheme;
+    }).catchError((_) {
+      // Image load failed - allow retry
+      _lastCoverItemId = null;
+    });
+    return true; // cover URL found, image load in progress
   }
 
   void _onPlayerChanged() {
@@ -156,6 +225,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     _playerHadBook = hasBook;
     _wasPlaying = playing;
     _lastItemId = itemId;
+
+    if (itemChanged || newBook) _deriveCoverScheme();
 
     if ((newBook || playStarted || itemChanged) && !_expandedIsOpen) {
       _maybeAutoExpand();

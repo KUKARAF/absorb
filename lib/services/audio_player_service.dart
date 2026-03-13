@@ -106,6 +106,13 @@ class PlayerSettings {
   static Future<bool> getQueueAutoDownload() => _get('queueAutoDownload', false);
   static Future<void> setQueueAutoDownload(bool value) => _set('queueAutoDownload', value);
 
+  static Future<bool> getAutoDownloadOnStream() => _get('autoDownloadOnStream', false);
+  static Future<void> setAutoDownloadOnStream(bool value) => _set('autoDownloadOnStream', value);
+
+  /// Bookmark sort: 'newest' (default) or 'position'
+  static Future<String> getBookmarkSort() => _get('bookmarkSort', 'newest');
+  static Future<void> setBookmarkSort(String value) => _set('bookmarkSort', value);
+
   static Future<bool> getMergeAbsorbingLibraries() => _get('mergeAbsorbingLibraries', false);
   static Future<void> setMergeAbsorbingLibraries(bool value) => _set('mergeAbsorbingLibraries', value);
 
@@ -285,6 +292,9 @@ class PlayerSettings {
 
   static Future<String> getThemeMode() => _get('themeMode', 'dark');
   static Future<void> setThemeMode(String value) => _set('themeMode', value);
+
+  static Future<String> getColorSource() => _get('colorSource', 'wallpaper');
+  static Future<void> setColorSource(String value) => _set('colorSource', value);
 
   /// Check if an item has no audio content.
   /// For minified responses (library list), duration == 0 means no audio files.
@@ -1217,24 +1227,10 @@ class AudioPlayerService extends ChangeNotifier {
       ));
       debugPrint('[AudioSession] Audio focus disabled - mixing with other apps');
 
-      // Still pause for phone calls (AudioInterruptionType.pause)
+      // Ignore all interruption events - can't distinguish Spotify from
+      // phone calls, so disable everything when user opts out of audio focus
       _interruptSub?.cancel();
-      _interruptSub = session.interruptionEventStream.listen((event) async {
-        final service = _instance;
-        if (event.type != AudioInterruptionType.pause) return;
-        if (event.begin) {
-          if (service.isPlaying) {
-            debugPrint('[AudioSession] Phone call - pausing');
-            await service._player?.pause();
-            service._wasPlayingBeforeInterrupt = true;
-          }
-        } else if (service._wasPlayingBeforeInterrupt) {
-          service._wasPlayingBeforeInterrupt = false;
-          await Future.delayed(const Duration(milliseconds: 600));
-          debugPrint('[AudioSession] Phone call ended - resuming');
-          await service.play();
-        }
-      });
+      _interruptSub = null;
 
       // Still pause when headphones/BT disconnect
       _noisySub?.cancel();
