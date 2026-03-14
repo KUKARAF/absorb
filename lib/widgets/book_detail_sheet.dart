@@ -27,6 +27,7 @@ import 'absorbing_shared.dart';
 import 'html_description.dart';
 import 'metadata_lookup_sheet.dart';
 import 'absorb_wave_icon.dart';
+import 'edit_metadata_sheet.dart';
 
 // ─── BOOK DETAIL BOTTOM SHEET ───────────────────────────────
 
@@ -498,7 +499,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                   onTap: () { Navigator.pop(ctx); _resetProgress(context, auth, duration); }),
               if (auth.apiService != null && !lib.isOffline)
                 _moreItem(cs, Icons.manage_search_rounded,
-                  _hasLocalOverride ? 'Re-Lookup Metadata' : 'Lookup Metadata',
+                  _hasLocalOverride ? 'Re-Lookup Local Metadata' : 'Lookup Local Metadata',
                   onTap: () { Navigator.pop(ctx); _openMetadataLookup(context, auth, title, authorName); }),
               if (_hasLocalOverride)
                 _moreItem(cs, Icons.layers_clear_rounded, 'Clear Local Metadata',
@@ -506,6 +507,14 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
               if (_showGoodreads)
                 _moreItem(cs, Icons.local_library_rounded, 'Search on Goodreads',
                   onTap: () { Navigator.pop(ctx); _openGoodreads(title, authorName); }),
+              if (auth.isRoot && !lib.isOffline)
+                _moreItem(cs, Icons.edit_rounded, 'Edit Server Details',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    final media = _item!['media'] as Map<String, dynamic>? ?? {};
+                    final meta = media['metadata'] as Map<String, dynamic>? ?? {};
+                    showEditMetadataSheet(context, itemId: widget.itemId, metadata: meta);
+                  }),
             ]),
           ),
         );
@@ -1067,6 +1076,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
           api: api,
           initialTitle: title,
           initialAuthor: author,
+          currentMetadata: (_item?['media'] as Map<String, dynamic>?)?['metadata'] as Map<String, dynamic>?,
           onApplied: () {
             // Reload the item to show the new override
             _loadItem();

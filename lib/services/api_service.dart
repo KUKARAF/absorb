@@ -1144,6 +1144,50 @@ class ApiService {
     return false;
   }
 
+  /// Update a library item's media metadata (admin/root only).
+  /// Uses POST /api/items/:id/match which requires update permission.
+  Future<bool> updateItemMedia(String itemId, Map<String, dynamic> media) async {
+    try {
+      final r = await http.patch(
+        Uri.parse('$_cleanBaseUrl/api/items/$itemId/media'),
+        headers: _headers,
+        body: jsonEncode({'metadata': media}),
+      ).timeout(const Duration(seconds: 15));
+      debugPrint('[API] updateItemMedia $itemId -> ${r.statusCode}: ${r.body}');
+      return r.statusCode == 200;
+    } catch (e) { debugPrint('updateItemMedia error: $e'); }
+    return false;
+  }
+
+  /// Upload a cover image URL for a library item (admin only)
+  Future<bool> updateItemCoverUrl(String itemId, String url) async {
+    try {
+      final r = await http.post(
+        Uri.parse('$_cleanBaseUrl/api/items/$itemId/cover'),
+        headers: _headers,
+        body: jsonEncode({'url': url}),
+      ).timeout(const Duration(seconds: 30));
+      debugPrint('[API] updateItemCoverUrl $itemId -> ${r.statusCode}: ${r.body}');
+      return r.statusCode == 200;
+    } catch (e) { debugPrint('updateItemCoverUrl error: $e'); }
+    return false;
+  }
+
+  /// Upload a cover image file for a library item (admin only)
+  Future<bool> uploadItemCover(String itemId, String filePath) async {
+    try {
+      final req = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_cleanBaseUrl/api/items/$itemId/cover'),
+      );
+      req.headers.addAll(_headers);
+      req.files.add(await http.MultipartFile.fromPath('cover', filePath));
+      final res = await req.send().timeout(const Duration(seconds: 60));
+      return res.statusCode == 200;
+    } catch (e) { debugPrint('uploadItemCover error: $e'); }
+    return false;
+  }
+
   // ─── Podcast Endpoints ────────────────────────────────────
 
   /// Search for podcasts (uses iTunes)
