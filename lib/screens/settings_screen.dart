@@ -10,7 +10,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:just_audio/just_audio.dart' show AudioPlayer;
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
-import '../services/api_service.dart';
 import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
 import '../services/sleep_timer_service.dart';
@@ -65,6 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _streamingCacheSizeMb = 0;
   bool _localServerEnabled = false;
   String _localServerUrl = '';
+  late final TextEditingController _localServerController;
   bool _disableAudioFocus = false;
   bool _loaded = false;
   String _downloadLocationLabel = 'App Internal Storage (Default)';
@@ -100,7 +100,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _localServerController = TextEditingController();
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _localServerController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSettings() async {
@@ -219,6 +226,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _streamingCacheSizeMb = cacheSizeMb;
       _localServerEnabled = localEnabled;
       _localServerUrl = localUrl;
+      _localServerController.text = localUrl;
       _disableAudioFocus = audioFocusOff;
       _startScreen = startScreen;
       _loaded = true;
@@ -1669,75 +1677,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         child: TextField(
-                          controller: TextEditingController(text: _localServerUrl),
+                          controller: _localServerController,
                           decoration: InputDecoration(
                             labelText: 'Local server URL',
                             hintText: 'http://192.168.1.100:13378',
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             suffixIcon: IconButton(
                               icon: const Icon(Icons.check_rounded),
-                              tooltip: 'Save',
-                              onPressed: () {
-                                // URL is saved via onChanged
+                              tooltip: 'Set',
+                              onPressed: () async {
+                                final url = _localServerController.text.trim();
+                                if (url.isEmpty) return;
+                                _localServerUrl = url;
+                                await auth.setLocalServerConfig(enabled: _localServerEnabled, url: _localServerUrl);
                                 FocusScope.of(context).unfocus();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: const Text('Local server URL saved'),
-                                    behavior: SnackBarBehavior.floating,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
-                                );
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: const Text('Local server URL set - will connect automatically when on your home network'),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ));
+                                // Try connecting right away
+                                await auth.checkLocalServer();
+                                if (mounted) setState(() {});
                               },
                             ),
                           ),
-                          onChanged: (v) {
-                            _localServerUrl = v.trim();
-                            auth.setLocalServerConfig(enabled: _localServerEnabled, url: _localServerUrl);
-                          },
                         ),
                       ),
-                      const Divider(height: 1, indent: 16, endIndent: 16),
-                      ListTile(
-                        leading: Icon(Icons.wifi_find_rounded, color: cs.primary),
-                        title: const Text('Test local connection'),
-                        subtitle: Text(
-                          auth.useLocalServer ? 'Currently using local server' : 'Tap to ping the local server',
-                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                        trailing: auth.useLocalServer
-                            ? Icon(Icons.check_circle_rounded, color: Colors.greenAccent.shade400)
-                            : Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
-                        onTap: () async {
-                          if (_localServerUrl.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: const Text('Enter a local server URL first'),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ));
-                            return;
-                          }
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: const Text('Pinging local server...'),
-                            duration: const Duration(seconds: 1),
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ));
-                          final reachable = await ApiService.pingServer(_localServerUrl)
-                              .timeout(const Duration(seconds: 3), onTimeout: () => false);
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).clearSnackBars();
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text(reachable
-                                ? 'Local server is reachable'
-                                : 'Could not reach local server'),
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ));
-                          if (reachable) {
-                            await auth.checkLocalServer();
-                            if (mounted) setState(() {});
-                          }
-                        },
-                      ),
+                      if (auth.useLocalServer) ...[
+                        const Divider(height: 1, indent: 16, endIndent: 16),
+                        ListTile(
+                          leading: Icon(Icons.check_circle_rounded, color: Colors.greenAccent.shade400),
+                          title: const Text('Connected via local server'),
+                          subtitle: Text(_localServerUrl,
+                            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        ),
+                      ],
                     ],
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     SwitchListTile(

@@ -6,6 +6,7 @@ import '../services/android_auto_service.dart';
 import '../services/audio_player_service.dart';
 import '../services/socket_service.dart';
 import '../services/user_account_service.dart';
+import '../main.dart' show scaffoldMessengerKey;
 
 class AuthProvider extends ChangeNotifier {
   String? _token;
@@ -300,6 +301,9 @@ class AuthProvider extends ChangeNotifier {
     if (_useLocalServer != wasLocal) {
       debugPrint('[Auth] Local server switch: useLocal=$_useLocalServer');
       SocketService().switchServer(activeServerUrl!);
+      _showServerToast(_useLocalServer
+          ? 'Switched to local server'
+          : 'Switched to remote server');
       notifyListeners();
     }
   }
@@ -312,7 +316,23 @@ class AuthProvider extends ChangeNotifier {
     if (_serverUrl != null) {
       SocketService().switchServer(_serverUrl!);
     }
+    _showServerToast('Switched to remote server');
     notifyListeners();
+  }
+
+  void _showServerToast(String message) {
+    try {
+      scaffoldMessengerKey.currentState?.showSnackBar(SnackBar(
+        content: Row(children: [
+          const Icon(Icons.dns_rounded, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          Text(message),
+        ]),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+    } catch (_) {}
   }
 
   /// Update local server settings from the UI.
