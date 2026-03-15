@@ -13,6 +13,9 @@ import '../widgets/book_detail_sheet.dart';
 import '../widgets/card_buttons.dart';
 import '../widgets/episode_list_sheet.dart';
 import '../main.dart' show oledNotifier;
+import '../widgets/home_customize_sheet.dart';
+import '../widgets/playlist_detail_sheet.dart';
+import '../widgets/collection_detail_sheet.dart';
 import 'app_shell.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -27,9 +30,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _hideEbookOnly = false;
 
   // Cached filtered sections — invalidated when source data or settings change.
-  List<dynamic>? _cachedSections;
+  List<Map<String, dynamic>>? _cachedSections;
   List<dynamic>? _cachedClItems;
   List<dynamic>? _lastSectionsRef;
+  List<dynamic>? _lastPlaylistsRef;
+  List<dynamic>? _lastCollectionsRef;
+  List<String>? _lastSectionOrder;
+  Set<String>? _lastHiddenIds;
   bool _lastHideEbook = false;
   bool _lastIsPodcast = false;
 
@@ -78,14 +85,26 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Recompute cached filtered sections only when input data changes.
   void _refreshFilteredCache(LibraryProvider lib) {
     final sections = lib.personalizedSections;
+    final playlists = lib.playlists;
+    final collections = lib.collections;
     final isPod = lib.isPodcastLibrary;
+    final sectionOrder = lib.sectionOrder;
+    final hiddenIds = lib.hiddenSectionIds;
     if (identical(sections, _lastSectionsRef) &&
+        identical(playlists, _lastPlaylistsRef) &&
+        identical(collections, _lastCollectionsRef) &&
+        identical(sectionOrder, _lastSectionOrder) &&
+        identical(hiddenIds, _lastHiddenIds) &&
         _hideEbookOnly == _lastHideEbook &&
         isPod == _lastIsPodcast &&
         _cachedSections != null) {
       return; // cache is still valid
     }
     _lastSectionsRef = sections;
+    _lastPlaylistsRef = playlists;
+    _lastCollectionsRef = collections;
+    _lastSectionOrder = sectionOrder;
+    _lastHiddenIds = hiddenIds;
     _lastHideEbook = _hideEbookOnly;
     _lastIsPodcast = isPod;
 
@@ -106,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }).toList();
     }
     _cachedClItems = clItems;
-    _cachedSections = _sortSections(sections);
+    _cachedSections = lib.getOrderedHomeSections();
   }
 
   @override
@@ -212,17 +231,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  static const _prioritySections = [
-    'continue-listening',
-    'continue-series',
-    'episodes-recently-added',
-    'recently-added',
-    'discover',
-    'listen-again',
-  ];
-
-  static const _hiddenSections = {'newest-authors', 'recent-series'};
-
   static const _sectionLabels = {
     'continue-listening': 'Continue Listening',
     'continue-series': 'Continue Series',
@@ -242,16 +250,6 @@ class _HomeScreenState extends State<HomeScreen> {
     'episodes-recently-added': Icons.podcasts_rounded,
     'downloaded-books': Icons.download_done_rounded,
   };
-
-  List<dynamic> _sortSections(List<dynamic> sections) {
-    final sorted = List<dynamic>.from(sections);
-    sorted.sort((a, b) {
-      final aIdx = _prioritySections.indexOf(a['id'] ?? '');
-      final bIdx = _prioritySections.indexOf(b['id'] ?? '');
-      return (aIdx == -1 ? 999 : aIdx).compareTo(bIdx == -1 ? 999 : bIdx);
-    });
-    return sorted;
-  }
 
   String _titleCase(String s) {
     return s
@@ -363,7 +361,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
-                      if (!lib.isOffline && allLibraries.length > 1)
+                      if (allLibraries.length > 1)
                         Material(
                           color: cs.onSurface.withValues(alpha: 0.06),
                           borderRadius: BorderRadius.circular(20),
@@ -410,68 +408,24 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                         ),
+                      if (!lib.isOffline)
+                        GestureDetector(
+                          onTap: () => HomeCustomizeSheet.show(context),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: cs.onSurface.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+                            ),
+                            child: Icon(Icons.tune_rounded, size: 14, color: cs.onSurfaceVariant),
+                          ),
+                        ),
                     ],
                   ),
                 ),
 
-                // ── Currently Absorbing section ──
-                if (!lib.isLoading)
-                  ...() {
-                    final clItems = _cachedClItems ?? [];
-                    if (clItems.isEmpty) return <Widget>[];
-                    return <Widget>[
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                          child: Row(
-                            children: [
-                              Icon(Icons.play_circle_outline_rounded,
-                                  size: 16,
-                                  color: cs.primary.withValues(alpha: 0.7)),
-                              const SizedBox(width: 8),
-                              Text('Continue Listening',
-                                  style: tt.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w500,
-                                    color: cs.onSurface.withValues(alpha: 0.8),
-                                    letterSpacing: 0.3,
-                                  )),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                  child: Container(
-                                      height: 0.5,
-                                      color: cs.outlineVariant
-                                          .withValues(alpha: 0.2))),
-                            ],
-                          ),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: SizedBox(
-                            height: 92,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 20),
-                              physics: const BouncingScrollPhysics(),
-                              itemCount: clItems.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(width: 10),
-                              itemBuilder: (context, i) {
-                                final item = clItems[i] as Map<String, dynamic>;
-                                return _ContinueListeningCard(
-                                  item: item,
-                                  lib: lib,
-                                  player: _player,
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                    ];
-                  }(),
+                // (Continue Listening is now rendered in the generic sections loop below)
 
                 // ── Loading shimmer ──
                 if (lib.isLoading) ...[
@@ -547,31 +501,100 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
 
-                // ── Other sections ──
+                // ── All sections (including Continue Listening) ──
                 if (!lib.isLoading)
-                  ...(_cachedSections ?? []).map((section) {
-                    final id = section['id'] ?? '';
-                    if (id == 'continue-listening' ||
-                        _hiddenSections.contains(id)) {
-                      return const SliverToBoxAdapter();
+                  ...(_cachedSections ?? []).expand((section) {
+                    final id = section['id'] as String? ?? '';
+                    final isPlaylist = id.startsWith('playlist:');
+                    final isCollection = id.startsWith('collection:');
+
+                    // Playlists/collections are server-only; hide when offline
+                    if ((isPlaylist || isCollection) && lib.isOffline) return <Widget>[];
+
+                    // Continue Listening gets its own compact card layout
+                    if (id == 'continue-listening') {
+                      final clItems = _cachedClItems ?? [];
+                      if (clItems.isEmpty) return <Widget>[];
+                      return <Widget>[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                            child: Row(children: [
+                              Icon(Icons.play_circle_outline_rounded,
+                                  size: 16, color: cs.primary.withValues(alpha: 0.7)),
+                              const SizedBox(width: 8),
+                              Text('Continue Listening',
+                                  style: tt.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                    color: cs.onSurface.withValues(alpha: 0.8),
+                                    letterSpacing: 0.3,
+                                  )),
+                              const SizedBox(width: 12),
+                              Expanded(child: Container(height: 0.5,
+                                  color: cs.outlineVariant.withValues(alpha: 0.2))),
+                            ]),
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: SizedBox(
+                              height: 92,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.symmetric(horizontal: 20),
+                                physics: const BouncingScrollPhysics(),
+                                itemCount: clItems.length,
+                                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                                itemBuilder: (context, i) {
+                                  final item = clItems[i] as Map<String, dynamic>;
+                                  return _ContinueListeningCard(
+                                    item: item, lib: lib, player: _player,
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ];
                     }
+
                     final label = section['label'] ??
                         _sectionLabels[id] ??
                         _titleCase(id);
                     final entities = _filterEbookOnly(
                         (section['entities'] as List<dynamic>?) ?? []);
-                    final type = section['type'] ?? 'book';
-                    if (entities.isEmpty) return const SliverToBoxAdapter();
+                    final type = isPlaylist ? 'playlist'
+                        : isCollection ? 'collection'
+                        : (section['type'] ?? 'book');
+                    if (entities.isEmpty) return <Widget>[];
 
-                    return SliverToBoxAdapter(
-                      child: HomeSection(
-                        title: label,
-                        icon: _sectionIcons[id] ?? Icons.album_outlined,
-                        entities: entities,
-                        sectionType: type,
-                        sectionId: id,
+                    VoidCallback? titleTap;
+                    IconData sectionIcon;
+                    if (isPlaylist) {
+                      titleTap = () => PlaylistDetailSheet.show(
+                          context, section['_playlistId'] as String);
+                      sectionIcon = Icons.playlist_play_rounded;
+                    } else if (isCollection) {
+                      titleTap = () => CollectionDetailSheet.show(
+                          context, section['_collectionId'] as String);
+                      sectionIcon = Icons.collections_bookmark_rounded;
+                    } else {
+                      sectionIcon = _sectionIcons[id] ?? Icons.album_outlined;
+                    }
+
+                    return <Widget>[
+                      SliverToBoxAdapter(
+                        child: HomeSection(
+                          title: label,
+                          icon: sectionIcon,
+                          entities: entities,
+                          sectionType: type,
+                          sectionId: id,
+                          onTitleTap: titleTap,
+                        ),
                       ),
-                    );
+                    ];
                   }),
 
                 const SliverPadding(padding: EdgeInsets.only(bottom: 100)),

@@ -13,6 +13,7 @@ class HomeSection extends StatelessWidget {
   final List<dynamic> entities;
   final String sectionType;
   final String sectionId;
+  final VoidCallback? onTitleTap;
 
   const HomeSection({
     super.key,
@@ -21,6 +22,7 @@ class HomeSection extends StatelessWidget {
     required this.entities,
     required this.sectionType,
     required this.sectionId,
+    this.onTitleTap,
   });
 
   @override
@@ -29,6 +31,7 @@ class HomeSection extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
 
     final isContinueListening = sectionId == 'continue-listening';
+    final isPlaylistSection = sectionType == 'playlist';
     final isAuthorSection = sectionType == 'author' || sectionType == 'authors';
     final isSeriesSection = sectionType == 'series';
     final isEpisodeSection = sectionType == 'episode';
@@ -50,28 +53,37 @@ class HomeSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Section header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Icon(icon, size: 16, color: cs.primary.withValues(alpha: 0.7)),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: tt.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: cs.onSurface.withValues(alpha: 0.8),
-                    letterSpacing: 0.3,
+          GestureDetector(
+            onTap: onTitleTap,
+            behavior: onTitleTap != null ? HitTestBehavior.opaque : HitTestBehavior.deferToChild,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16, color: cs.primary.withValues(alpha: 0.7)),
+                  const SizedBox(width: 8),
+                  Text(
+                    title,
+                    style: tt.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: cs.onSurface.withValues(alpha: 0.8),
+                      letterSpacing: 0.3,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    height: 0.5,
-                    color: cs.outlineVariant.withValues(alpha: 0.2),
+                  if (onTitleTap != null) ...[
+                    const SizedBox(width: 4),
+                    Icon(Icons.chevron_right_rounded, size: 16,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
+                  ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      height: 0.5,
+                      color: cs.outlineVariant.withValues(alpha: 0.2),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -83,7 +95,26 @@ class HomeSection extends StatelessWidget {
               cardWidth: cardWidth,
               itemCount: entities.length,
               itemBuilder: (context, index) {
-                final entity = entities[index];
+                var entity = entities[index];
+
+                // Playlist items nest actual item under 'libraryItem'
+                if (isPlaylistSection && entity is Map<String, dynamic>) {
+                  final inner = entity['libraryItem'] as Map<String, dynamic>?;
+                  if (inner != null) {
+                    // Merge episodeId into the item for episode detection
+                    final episodeId = entity['episodeId'] as String?;
+                    entity = Map<String, dynamic>.from(inner);
+                    if (episodeId != null) {
+                      // Find the matching episode from the podcast's episodes
+                      final media = entity['media'] as Map<String, dynamic>? ?? {};
+                      final episodes = media['episodes'] as List<dynamic>? ?? [];
+                      final ep = episodes.cast<Map<String, dynamic>>().where(
+                        (e) => e['id'] == episodeId,
+                      ).firstOrNull;
+                      if (ep != null) entity['recentEpisode'] = ep;
+                    }
+                  }
+                }
 
                 if (isAuthorSection) {
                   return SizedBox(

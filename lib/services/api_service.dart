@@ -1356,4 +1356,261 @@ class ApiService {
     } catch (e) { debugPrint('deletePodcastEpisode error: $e'); }
     return false;
   }
+
+  // ── Playlists ──────────────────────────────────────────────────────────
+
+  /// GET /api/libraries/:libraryId/playlists
+  Future<List<dynamic>> getLibraryPlaylists(String libraryId) async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$_cleanBaseUrl/api/libraries/$libraryId/playlists'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 15));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        return (data['results'] as List<dynamic>?) ?? [];
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// GET /api/playlists/:id
+  Future<Map<String, dynamic>?> getPlaylist(String playlistId) async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$_cleanBaseUrl/api/playlists/$playlistId'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// POST /api/playlists
+  Future<Map<String, dynamic>?> createPlaylist(
+    String libraryId,
+    String name, {
+    List<Map<String, dynamic>> items = const [],
+  }) async {
+    try {
+      final resp = await http.post(
+        Uri.parse('$_cleanBaseUrl/api/playlists'),
+        headers: _headers,
+        body: jsonEncode({
+          'libraryId': libraryId,
+          'name': name,
+          'items': items,
+        }),
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// PATCH /api/playlists/:id
+  Future<Map<String, dynamic>?> updatePlaylist(
+    String playlistId, {
+    String? name,
+    List<Map<String, dynamic>>? items,
+  }) async {
+    try {
+      final body = <String, dynamic>{};
+      if (name != null) body['name'] = name;
+      if (items != null) body['items'] = items;
+      final resp = await http.patch(
+        Uri.parse('$_cleanBaseUrl/api/playlists/$playlistId'),
+        headers: _headers,
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// DELETE /api/playlists/:id
+  Future<bool> deletePlaylist(String playlistId) async {
+    try {
+      final resp = await http.delete(
+        Uri.parse('$_cleanBaseUrl/api/playlists/$playlistId'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 10));
+      return resp.statusCode == 200;
+    } catch (_) {}
+    return false;
+  }
+
+  /// POST /api/playlists/:id/item
+  Future<Map<String, dynamic>?> addItemToPlaylist(
+    String playlistId,
+    String libraryItemId, {
+    String? episodeId,
+  }) async {
+    try {
+      final body = <String, dynamic>{'libraryItemId': libraryItemId};
+      if (episodeId != null) body['episodeId'] = episodeId;
+      final resp = await http.post(
+        Uri.parse('$_cleanBaseUrl/api/playlists/$playlistId/item'),
+        headers: _headers,
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// DELETE /api/playlists/:id/item/:libraryItemId/:episodeId
+  Future<Map<String, dynamic>?> removeItemFromPlaylist(
+    String playlistId,
+    String libraryItemId, {
+    String? episodeId,
+  }) async {
+    try {
+      var path = '$_cleanBaseUrl/api/playlists/$playlistId/item/$libraryItemId';
+      if (episodeId != null) path += '/$episodeId';
+      final resp = await http.delete(
+        Uri.parse(path),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // ── Collections ────────────────────────────────────────────────────────
+
+  /// GET /api/libraries/:libraryId/collections
+  Future<List<dynamic>> getLibraryCollections(String libraryId) async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$_cleanBaseUrl/api/libraries/$libraryId/collections'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 15));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        return (data['results'] as List<dynamic>?) ?? [];
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// GET /api/collections/:id
+  Future<Map<String, dynamic>?> getCollection(String collectionId) async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$_cleanBaseUrl/api/collections/$collectionId'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// POST /api/collections
+  Future<Map<String, dynamic>?> createCollection(
+    String libraryId,
+    String name, {
+    String? description,
+    List<String> books = const [],
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'libraryId': libraryId,
+        'name': name,
+        'books': books,
+      };
+      if (description != null) body['description'] = description;
+      final resp = await http.post(
+        Uri.parse('$_cleanBaseUrl/api/collections'),
+        headers: _headers,
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// PATCH /api/collections/:id
+  Future<Map<String, dynamic>?> updateCollection(
+    String collectionId, {
+    String? name,
+    String? description,
+    List<String>? books,
+  }) async {
+    try {
+      final body = <String, dynamic>{};
+      if (name != null) body['name'] = name;
+      if (description != null) body['description'] = description;
+      if (books != null) body['books'] = books;
+      final resp = await http.patch(
+        Uri.parse('$_cleanBaseUrl/api/collections/$collectionId'),
+        headers: _headers,
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// DELETE /api/collections/:id
+  Future<bool> deleteCollection(String collectionId) async {
+    try {
+      final resp = await http.delete(
+        Uri.parse('$_cleanBaseUrl/api/collections/$collectionId'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 10));
+      return resp.statusCode == 200;
+    } catch (_) {}
+    return false;
+  }
+
+  /// POST /api/collections/:id/books
+  Future<Map<String, dynamic>?> addBookToCollection(
+    String collectionId,
+    String libraryItemId,
+  ) async {
+    try {
+      final resp = await http.post(
+        Uri.parse('$_cleanBaseUrl/api/collections/$collectionId/book'),
+        headers: _headers,
+        body: jsonEncode({'id': libraryItemId}),
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// DELETE /api/collections/:id/books/:libraryItemId
+  Future<Map<String, dynamic>?> removeBookFromCollection(
+    String collectionId,
+    String libraryItemId,
+  ) async {
+    try {
+      final resp = await http.delete(
+        Uri.parse('$_cleanBaseUrl/api/collections/$collectionId/book/$libraryItemId'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
 }

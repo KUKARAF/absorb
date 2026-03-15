@@ -11,6 +11,7 @@ import '../services/chromecast_service.dart';
 import '../providers/auth_provider.dart';
 import 'card_buttons.dart';
 import 'html_description.dart';
+import 'playlist_picker_sheet.dart';
 
 /// Bottom sheet that shows a podcast's episode list.
 /// Mirrors the UX of [BookDetailSheet] but adapted for podcast shows.
@@ -1061,6 +1062,16 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                     }
                   }
                 }),
+              if (!lib.isOffline)
+                _moreItem(cs, Icons.playlist_add_rounded, 'Add to Playlist',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    PlaylistPickerSheet.show(
+                      context,
+                      widget.podcastItem['id'] as String,
+                      episodeId: widget.episode['id'] as String?,
+                    );
+                  }),
               if (progress > 0 || isFinished)
                 _moreItem(cs, Icons.restart_alt_rounded, 'Reset Progress',
                   onTap: () { Navigator.pop(ctx); _resetProgress(context); }),

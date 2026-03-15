@@ -26,6 +26,8 @@ import 'series_books_sheet.dart';
 import 'absorbing_shared.dart';
 import 'html_description.dart';
 import 'metadata_lookup_sheet.dart';
+import 'playlist_picker_sheet.dart';
+import 'collection_picker_sheet.dart';
 import 'absorb_wave_icon.dart';
 import 'edit_metadata_sheet.dart';
 
@@ -129,9 +131,27 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     if (dl.sessionData != null) {
       try {
         final session = jsonDecode(dl.sessionData!) as Map<String, dynamic>;
+        // Prefer full libraryItem if it wasn't stripped
         final localItem = session['libraryItem'] as Map<String, dynamic>?;
         if (localItem != null && mounted) {
           setState(() { _item = localItem; _isLoading = false; });
+          return;
+        }
+        // Build a synthetic item from session-level fields (mediaMetadata,
+        // chapters, duration) which survive the libraryItem strip.
+        final meta = session['mediaMetadata'] as Map<String, dynamic>?;
+        if (meta != null && mounted) {
+          setState(() {
+            _item = {
+              'id': widget.itemId,
+              'media': {
+                'metadata': meta,
+                'duration': session['duration'],
+                'chapters': session['chapters'],
+              },
+            };
+            _isLoading = false;
+          });
           return;
         }
       } catch (_) {}
@@ -490,6 +510,18 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                     }
                   }
                 }),
+              if (!lib.isOffline)
+                _moreItem(cs, Icons.playlist_add_rounded, 'Add to Playlist',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    PlaylistPickerSheet.show(context, widget.itemId);
+                  }),
+              if (!lib.isOffline && !lib.isPodcastLibrary && auth.isRoot)
+                _moreItem(cs, Icons.collections_bookmark_rounded, 'Add to Collection',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    CollectionPickerSheet.show(context, widget.itemId);
+                  }),
               if (ebookFile != null)
                 _moreItem(cs, _ebookSaved ? Icons.download_done_rounded : Icons.save_alt_rounded,
                   _ebookSaved ? 'Download eBook Again' : 'Download eBook',

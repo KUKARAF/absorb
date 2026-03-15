@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import 'author_books_sheet.dart';
 
 class AuthorCard extends StatelessWidget {
   final Map<String, dynamic> author;
@@ -28,7 +29,11 @@ class AuthorCard extends StatelessWidget {
     final headers = lib.mediaHeaders;
 
     return InkWell(
-      onTap: () {},
+      onTap: () {
+        if (authorId.isNotEmpty) {
+          showAuthorDetailSheet(context, authorId: authorId, authorName: name);
+        }
+      },
       borderRadius: BorderRadius.circular(16),
       child: Column(
         mainAxisSize: MainAxisSize.min,

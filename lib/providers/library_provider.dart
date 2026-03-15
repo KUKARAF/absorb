@@ -52,6 +52,21 @@ class LibraryProvider extends ChangeNotifier {
     'listen-again',
   ];
 
+  // Playlists
+  List<dynamic> _playlists = [];
+  bool _isLoadingPlaylists = false;
+  Future<void>? _playlistsInFlight;
+
+  // Collections
+  List<dynamic> _collections = [];
+  bool _isLoadingCollections = false;
+  Future<void>? _collectionsInFlight;
+
+  // Section customization
+  List<String> _sectionOrder = [];
+  Set<String> _hiddenSectionIds = {};
+  bool _applyDefaultPlaylistCollectionHiding = false;
+
   // Per-series/show rolling download opt-in
   Set<String> _rollingDownloadSeries = {};
 
@@ -178,9 +193,14 @@ class LibraryProvider extends ChangeNotifier {
 
   /// Build home sections from downloaded books.
   void _buildOfflineSections() {
-    final downloads = DownloadService().downloadedItems;
+    final isPodcast = isPodcastLibrary;
+    // Only show downloads matching the current library type
+    final allDownloads = DownloadService().downloadedItems;
+    final downloads = allDownloads
+        .where((dl) => (dl.itemId.length > 36) == isPodcast)
+        .toList();
     debugPrint(
-        '[Library] Building offline sections: ${downloads.length} downloads');
+        '[Library] Building offline sections: ${downloads.length}/${allDownloads.length} downloads (${isPodcast ? "podcast" : "book"})');
     if (downloads.isEmpty) {
       _personalizedSections = [];
       _errorMessage = null;
@@ -189,8 +209,11 @@ class LibraryProvider extends ChangeNotifier {
       return;
     }
 
-    // Build fake entities from download metadata
-    final entities = <Map<String, dynamic>>[];
+    // Build fake entities from download metadata.
+    // Split in-progress downloads into a continue-listening section so Home
+    // can show them as compact cards, while the rest go to downloaded-books.
+    final continueEntities = <Map<String, dynamic>>[];
+    final downloadedEntities = <Map<String, dynamic>>[];
     for (final dl in downloads) {
       // Try to extract duration from cached session data
       double duration = 0;
@@ -208,10 +231,11 @@ class LibraryProvider extends ChangeNotifier {
 
       // Podcast downloads use compound key "showId-episodeId"
       final isCompound = dl.itemId.length > 36;
+      late final Map<String, dynamic> entity;
       if (isCompound) {
         final showId = dl.itemId.substring(0, 36);
         final episodeId = dl.itemId.substring(37);
-        entities.add({
+        entity = {
           'id': showId,
           '_absorbingKey': dl.itemId,
           'recentEpisode': {
@@ -226,9 +250,9 @@ class LibraryProvider extends ChangeNotifier {
             'duration': duration,
             'chapters': chapters,
           },
-        });
+        };
       } else {
-        entities.add({
+        entity = {
           'id': dl.itemId,
           'media': {
             'metadata': {
@@ -238,18 +262,39 @@ class LibraryProvider extends ChangeNotifier {
             'duration': duration,
             'chapters': chapters,
           },
-        });
+        };
+      }
+
+      final progress = _resetItems.contains(dl.itemId)
+          ? 0.0
+          : _localProgressOverrides[dl.itemId] ??
+              (_progressMap[dl.itemId]?['progress'] as num?)?.toDouble() ??
+              0.0;
+      final isFinished =
+          _progressMap[dl.itemId]?['isFinished'] == true || progress >= 0.999;
+
+      if (progress > 0 && !isFinished) {
+        continueEntities.add(entity);
+      } else {
+        downloadedEntities.add(entity);
       }
     }
 
-    final isPodcast = isPodcastLibrary;
     _personalizedSections = [
-      {
-        'id': 'downloaded-books',
-        'label': isPodcast ? 'Downloaded Episodes' : 'Downloaded Books',
-        'type': isPodcast ? 'podcast' : 'book',
-        'entities': entities,
-      },
+      if (continueEntities.isNotEmpty)
+        {
+          'id': 'continue-listening',
+          'label': 'Continue Listening',
+          'type': isPodcast ? 'podcast' : 'book',
+          'entities': continueEntities,
+        },
+      if (downloadedEntities.isNotEmpty)
+        {
+          'id': 'downloaded-books',
+          'label': isPodcast ? 'Downloaded Episodes' : 'Downloaded Books',
+          'type': isPodcast ? 'podcast' : 'book',
+          'entities': downloadedEntities,
+        },
     ];
     _errorMessage = null;
     _isLoading = false;
@@ -266,6 +311,12 @@ class LibraryProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isLoadingSeries => _isLoadingSeries;
   String? get errorMessage => _errorMessage;
+  List<dynamic> get playlists => _playlists;
+  bool get isLoadingPlaylists => _isLoadingPlaylists;
+  List<dynamic> get collections => _collections;
+  bool get isLoadingCollections => _isLoadingCollections;
+  List<String> get sectionOrder => _sectionOrder;
+  Set<String> get hiddenSectionIds => _hiddenSectionIds;
 
   /// Get progress (0.0–1.0) for a library item by ID.
   /// Checks local progress first (freshest), falls back to server data.
@@ -729,6 +780,7 @@ class LibraryProvider extends ChangeNotifier {
   /// Handle collection changes from socket.
   void _onRemoteCollectionUpdated() {
     loadPersonalizedView(force: true);
+    loadCollections();
   }
 
   /// Handle current user updated from socket.
@@ -813,6 +865,7 @@ class LibraryProvider extends ChangeNotifier {
               ? bookLibraries.first['id']
               : _libraries.first['id'];
         }
+        await _loadSectionPrefs();
         await loadPersonalizedView(force: true);
       }
     } catch (e) {
@@ -836,7 +889,10 @@ class LibraryProvider extends ChangeNotifier {
   Future<void> selectLibrary(String libraryId) async {
     _selectedLibraryId = libraryId;
     _series = [];
+    _playlists = [];
+    _collections = [];
     await ScopedPrefs.setString('last_selected_library', libraryId);
+    await _loadSectionPrefs();
     notifyListeners();
     await loadPersonalizedView(force: true);
     AndroidAutoService().refresh(force: true);
@@ -912,6 +968,10 @@ class LibraryProvider extends ChangeNotifier {
       if (isPodcastLibrary) {
         _hydrateRssFeedFieldsDeferred();
       }
+
+      // Load playlists and collections alongside personalized view
+      loadPlaylists();
+      loadCollections();
     } catch (e) {
       if (_isLikelyNetworkError(e)) {
         _goOffline();
@@ -1174,6 +1234,347 @@ class LibraryProvider extends ChangeNotifier {
 
     _isLoadingSeries = false;
     notifyListeners();
+  }
+
+  // ── Playlists ──────────────────────────────────────────────────────────
+
+  Future<void> loadPlaylists({bool force = false}) async {
+    if (_api == null || _selectedLibraryId == null || isOffline) return;
+
+    final existing = _playlistsInFlight;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+
+    final inFlight = _doLoadPlaylists();
+    _playlistsInFlight = inFlight;
+    try {
+      await inFlight;
+    } finally {
+      if (identical(_playlistsInFlight, inFlight)) {
+        _playlistsInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _doLoadPlaylists() async {
+    _isLoadingPlaylists = true;
+    try {
+      _playlists = await _api!.getLibraryPlaylists(_selectedLibraryId!);
+    } catch (_) {}
+    _isLoadingPlaylists = false;
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>?> createPlaylist(String name) async {
+    if (_api == null || _selectedLibraryId == null) return null;
+    final result = await _api!.createPlaylist(_selectedLibraryId!, name);
+    if (result != null) {
+      _playlists = [..._playlists, result];
+      notifyListeners();
+    }
+    return result;
+  }
+
+  Future<bool> addToPlaylist(
+    String playlistId,
+    String libraryItemId, {
+    String? episodeId,
+  }) async {
+    if (_api == null) return false;
+    final updated = await _api!.addItemToPlaylist(
+      playlistId, libraryItemId, episodeId: episodeId,
+    );
+    if (updated != null) {
+      // Reload full playlist data to get populated libraryItem fields
+      await _doLoadPlaylists();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> removeFromPlaylist(
+    String playlistId,
+    String libraryItemId, {
+    String? episodeId,
+  }) async {
+    if (_api == null) return false;
+    final updated = await _api!.removeItemFromPlaylist(
+      playlistId, libraryItemId, episodeId: episodeId,
+    );
+    if (updated != null) {
+      await _doLoadPlaylists();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> reorderPlaylistItems(
+    String playlistId,
+    List<Map<String, dynamic>> reorderedItems,
+  ) async {
+    if (_api == null) return false;
+    // Send just libraryItemId + episodeId for each item
+    final itemRefs = reorderedItems.map((item) {
+      final ref = <String, dynamic>{'libraryItemId': item['libraryItemId']};
+      final eid = item['episodeId'] as String?;
+      if (eid != null) ref['episodeId'] = eid;
+      return ref;
+    }).toList();
+    final updated = await _api!.updatePlaylist(playlistId, items: itemRefs);
+    if (updated != null) {
+      await _doLoadPlaylists();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> deletePlaylist(String playlistId) async {
+    if (_api == null) return false;
+    final ok = await _api!.deletePlaylist(playlistId);
+    if (ok) {
+      _playlists = _playlists.where((p) => (p as Map)['id'] != playlistId).toList();
+      _hiddenSectionIds.remove('playlist:$playlistId');
+      _sectionOrder.remove('playlist:$playlistId');
+      await _saveSectionPrefs();
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  // ── Collections ──────────────────────────────────────────────────────
+
+  Future<void> loadCollections({bool force = false}) async {
+    if (_api == null || _selectedLibraryId == null || isOffline) return;
+
+    final existing = _collectionsInFlight;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+
+    final inFlight = _doLoadCollections();
+    _collectionsInFlight = inFlight;
+    try {
+      await inFlight;
+    } finally {
+      if (identical(_collectionsInFlight, inFlight)) {
+        _collectionsInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _doLoadCollections() async {
+    _isLoadingCollections = true;
+    try {
+      _collections = await _api!.getLibraryCollections(_selectedLibraryId!);
+    } catch (_) {}
+    _isLoadingCollections = false;
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>?> createCollection(String name, {List<String> books = const []}) async {
+    if (_api == null || _selectedLibraryId == null) return null;
+    final result = await _api!.createCollection(_selectedLibraryId!, name, books: books);
+    if (result != null) {
+      await _doLoadCollections();
+    }
+    return result;
+  }
+
+  Future<bool> addToCollection(String collectionId, String libraryItemId) async {
+    if (_api == null) return false;
+    final updated = await _api!.addBookToCollection(collectionId, libraryItemId);
+    if (updated != null) {
+      await _doLoadCollections();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> removeFromCollection(String collectionId, String libraryItemId) async {
+    if (_api == null) return false;
+    final updated = await _api!.removeBookFromCollection(collectionId, libraryItemId);
+    if (updated != null) {
+      await _doLoadCollections();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> reorderCollectionBooks(
+    String collectionId,
+    List<String> bookIds,
+  ) async {
+    if (_api == null) return false;
+    final updated = await _api!.updateCollection(collectionId, books: bookIds);
+    if (updated != null) {
+      await _doLoadCollections();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> deleteCollection(String collectionId) async {
+    if (_api == null) return false;
+    final ok = await _api!.deleteCollection(collectionId);
+    if (ok) {
+      _collections = _collections.where((c) => (c as Map)['id'] != collectionId).toList();
+      _hiddenSectionIds.remove('collection:$collectionId');
+      _sectionOrder.remove('collection:$collectionId');
+      await _saveSectionPrefs();
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  // ── Section Customization ─────────────────────────────────────────────
+
+  Future<void> _loadSectionPrefs() async {
+    final libId = _selectedLibraryId ?? '';
+    final orderJson = await ScopedPrefs.getStringList('home_section_order_$libId');
+    final hiddenJson = await ScopedPrefs.getStringList('home_hidden_sections_$libId');
+    _sectionOrder = orderJson.toList();
+    // If user has never customized (both order and hidden are empty),
+    // apply default hidden sections plus all playlists/collections
+    if (hiddenJson.isEmpty && orderJson.isEmpty) {
+      _hiddenSectionIds = Set<String>.from(_defaultHiddenSections);
+      _applyDefaultPlaylistCollectionHiding = true;
+    } else {
+      _hiddenSectionIds = hiddenJson.toSet();
+      _applyDefaultPlaylistCollectionHiding = false;
+    }
+  }
+
+  Future<void> _saveSectionPrefs() async {
+    final libId = _selectedLibraryId ?? '';
+    await ScopedPrefs.setStringList('home_section_order_$libId', _sectionOrder);
+    await ScopedPrefs.setStringList('home_hidden_sections_$libId', _hiddenSectionIds.toList());
+  }
+
+  Future<void> saveSectionOrder(List<String> order) async {
+    _sectionOrder = List<String>.from(order);
+    _applyDefaultPlaylistCollectionHiding = false;
+    await _saveSectionPrefs();
+    notifyListeners();
+  }
+
+  Future<void> toggleSectionVisibility(String sectionId) async {
+    final updated = Set<String>.from(_hiddenSectionIds);
+    if (updated.contains(sectionId)) {
+      updated.remove(sectionId);
+    } else {
+      updated.add(sectionId);
+    }
+    _hiddenSectionIds = updated;
+    await _saveSectionPrefs();
+    notifyListeners();
+  }
+
+  // Sections hidden by default (low-value ABS sections)
+  static const _defaultHiddenSections = {'newest-authors', 'recent-series'};
+
+  /// Merge server sections + playlist sections, apply user ordering and visibility.
+  List<Map<String, dynamic>> getOrderedHomeSections() {
+    // Collect all available section IDs
+    final allSections = <String, Map<String, dynamic>>{};
+
+    // Server sections
+    for (final s in _personalizedSections) {
+      final id = (s as Map)['id'] as String? ?? '';
+      if (id.isEmpty) continue;
+      allSections[id] = Map<String, dynamic>.from(s);
+    }
+
+    // Playlist sections
+    for (final p in _playlists) {
+      final pm = p as Map<String, dynamic>;
+      final id = 'playlist:${pm['id']}';
+      allSections[id] = {
+        'id': id,
+        'label': pm['name'] ?? 'Playlist',
+        'type': 'playlist',
+        'entities': (pm['items'] as List<dynamic>?) ?? [],
+        '_playlistId': pm['id'],
+      };
+    }
+
+    // Collection sections
+    for (final c in _collections) {
+      final cm = c as Map<String, dynamic>;
+      final id = 'collection:${cm['id']}';
+      allSections[id] = {
+        'id': id,
+        'label': 'Server Collection - ${cm['name'] ?? 'Collection'}',
+        'type': 'collection',
+        'entities': (cm['books'] as List<dynamic>?) ?? [],
+        '_collectionId': cm['id'],
+      };
+    }
+
+    // Filter hidden
+    allSections.removeWhere((id, _) => _hiddenSectionIds.contains(id));
+    // When user hasn't customized, hide playlists/collections by default
+    if (_applyDefaultPlaylistCollectionHiding) {
+      allSections.removeWhere((id, _) =>
+          id.startsWith('playlist:') || id.startsWith('collection:'));
+    }
+
+    // Order
+    if (_sectionOrder.isEmpty) {
+      // Default: server sections in their natural order, playlists/collections after
+      final result = <Map<String, dynamic>>[];
+      for (final s in _personalizedSections) {
+        final id = (s as Map)['id'] as String? ?? '';
+        if (allSections.containsKey(id)) result.add(allSections[id]!);
+      }
+      for (final p in _playlists) {
+        final id = 'playlist:${(p as Map)['id']}';
+        if (allSections.containsKey(id)) result.add(allSections[id]!);
+      }
+      for (final c in _collections) {
+        final id = 'collection:${(c as Map)['id']}';
+        if (allSections.containsKey(id)) result.add(allSections[id]!);
+      }
+      return result;
+    }
+
+    final result = <Map<String, dynamic>>[];
+    // Ordered items first
+    for (final id in _sectionOrder) {
+      if (allSections.containsKey(id)) {
+        result.add(allSections.remove(id)!);
+      }
+    }
+    // Remaining items (new sections not yet in order) at the end
+    result.addAll(allSections.values);
+    return result;
+  }
+
+  /// All available section IDs and labels (for customize sheet).
+  List<Map<String, String>> getAllSectionMeta() {
+    final result = <Map<String, String>>[];
+    for (final s in _personalizedSections) {
+      final id = (s as Map)['id'] as String? ?? '';
+      final label = s['label'] as String? ?? id;
+      if (id.isNotEmpty) result.add({'id': id, 'label': label});
+    }
+    for (final p in _playlists) {
+      final pm = p as Map<String, dynamic>;
+      result.add({
+        'id': 'playlist:${pm['id']}',
+        'label': pm['name'] as String? ?? 'Playlist',
+      });
+    }
+    for (final c in _collections) {
+      final cm = c as Map<String, dynamic>;
+      result.add({
+        'id': 'collection:${cm['id']}',
+        'label': 'Server Collection - ${cm['name'] as String? ?? 'Collection'}',
+      });
+    }
+    return result;
   }
 
   /// Register an item's updatedAt timestamp for cover cache-busting.
