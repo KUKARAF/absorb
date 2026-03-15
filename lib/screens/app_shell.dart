@@ -17,6 +17,7 @@ import 'home_screen.dart';
 import 'library_screen.dart';
 import 'stats_screen.dart';
 import 'settings_screen.dart';
+import '../widgets/welcome_sheet.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -148,6 +149,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     // Try immediately; _onLibraryChanged picks it up once data loads.
     _deriveCoverScheme();
     context.read<LibraryProvider>().addListener(_onLibraryChanged);
+    WelcomeSheet.showIfNeeded(context);
   }
 
   @override

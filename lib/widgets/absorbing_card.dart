@@ -22,6 +22,7 @@ import '../services/chromecast_service.dart';
 import '../services/progress_sync_service.dart';
 import 'expanded_card.dart';
 import '../screens/car_mode_screen.dart';
+import 'notes_sheet.dart';
 
 class AbsorbingCard extends StatefulWidget {
   final Map<String, dynamic> item;
@@ -1027,6 +1028,12 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
           accent: accent, isActive: true, alwaysEnabled: true, large: large,
           onTap: () => _openCarMode(context),
         );
+      case 'notes':
+        return CardWideButton(
+          icon: Icons.note_rounded, label: 'Notes',
+          accent: accent, isActive: true, alwaysEnabled: true, large: large,
+          onTap: () => _showNotes(context, accent),
+        );
       default:
         return const SizedBox.shrink();
     }
@@ -1134,9 +1141,22 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
           icon: Icons.directions_car_rounded, label: 'Car Mode', accent: accent,
           onTap: () { Navigator.pop(ctx); _openCarMode(context); },
         );
+      case 'notes':
+        return MoreMenuItem(
+          icon: Icons.note_rounded, label: 'Notes', accent: accent,
+          onTap: () { Navigator.pop(ctx); _showNotes(context, accent); },
+        );
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  void _showNotes(BuildContext context, Color accent) {
+    NotesSheet.show(context,
+      itemId: _itemId,
+      itemTitle: _title,
+      accent: accent,
+    );
   }
 
   void _openCarMode(BuildContext context) {

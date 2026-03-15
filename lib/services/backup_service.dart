@@ -121,6 +121,17 @@ class BackupService {
       }
     }
 
+    // Notes for current account (scoped)
+    final notes = <String, String>{};
+    final notesPrefix = scope.isNotEmpty ? '$scope:notes_' : 'notes_';
+    for (final key in prefs.getKeys()) {
+      if (key.startsWith(notesPrefix)) {
+        final itemId = key.substring(notesPrefix.length);
+        final value = prefs.getString(key);
+        if (value != null && value.isNotEmpty) notes[itemId] = value;
+      }
+    }
+
     // Saved ebooks (scoped)
     final savedEbooks = await ScopedPrefs.getStringList('saved_ebooks');
 
@@ -154,6 +165,7 @@ class BackupService {
       'bookSpeeds': bookSpeeds,
       'offlineMode': offlineMode,
       'bookmarks': bookmarks,
+      'notes': notes,
       'savedEbooks': savedEbooks,
       'rollingDownloadSeries': rollingDownloadSeries,
       'accounts': accounts,
@@ -283,6 +295,14 @@ class BackupService {
       for (final entry in bookmarks.entries) {
         final list = (entry.value as List<dynamic>).cast<String>();
         await ScopedPrefs.setStringList('bookmarks_${entry.key}', list);
+      }
+    }
+
+    // Notes (scoped)
+    final notes = data['notes'] as Map<String, dynamic>?;
+    if (notes != null) {
+      for (final entry in notes.entries) {
+        await ScopedPrefs.setString('notes_${entry.key}', entry.value as String);
       }
     }
 
