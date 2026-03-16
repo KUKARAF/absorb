@@ -685,6 +685,22 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
   @override
   void dispose() { _pollingQueue = false; _tabCtrl.dispose(); super.dispose(); }
 
+  Future<void> _removeShow() async {
+    final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Remove Show?'),
+      content: Text('Remove "$_title" and all its episodes from the server? This cannot be undone.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Remove', style: TextStyle(color: Colors.red.shade300)))],
+    ));
+    if (yes != true) return;
+    final api = context.read<AuthProvider>().apiService; if (api == null) return;
+    final ok = await api.deleteLibraryItem(_podcastId);
+    if (mounted) {
+      if (ok) { _msg('Removed "$_title"'); widget.onChanged(); Navigator.pop(context); }
+      else _msg('Failed to remove show');
+    }
+  }
+
   Future<void> _reloadItem() async {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     try {
@@ -780,6 +796,8 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
           child: Row(children: [
             IconButton(icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface.withValues(alpha: 0.54)), onPressed: () => Navigator.pop(context)),
             const Spacer(),
+            if (auth.isRoot)
+              IconButton(icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade300, size: 22), tooltip: 'Remove show', onPressed: _removeShow),
           ])),
 
         // Show info

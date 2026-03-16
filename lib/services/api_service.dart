@@ -1357,6 +1357,18 @@ class ApiService {
     return false;
   }
 
+  /// Delete a library item (e.g. remove a podcast show)
+  Future<bool> deleteLibraryItem(String itemId) async {
+    try {
+      final r = await http.delete(
+        Uri.parse('$_cleanBaseUrl/api/items/$itemId'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 15));
+      return r.statusCode == 200;
+    } catch (e) { debugPrint('deleteLibraryItem error: $e'); }
+    return false;
+  }
+
   // ── Playlists ──────────────────────────────────────────────────────────
 
   /// GET /api/libraries/:libraryId/playlists
