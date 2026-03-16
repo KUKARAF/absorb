@@ -2132,8 +2132,8 @@ class AudioPlayerService extends ChangeNotifier {
         _lastSyncSecond = sec;
         _saveProgressLocal(absolutePos);
 
-        // Also sync to server every 15 seconds (unless manual offline)
-        if (sec % 15 == 0) {
+        // Also sync to server every 60 seconds (unless manual offline)
+        if (sec % 60 == 0) {
           final prefs = await SharedPreferences.getInstance();
           final manualOffline = prefs.getBool('manual_offline_mode') ?? false;
 
