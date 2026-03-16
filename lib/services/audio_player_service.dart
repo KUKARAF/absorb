@@ -308,6 +308,27 @@ class PlayerSettings {
     _notify();
   }
 
+  // ── Card button layout ──
+
+  static const defaultButtonLayout = 'standard';
+
+  static int buttonCountForLayout(String layout) {
+    switch (layout) {
+      case 'compact': return 3;
+      case 'standard': return 4;
+      case 'row': return 5;
+      case 'expanded': return 6;
+      case 'full': return 9;
+      default: return 4;
+    }
+  }
+
+  static Future<String> getCardButtonLayout() => _get('card_button_layout', defaultButtonLayout);
+  static Future<void> setCardButtonLayout(String value) async {
+    await _set('card_button_layout', value);
+    _notify();
+  }
+
   // ── Appearance ──
 
   static Future<String> getThemeMode() => _get('themeMode', 'dark');
@@ -950,6 +971,8 @@ class AudioPlayerService extends ChangeNotifier {
   StreamSubscription? _syncSub;
   StreamSubscription? _completionSub;
   Timer? _bgSaveTimer;
+  Timer? _pauseStopTimer;
+  static const _pauseStopTimeout = Duration(minutes: 10);
   /// Last known position in seconds — used to detect end→0 position jumps.
   double _lastKnownPositionSec = 0;
   // ── Stream error retry tracking ──
@@ -2294,6 +2317,8 @@ class AudioPlayerService extends ChangeNotifier {
 
   Future<void> play() async {
     debugPrint('[Service] play() called — lastPause=${_lastPauseTime != null}');
+    _pauseStopTimer?.cancel();
+    _pauseStopTimer = null;
     _noisyPause = false; // User explicitly resumed — allow interrupt-resume again
     // Auto-rewind on resume if enabled
     if (_lastPauseTime != null && _player != null) {
@@ -2354,6 +2379,15 @@ class AudioPlayerService extends ChangeNotifier {
           : _currentItemId!;
       _progressSync.syncToServer(api: _api!, itemId: syncKey);
     }
+
+    // Auto-stop foreground service after 10 min of being paused to save battery.
+    // The service keeps running briefly to survive notification interruptions,
+    // but we don't want it alive indefinitely draining battery overnight.
+    _pauseStopTimer?.cancel();
+    _pauseStopTimer = Timer(_pauseStopTimeout, () {
+      debugPrint('[Player] Pause timeout - stopping foreground service to save battery');
+      stop();
+    });
   }
 
   Future<void> togglePlayPause() async {
@@ -2452,6 +2486,8 @@ class AudioPlayerService extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _pauseStopTimer?.cancel();
+    _pauseStopTimer = null;
     // Save final position locally
     if (_currentItemId != null) {
       final pos = position;
@@ -2508,6 +2544,7 @@ class AudioPlayerService extends ChangeNotifier {
   void dispose() {
     _syncSub?.cancel();
     _bgSaveTimer?.cancel();
+    _pauseStopTimer?.cancel();
     _indexSub?.cancel();
     _player?.dispose();
     super.dispose();
