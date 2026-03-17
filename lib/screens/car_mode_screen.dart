@@ -179,6 +179,7 @@ class _CarModeScreenState extends State<CarModeScreen>
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
+        bottom: false,
         child: LayoutBuilder(builder: (context, constraints) {
           final h = constraints.maxHeight;
           // Compact when in multi-window / small height
@@ -518,7 +519,7 @@ class _CarModeScreenState extends State<CarModeScreen>
                 ],
               ),
 
-              SizedBox(height: compact ? 2 : 8),
+              SizedBox(height: (compact ? 2 : 8) + MediaQuery.of(context).viewPadding.bottom),
             ],
           );
         }),
