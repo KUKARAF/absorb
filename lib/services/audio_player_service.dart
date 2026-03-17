@@ -402,12 +402,6 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   int _cachedForwardSkip = 30;
   int _cachedBackSkip = 10;
 
-  // Samsung (One UI) and OnePlus/Oppo/Realme (ColorOS) rearrange media session buttons.
-  static bool get _isReorderingOEM {
-    final m = ApiService.deviceManufacturer.toLowerCase();
-    return m == 'samsung' || m == 'oneplus' || m == 'oppo' || m == 'realme';
-  }
-
   AudioPlayer get player => _player;
 
   void bindService(AudioPlayerService service) => _service = service;
@@ -455,34 +449,10 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       action: MediaAction.fastForward,
     );
 
-    // Chapter navigation controls — use widget icons (no tint attr, white fill)
-    final prevChapterControl = MediaControl.custom(
-      androidIcon: 'drawable/ic_widget_prev_chapter',
-      label: 'Previous chapter',
-      name: 'previousChapter',
-    );
-    final nextChapterControl = MediaControl.custom(
-      androidIcon: 'drawable/ic_widget_next_chapter',
-      label: 'Next chapter',
-      name: 'nextChapter',
-    );
-
-    // Samsung (One UI) rearranges our 5-button array: it displays indices
-    // [3, 0, 2, 1, 4] from our input.  Send the inverse permutation so the
-    // visual result is prevChapter | skipBack | play/pause | skipForward | nextChapter.
-    // Samsung-specific input: [rewind, fastForward, playPause, prevChapter, nextChapter]
-    // → Samsung displays: [fastForward→pos0… wait, inverse] → correct visual order.
-    final List<MediaControl> controls;
-    final List<int> compactIndices;
-    if (_isReorderingOEM) {
-      controls = [rewindControl, fastForwardControl, playPause, prevChapterControl, nextChapterControl];
-      // Compact: rewind(0), play/pause(2), fastForward(1)
-      compactIndices = const [0, 2, 1];
-    } else {
-      // Standard: prevChapter | skipBack | play/pause | skipForward | nextChapter
-      controls = [prevChapterControl, rewindControl, playPause, fastForwardControl, nextChapterControl];
-      compactIndices = const [1, 2, 3];
-    }
+    // 3 controls: rewind | play | forward. Consistent icons across phone
+    // notification, AA, and WearOS. Chapter navigation via AA queue browser.
+    final controls = [rewindControl, playPause, fastForwardControl];
+    final compactIndices = const [0, 1, 2];
 
     return PlaybackState(
       controls: controls,
@@ -622,12 +592,6 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       await _player.seek(pos);
     }
   }
-
-  // Note: skipToNext/skipToPrevious are intentionally NOT overridden here.
-  // Android Auto renders controls based on which actions the handler declares.
-  // Overriding skip methods causes Auto to show track-skip icons instead
-  // of the rewind/forward circular arrows we want for audiobooks.
-  // Headset button presses route through onClick() below instead.
 
   // Custom click handler with proper multi-press detection
   Timer? _clickTimer;
