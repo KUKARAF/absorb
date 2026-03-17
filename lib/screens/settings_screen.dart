@@ -68,6 +68,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _fullScreenPlayer = false;
   String _cardButtonLayout = 'standard';
   bool _snappyTransitions = false;
+  bool _rectangleCovers = false;
   String _themeMode = 'dark';
   String _colorSource = 'wallpaper';
   int _startScreen = 2;
@@ -161,6 +162,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PlayerSettings.getStartScreen(),                           // 36
       PlayerSettings.getPodcastQueueMode(),                      // 37
       PlayerSettings.getCardButtonLayout(),                        // 38
+      PlayerSettings.getRectangleCovers(),                           // 39
     ]);
     final s = results[0] as AutoRewindSettings;
     final speed = results[1] as double;
@@ -201,6 +203,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final startScreen = results[36] as int;
     final podcastQueueMode = results[37] as String;
     final cardBtnLayout = results[38] as String;
+    final rectCovers = results[39] as bool;
     if (mounted) setState(() {
       _rewindSettings = s;
       _defaultSpeed = speed;
@@ -245,6 +248,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _disableAudioFocus = audioFocusOff;
       _startScreen = startScreen;
       _cardButtonLayout = cardBtnLayout;
+      _rectangleCovers = rectCovers;
       _loaded = true;
     });
   }
@@ -689,6 +693,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         snappyTransitionsNotifier.value = v;
                       } : null,
                     ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Rectangle book covers'),
+                      subtitle: Text(
+                        _rectangleCovers ? 'Covers display in 2:3 book proportion' : 'Covers are square',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _rectangleCovers,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _rectangleCovers = v);
+                        PlayerSettings.setRectangleCovers(v);
+                      } : null,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -1111,6 +1127,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ? 'Rewinds every time you resume, even after quick interruptions'
                             : 'Only rewinds if paused for ${_rewindSettings.activationDelay.round()}+ seconds',
                           style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 11)),
+                      ),
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                      SwitchListTile(
+                        title: const Text('Chapter barrier'),
+                        subtitle: Text(
+                          "Don't rewind past the start of the current chapter",
+                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        value: _rewindSettings.chapterBarrier,
+                        onChanged: (v) => _saveRewind(AutoRewindSettings(
+                          enabled: true,
+                          minRewind: _rewindSettings.minRewind,
+                          maxRewind: _rewindSettings.maxRewind,
+                          activationDelay: _rewindSettings.activationDelay,
+                          chapterBarrier: v,
+                        )),
                       ),
                       const Divider(height: 1, indent: 16, endIndent: 16),
                       Padding(

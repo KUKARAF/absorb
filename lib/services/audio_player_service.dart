@@ -25,12 +25,14 @@ class AutoRewindSettings {
   final double minRewind;
   final double maxRewind;
   final double activationDelay; // seconds — how long pause must be before rewind kicks in
+  final bool chapterBarrier; // don't rewind past the start of the current chapter
 
   const AutoRewindSettings({
     this.enabled = true,
     this.minRewind = 1.0,
     this.maxRewind = 30.0,
     this.activationDelay = 0.0, // 0 = always rewind on resume
+    this.chapterBarrier = false,
   });
 
   static Future<AutoRewindSettings> load() async {
@@ -39,6 +41,7 @@ class AutoRewindSettings {
       minRewind: await ScopedPrefs.getDouble('autoRewind_min') ?? 1.0,
       maxRewind: await ScopedPrefs.getDouble('autoRewind_max') ?? 30.0,
       activationDelay: await ScopedPrefs.getDouble('autoRewind_delay') ?? 0.0,
+      chapterBarrier: await ScopedPrefs.getBool('autoRewind_chapterBarrier') ?? false,
     );
   }
 
@@ -47,6 +50,7 @@ class AutoRewindSettings {
     await ScopedPrefs.setDouble('autoRewind_min', minRewind);
     await ScopedPrefs.setDouble('autoRewind_max', maxRewind);
     await ScopedPrefs.setDouble('autoRewind_delay', activationDelay);
+    await ScopedPrefs.setBool('autoRewind_chapterBarrier', chapterBarrier);
   }
 }
 
@@ -273,6 +277,9 @@ class PlayerSettings {
 
   static Future<bool> getSnappyTransitions() => _get('snappyTransitions', false);
   static Future<void> setSnappyTransitions(bool value) => _set('snappyTransitions', value);
+
+  static Future<bool> getRectangleCovers() => _get('rectangleCovers', false);
+  static Future<void> setRectangleCovers(bool value) => _set('rectangleCovers', value, notify: true);
 
   // ── Audio focus ──
 
@@ -2332,6 +2339,17 @@ class AudioPlayerService extends ChangeNotifier {
           final currentAbsolutePos = position.inMilliseconds / 1000.0;
           var newPosSeconds = currentAbsolutePos - rewindSeconds;
           if (newPosSeconds < 0) newPosSeconds = 0;
+          // Chapter barrier: don't rewind past the current chapter start
+          if (settings.chapterBarrier && _chapters.isNotEmpty) {
+            for (final ch in _chapters) {
+              final start = (ch['start'] as num?)?.toDouble() ?? 0;
+              final end = (ch['end'] as num?)?.toDouble() ?? 0;
+              if (currentAbsolutePos >= start && currentAbsolutePos < end) {
+                if (newPosSeconds < start) newPosSeconds = start;
+                break;
+              }
+            }
+          }
           await _seekAbsolute(newPosSeconds);
           _logEvent(PlaybackEventType.autoRewind,
               detail: '${rewindSeconds.toStringAsFixed(1)}s rewind');
