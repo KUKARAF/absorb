@@ -65,6 +65,9 @@ class BackupService {
       'disableAudioFocus': await PlayerSettings.getDisableAudioFocus(),
       'localServerEnabled': await PlayerSettings.getLocalServerEnabled(),
       'localServerUrl': await PlayerSettings.getLocalServerUrl(),
+      'startScreen': await PlayerSettings.getStartScreen(),
+      'cardButtonLayout': await PlayerSettings.getCardButtonLayout(),
+      'rectangleCovers': await PlayerSettings.getRectangleCovers(),
     };
 
     // AutoRewind (scoped)
@@ -74,6 +77,7 @@ class BackupService {
       'min': rewind.minRewind,
       'max': rewind.maxRewind,
       'delay': rewind.activationDelay,
+      'chapterBarrier': rewind.chapterBarrier,
     };
 
     // AutoSleep (scoped)
@@ -242,6 +246,9 @@ class BackupService {
     if (s['disableAudioFocus'] != null) PlayerSettings.setDisableAudioFocus(s['disableAudioFocus'] as bool);
     if (s['localServerEnabled'] != null) PlayerSettings.setLocalServerEnabled(s['localServerEnabled'] as bool);
     if (s['localServerUrl'] != null) PlayerSettings.setLocalServerUrl(s['localServerUrl'] as String);
+    if (s['startScreen'] != null) PlayerSettings.setStartScreen(s['startScreen'] as int);
+    if (s['cardButtonLayout'] != null) PlayerSettings.setCardButtonLayout(s['cardButtonLayout'] as String);
+    if (s['rectangleCovers'] != null) PlayerSettings.setRectangleCovers(s['rectangleCovers'] as bool);
 
     // AutoRewind (scoped via save())
     final r = data['autoRewind'] as Map<String, dynamic>?;
@@ -251,6 +258,7 @@ class BackupService {
         minRewind: (r['min'] as num?)?.toDouble() ?? 1.0,
         maxRewind: (r['max'] as num?)?.toDouble() ?? 30.0,
         activationDelay: (r['delay'] as num?)?.toDouble() ?? 0.0,
+        chapterBarrier: r['chapterBarrier'] as bool? ?? false,
       ).save();
     }
 
