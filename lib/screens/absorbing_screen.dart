@@ -240,28 +240,6 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
     await lib.refresh();
   }
 
-  /// Confirm before syncing when idle — server positions will overwrite local.
-  Future<void> _confirmAndSync(LibraryProvider lib) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Sync with server?'),
-        content: const Text(
-          'This will pull fresh positions from the server. '
-          'Any local progress will be replaced with whatever '
-          'the server has.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sync')),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _isSyncing = true);
-    await _pullRefresh();
-    if (mounted) setState(() => _isSyncing = false);
-  }
 
   /// Derive the absorbing key for an item map: compound "itemId-episodeId" for
   /// podcast episodes, plain "itemId" for books.
@@ -522,18 +500,11 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Unified button: "Sync" when idle, "Stop & Sync" when playing
-                if (!effectiveOffline)
+                // Stop button (visible when playing)
+                if (_player.hasBook)
                   GestureDetector(
-                    onTap: _isSyncing ? null : () {
-                      if (_player.hasBook) {
-                        _stopAndRefresh(lib);
-                      } else {
-                        _confirmAndSync(lib);
-                      }
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
+                    onTap: _isSyncing ? null : () => _stopAndRefresh(lib),
+                    child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
                         color: subtleBg,
@@ -542,52 +513,32 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          if (_isSyncing) ...[
-                            SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: muted)),
-                            const SizedBox(width: 6),
-                            Text('Syncing…', style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w500)),
-                          ] else if (_player.hasBook) ...[
-                            Icon(Icons.stop_rounded, size: 14, color: muted),
-                            const SizedBox(width: 4),
-                            Text('Stop & Sync', style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w500)),
-                          ] else ...[
-                            Icon(Icons.sync_rounded, size: 14, color: muted),
-                            const SizedBox(width: 4),
-                            Text('Sync', style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w500)),
-                          ],
+                          Icon(Icons.stop_rounded, size: 14, color: muted),
+                          const SizedBox(width: 4),
+                          Text('Stop', style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w500)),
                         ],
                       ),
                     ),
                   )
-                else
-                  // Offline: just stop button (no sync)
-                  AnimatedOpacity(
-                    opacity: _player.hasBook ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 300),
-                    child: IgnorePointer(
-                      ignoring: !_player.hasBook,
-                      child: GestureDetector(
-                        onTap: () => _stopAndRefresh(lib),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: subtleBg,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: subtleBorder),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.stop_rounded, size: 14, color: muted),
-                              const SizedBox(width: 4),
-                              Text('Stop', style: TextStyle(color: muted, fontSize: 11, fontWeight: FontWeight.w500)),
-                            ],
-                          ),
-                        ),
+                // Refresh button (visible when idle + online)
+                else if (!effectiveOffline)
+                  GestureDetector(
+                    onTap: _isSyncing ? null : () async {
+                      setState(() => _isSyncing = true);
+                      await _pullRefresh();
+                      if (mounted) setState(() => _isSyncing = false);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: subtleBg,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: subtleBorder),
                       ),
+                      child: _isSyncing
+                          ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5, color: muted))
+                          : Icon(Icons.refresh_rounded, size: 14, color: muted),
                     ),
                   ),
               if (books.length > 1) ...[

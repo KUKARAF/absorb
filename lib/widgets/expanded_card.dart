@@ -95,9 +95,6 @@ class _ExpandedCardState extends State<ExpandedCard> {
   // Our own route, captured for popUntil when modals are stacked above us
   Route<dynamic>? _ownRoute;
 
-  // Swipe-down-to-dismiss
-  double _dragOffset = 0;
-
   // Current item data (may change if a new book starts)
   late Map<String, dynamic> _item;
 
@@ -245,17 +242,16 @@ class _ExpandedCardState extends State<ExpandedCard> {
     widget.player.removeListener(_onPlayerChanged);
     ChromecastService().removeListener(_onCastChanged);
     _chapterTrackSub?.cancel();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final nav = Navigator.of(context, rootNavigator: true);
-      // Pop all routes above us (e.g. open modals/sheets) plus our own route
-      if (_ownRoute != null) {
-        nav.popUntil((route) => route == _ownRoute);
-        nav.pop();
-      } else {
-        nav.pop();
-      }
-    });
+    if (!mounted) return;
+    final nav = Navigator.of(context, rootNavigator: true);
+    if (!nav.canPop()) return;
+    // Pop all routes above us (e.g. open modals/sheets) plus our own route
+    if (_ownRoute != null) {
+      nav.popUntil((route) => route == _ownRoute);
+      if (nav.canPop()) nav.pop();
+    } else {
+      nav.pop();
+    }
   }
 
   void _handleItemChange(String newItemId, String? newEpisodeId) {
@@ -505,25 +501,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
 
     return Scaffold(
       backgroundColor: cs.surface,
-      body: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onVerticalDragUpdate: (details) {
-          final newOffset = _dragOffset + details.delta.dy;
-          if (newOffset < 0) return; // only allow downward
-          setState(() => _dragOffset = newOffset);
-        },
-        onVerticalDragEnd: (details) {
-          if (_dragOffset > 100 || details.velocity.pixelsPerSecond.dy > 500) {
-            _dismissExpanded();
-          } else {
-            setState(() => _dragOffset = 0);
-          }
-        },
-        child: Transform.translate(
-          offset: Offset(0, _dragOffset),
-          child: Opacity(
-            opacity: (1.0 - (_dragOffset / 400)).clamp(0.5, 1.0),
-            child: Stack(
+      body: Stack(
               fit: StackFit.expand,
               children: [
                 // Layer 1: Blurred cover background
@@ -587,7 +565,10 @@ class _ExpandedCardState extends State<ExpandedCard> {
                       const SizedBox(height: 16),
                       // ── Cover art (larger — 90% width) ──
                       Flexible(
-                        child: Padding(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _dismissExpanded,
+                          child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: ListenableBuilder(
                             listenable: ChromecastService(),
@@ -745,6 +726,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
                           ),
                         ),
                       ),
+                      ),
                       const SizedBox(height: 24),
                       // ── Chapter scrubber ──
                       Padding(
@@ -832,9 +814,6 @@ class _ExpandedCardState extends State<ExpandedCard> {
                 ),
               ],
             ),
-          ),
-        ),
-      ),
     );
   }
 

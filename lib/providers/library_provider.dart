@@ -742,11 +742,21 @@ class LibraryProvider extends ChangeNotifier {
     // playing item. The player is the source of truth while active.
     // This prevents rollbacks when the network drops and reconnects with
     // stale server progress.
+    // Exception: if the server marked the item finished (e.g. user paused
+    // near the end and the server's "mark finished with N seconds remaining"
+    // threshold fired) AND the player is paused, update the finished state
+    // so the absorbing card reflects it. Don't interrupt active playback -
+    // let _onPlaybackComplete handle that naturally.
     final player = AudioPlayerService();
     final playingKey = player.currentEpisodeId != null
         ? '${player.currentItemId}-${player.currentEpisodeId}'
         : player.currentItemId;
-    if (key == playingKey && player.hasBook) return;
+    if (key == playingKey && player.hasBook) {
+      if (mp['isFinished'] == true && !player.isPlaying) {
+        markFinishedLocally(key, skipAutoAdvance: true);
+      }
+      return;
+    }
     _progressMap[key] = mp;
     _localProgressOverrides.remove(key);
     _resetItems.remove(key);
@@ -1787,6 +1797,10 @@ class LibraryProvider extends ChangeNotifier {
       for (final key in continueSeriesKeys) {
         if (!existingIds.contains(key)) {
           _absorbingIdsAdd(key, afterKey: _lastFinishedItemId);
+          // Protect from pruning on future refreshes (the server may not
+          // include it in continue-series again until the user starts it).
+          _manualAbsorbAdds.add(key);
+          _manualAbsorbRemoves.remove(key);
           newContinueSeriesKey ??= key; // first new item is the next in series
         }
       }
