@@ -1467,7 +1467,7 @@ class AudioPlayerService extends ChangeNotifier {
     // Notify rolling download listener that a new item is playing
     _onPlayStartedCallback?.call(progressKey);
 
-    // Check for local saved position (always prefer local — it's the freshest)
+    // Check for local saved position
     final localPos = await _progressSync.getSavedPosition(progressKey);
     if (localPos > 0 && startTime == 0) {
       startTime = localPos;
@@ -1627,11 +1627,13 @@ class AudioPlayerService extends ChangeNotifier {
             }
           }
 
-          // Compare server position vs local — always use whichever is further ahead.
-          // You can't un-listen to a book, so the furthest position is the most recent.
-          // (Session updatedAt is unreliable — it reflects session creation time, not
-          // when progress was actually last updated.)
+          // Compare server position vs local.
+          // Usually the furthest position wins, but if local is ahead we also
+          // check timestamps: a stale local save (e.g. from a crashed write)
+          // shouldn't override a more recently synced server position.
           final serverPos = (sessionData['currentTime'] as num?)?.toDouble() ?? 0;
+          final pKey = _currentEpisodeId != null ? '$itemId-$_currentEpisodeId' : itemId;
+          final localTs = await _progressSync.getSavedTimestamp(pKey);
           if (serverPos > startTime + 1.0) {
             debugPrint('[Player] Server position is ahead: server=${serverPos}s vs local=${startTime}s — using server');
             startTime = serverPos;
@@ -1642,7 +1644,23 @@ class AudioPlayerService extends ChangeNotifier {
               speed: 1.0,
             );
           } else if (startTime > 0) {
-            debugPrint('[Player] Local position is ahead: local=${startTime}s vs server=${serverPos}s — keeping local');
+            // Local is ahead — verify via timestamp that this isn't stale data.
+            // Fetch the server's lastUpdate to compare with the local save time.
+            bool useServer = false;
+            if (localTs > 0) {
+              try {
+                final serverProgress = await _api!.getItemProgress(pKey);
+                final serverLastUpdate = (serverProgress?['lastUpdate'] as num?)?.toInt() ?? 0;
+                if (serverLastUpdate > localTs) {
+                  debugPrint('[Player] Local position is ahead but stale: local=${startTime}s (ts=$localTs) vs server=${serverPos}s (ts=$serverLastUpdate) — using server');
+                  startTime = serverPos;
+                  useServer = true;
+                }
+              } catch (_) {}
+            }
+            if (!useServer) {
+              debugPrint('[Player] Local position is ahead: local=${startTime}s vs server=${serverPos}s — keeping local');
+            }
           } else if (serverPos > 0) {
             debugPrint('[Player] No local position, using server: ${serverPos}s');
             startTime = serverPos;
@@ -1794,14 +1812,31 @@ class AudioPlayerService extends ChangeNotifier {
       }
     }
 
-    // Compare server position vs local — always use whichever is further ahead.
-    // You can't un-listen to a book, so the furthest position is the most recent.
+    // Compare server position vs local.
+    // Usually the furthest position wins, but if local is ahead we also
+    // check timestamps to catch stale local saves.
     final serverPos = (sessionData['currentTime'] as num?)?.toDouble() ?? 0;
+    final pKey = _currentEpisodeId != null ? '$itemId-$_currentEpisodeId' : itemId;
+    final localTs = await _progressSync.getSavedTimestamp(pKey);
     if (serverPos > startTime + 1.0) {
       debugPrint('[Player] Server position is ahead: server=${serverPos}s vs local=${startTime}s — using server');
       startTime = serverPos;
     } else if (startTime > 0) {
-      debugPrint('[Player] Local position is ahead: local=${startTime}s vs server=${serverPos}s — keeping local');
+      bool useServer = false;
+      if (localTs > 0) {
+        try {
+          final serverProgress = await api.getItemProgress(pKey);
+          final serverLastUpdate = (serverProgress?['lastUpdate'] as num?)?.toInt() ?? 0;
+          if (serverLastUpdate > localTs) {
+            debugPrint('[Player] Local position is ahead but stale: local=${startTime}s (ts=$localTs) vs server=${serverPos}s (ts=$serverLastUpdate) — using server');
+            startTime = serverPos;
+            useServer = true;
+          }
+        } catch (_) {}
+      }
+      if (!useServer) {
+        debugPrint('[Player] Local position is ahead: local=${startTime}s vs server=${serverPos}s — keeping local');
+      }
     } else if (serverPos > 0) {
       debugPrint('[Player] No local position, using server: ${serverPos}s');
       startTime = serverPos;

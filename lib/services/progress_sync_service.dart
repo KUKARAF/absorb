@@ -91,6 +91,12 @@ class ProgressSyncService {
     return (data?['currentTime'] as num?)?.toDouble() ?? 0;
   }
 
+  /// Get the saved timestamp (milliseconds since epoch) for an item.
+  Future<int> getSavedTimestamp(String itemId) async {
+    final data = await getLocal(itemId);
+    return (data?['timestamp'] as num?)?.toInt() ?? 0;
+  }
+
   /// Delete locally saved progress for an item.
   Future<void> deleteLocal(String itemId) async {
     await ScopedPrefs.remove('progress_$itemId');
