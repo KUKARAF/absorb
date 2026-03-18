@@ -67,13 +67,21 @@ class NowPlayingWidget : AppWidgetProvider() {
         private fun roundBitmap(bitmap: Bitmap, radiusDp: Float, context: Context): Bitmap {
             val density = context.resources.displayMetrics.density
             val radiusPx = radiusDp * density
-            val output = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+            // Scale bitmap to a consistent size so corner radius maps correctly
+            val maxPx = (150 * density).toInt()
+            val src = if (maxOf(bitmap.width, bitmap.height) > maxPx) {
+                val scale = maxPx.toFloat() / maxOf(bitmap.width, bitmap.height)
+                Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
+            } else {
+                bitmap
+            }
+            val output = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(output)
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-            val rect = RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
+            val rect = RectF(0f, 0f, src.width.toFloat(), src.height.toFloat())
             canvas.drawRoundRect(rect, radiusPx, radiusPx, paint)
             paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
-            canvas.drawBitmap(bitmap, 0f, 0f, paint)
+            canvas.drawBitmap(src, 0f, 0f, paint)
             return output
         }
 
@@ -151,7 +159,7 @@ class NowPlayingWidget : AppWidgetProvider() {
                         val options = BitmapFactory.Options().apply { inSampleSize = 2 }
                         val bitmap = BitmapFactory.decodeFile(file.absolutePath, options)
                         if (bitmap != null) {
-                            views.setImageViewBitmap(R.id.widget_cover, roundBitmap(bitmap, 16f, context))
+                            views.setImageViewBitmap(R.id.widget_cover, roundBitmap(bitmap, 18f, context))
                         } else {
                             views.setImageViewResource(R.id.widget_cover, R.mipmap.ic_launcher)
                         }

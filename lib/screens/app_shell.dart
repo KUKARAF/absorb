@@ -10,6 +10,7 @@ import '../services/sleep_timer_service.dart';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../main.dart' show snappyTransitionsNotifier, colorSourceNotifier, coverSchemeNotifier;
+import '../l10n/app_localizations.dart';
 import '../services/android_auto_service.dart';
 import '../widgets/expanded_card.dart';
 import 'absorbing_screen.dart';
@@ -370,7 +371,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
           _lastBackPress = now;
           ScaffoldMessenger.of(context).clearSnackBars();
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('Press back again to exit'),
+            content: Text(AppLocalizations.of(context)!.appShellPressBackToExit),
             duration: const Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -419,6 +420,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
   }
 
   List<NavigationDestination> _buildDestinations(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
     final isPodcast = lib.isPodcastLibrary;
 
@@ -426,27 +428,27 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
       NavigationDestination(
         icon: Icon(isPodcast ? Icons.explore_outlined : Icons.home_outlined),
         selectedIcon: Icon(isPodcast ? Icons.explore_rounded : Icons.home_rounded),
-        label: isPodcast ? 'Discover' : 'Home',
+        label: isPodcast ? 'Discover' : l.appShellHomeTab,
       ),
       NavigationDestination(
         icon: Icon(isPodcast ? Icons.podcasts_outlined : Icons.library_books_outlined),
         selectedIcon: Icon(isPodcast ? Icons.podcasts_rounded : Icons.library_books_rounded),
-        label: isPodcast ? 'Shows' : 'Library',
+        label: isPodcast ? 'Shows' : l.appShellLibraryTab,
       ),
       NavigationDestination(
         icon: const _AnimatedWaveIcon(size: 24, active: false),
         selectedIcon: const _AnimatedWaveIcon(size: 24, active: true),
-        label: 'Absorbing',
+        label: l.appShellAbsorbingTab,
       ),
-      const NavigationDestination(
-        icon: Icon(Icons.bar_chart_rounded),
-        selectedIcon: Icon(Icons.bar_chart_rounded),
-        label: 'Stats',
+      NavigationDestination(
+        icon: const Icon(Icons.bar_chart_rounded),
+        selectedIcon: const Icon(Icons.bar_chart_rounded),
+        label: l.appShellStatsTab,
       ),
-      const NavigationDestination(
-        icon: Icon(Icons.settings_outlined),
-        selectedIcon: Icon(Icons.settings_rounded),
-        label: 'Settings',
+      NavigationDestination(
+        icon: const Icon(Icons.settings_outlined),
+        selectedIcon: const Icon(Icons.settings_rounded),
+        label: l.appShellSettingsTab,
       ),
     ];
   }

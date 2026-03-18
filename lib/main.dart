@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'l10n/app_localizations.dart';
 
 import 'package:device_info_plus/device_info_plus.dart';
 
@@ -240,6 +241,8 @@ class AbsorbApp extends StatelessWidget {
               scaffoldMessengerKey: scaffoldMessengerKey,
               title: 'Absorb',
               debugShowCheckedModeBanner: false,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
               themeMode: currentMode,
               theme: ThemeData(
                 useMaterial3: true,
