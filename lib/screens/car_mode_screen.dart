@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -43,6 +44,7 @@ class _CarModeScreenState extends State<CarModeScreen>
   int _backSkip = 10;
   int _forwardSkip = 30;
   late AnimationController _playPauseController;
+  Timer? _displayTimer;
 
   @override
   void initState() {
@@ -55,6 +57,11 @@ class _CarModeScreenState extends State<CarModeScreen>
     _loadSkipSettings();
     PlayerSettings.settingsChanged.addListener(_loadSkipSettings);
     widget.player.addListener(_onPlayerChanged);
+    // Tick every second so the speed-adjusted time display updates smoothly
+    // even when the position stream fires less often (e.g. at 0.5x speed).
+    _displayTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && widget.player.isPlaying) setState(() {});
+    });
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
@@ -75,6 +82,7 @@ class _CarModeScreenState extends State<CarModeScreen>
 
   @override
   void dispose() {
+    _displayTimer?.cancel();
     PlayerSettings.settingsChanged.removeListener(_loadSkipSettings);
     widget.player.removeListener(_onPlayerChanged);
     _playPauseController.dispose();
@@ -135,6 +143,7 @@ class _CarModeScreenState extends State<CarModeScreen>
     final chapters = widget.player.chapters;
     if (chapters.isEmpty) return (0, Duration.zero, Duration.zero);
     final pos = widget.player.position.inSeconds.toDouble();
+    final speed = widget.player.speed;
     for (final ch in chapters) {
       final start = (ch['start'] as num?)?.toDouble() ?? 0;
       final end = (ch['end'] as num?)?.toDouble() ?? 0;
@@ -144,8 +153,8 @@ class _CarModeScreenState extends State<CarModeScreen>
         final progress = chLen > 0 ? (chPos / chLen).clamp(0.0, 1.0) : 0.0;
         return (
           progress,
-          Duration(seconds: chPos.round()),
-          Duration(seconds: (chLen - chPos).round()),
+          Duration(seconds: (chPos / speed).round()),
+          Duration(seconds: ((chLen - chPos) / speed).round()),
         );
       }
     }
@@ -222,13 +231,15 @@ class _CarModeScreenState extends State<CarModeScreen>
               // Book progress bar
               StreamBuilder<Duration>(
                 stream: player.positionStream,
-                builder: (context, snapshot) {
-                  final pos = snapshot.data ?? player.position;
+                builder: (context, _) {
+                  final pos = player.position;
                   final total = Duration(seconds: player.totalDuration.round());
+                  final speed = player.speed;
                   final bookProgress = total.inMilliseconds > 0
                       ? (pos.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0)
                       : 0.0;
-                  final bookRemaining = total - pos;
+                  final bookElapsed = Duration(milliseconds: (pos.inMilliseconds / speed).round());
+                  final bookRemaining = Duration(milliseconds: ((total - pos).inMilliseconds / speed).round());
 
                   return Padding(
                     padding: EdgeInsets.symmetric(horizontal: hPad),
@@ -250,7 +261,7 @@ class _CarModeScreenState extends State<CarModeScreen>
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(_formatDuration(pos),
+                            Text(_formatDuration(bookElapsed),
                                 style: TextStyle(color: Colors.white70, fontSize: timeSize, fontWeight: FontWeight.w700)),
                             Text(_formatRemaining(bookRemaining),
                                 style: TextStyle(color: Colors.white70, fontSize: timeSize, fontWeight: FontWeight.w700)),

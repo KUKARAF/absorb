@@ -286,10 +286,16 @@ class PlayerSettings {
   static Future<bool> getDisableAudioFocus() => _get('disableAudioFocus', false);
   static Future<void> setDisableAudioFocus(bool value) => _set('disableAudioFocus', value);
 
-  // ── Self-signed certificates ──
+  // ── Self-signed certificates (global, not per-user) ──
 
-  static Future<bool> getTrustAllCerts() => _get('trustAllCerts', false);
-  static Future<void> setTrustAllCerts(bool value) => _set('trustAllCerts', value);
+  static Future<bool> getTrustAllCerts() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('trustAllCerts') ?? false;
+  }
+  static Future<void> setTrustAllCerts(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('trustAllCerts', value);
+  }
 
   // ── Local server ──
 
@@ -481,12 +487,13 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
         ProcessingState.completed: AudioProcessingState.completed,
       }[_player.processingState]!,
       playing: _player.playing,
-      updatePosition: _service != null && _service!.notifChapterMode
-          ? _chapterRelativePosition()
-          : _service?.position ?? _player.position,
+      updatePosition: _speedAdjustedPosition(),
       bufferedPosition: _player.bufferedPosition,
-      // Report actual speed — always
-      speed: _player.speed,
+      // Report speed as 1.0 because duration and position are already
+      // divided by the playback speed. This makes Android Auto, WearOS,
+      // and the notification show "real time remaining" instead of raw
+      // content duration.
+      speed: 1.0,
       queueIndex: _safeCurrentChapterIndex(),
     );
   }
@@ -512,13 +519,22 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
-  /// Compute chapter-relative position for the notification progress bar.
-  Duration _chapterRelativePosition() {
-    if (_service == null) return _player.position;
-    final absPos = _service!.position;
-    final chStart = Duration(seconds: _service!.currentChapterStart.round());
-    final relative = absPos - chStart;
-    return relative.isNegative ? Duration.zero : relative;
+  /// Compute the position to report to the MediaSession, divided by playback
+  /// speed so that Android Auto / WearOS / notification show "real time
+  /// remaining" rather than raw content duration.
+  Duration _speedAdjustedPosition() {
+    Duration pos;
+    if (_service != null && _service!.notifChapterMode) {
+      final absPos = _service!.position;
+      final chStart = Duration(seconds: _service!.currentChapterStart.round());
+      final relative = absPos - chStart;
+      pos = relative.isNegative ? Duration.zero : relative;
+    } else {
+      pos = _service?.position ?? _player.position;
+    }
+    final speed = _player.speed;
+    if (speed <= 0 || speed == 1.0) return pos;
+    return Duration(milliseconds: (pos.inMilliseconds / speed).round());
   }
 
   @override
@@ -546,11 +562,18 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   Future<void> seek(Duration position) async {
     debugPrint('[Handler] seek(${position.inSeconds}s)');
     if (_service != null) {
+      // The MediaSession reports speed-adjusted position/duration (divided
+      // by speed), so incoming seek positions are also speed-adjusted.
+      // Multiply by speed to get the real content position.
+      final speed = _player.speed;
+      final realPos = speed > 0 && speed != 1.0
+          ? Duration(milliseconds: (position.inMilliseconds * speed).round())
+          : position;
       // In chapter mode, the notification sends chapter-relative position —
       // convert back to absolute book position.
       final absPos = _service!.notifChapterMode
-          ? position + Duration(seconds: _service!.currentChapterStart.round())
-          : position;
+          ? realPos + Duration(seconds: _service!.currentChapterStart.round())
+          : realPos;
       await _service!.seekTo(absPos);
     } else {
       await _player.seek(position);
@@ -1918,9 +1941,15 @@ class AudioPlayerService extends ChangeNotifier {
         ? '$author · $chapter'
         : author;
     // In chapter progress mode, show chapter duration instead of full book
-    final displayDuration = notifChapterMode
+    final rawDuration = notifChapterMode
         ? (_currentChapterEnd - _currentChapterStart)
         : totalDuration;
+    // Divide by playback speed so Android Auto / WearOS / notification
+    // show "real time remaining" instead of raw content duration.
+    final speed = _player?.speed ?? 1.0;
+    final displayDuration = speed > 0 && speed != 1.0
+        ? rawDuration / speed
+        : rawDuration;
     _handler!.mediaItem.add(MediaItem(
       id: itemId,
       title: title,
@@ -2514,6 +2543,13 @@ class AudioPlayerService extends ChangeNotifier {
     _logEvent(PlaybackEventType.speedChange, detail: '${s.toStringAsFixed(2)}x');
     if (_currentItemId != null) {
       PlayerSettings.setBookSpeed(_currentItemId!, s);
+      // Re-push MediaItem so the notification/AA duration updates for the
+      // new speed (duration is divided by speed for speed-adjusted time).
+      if (_handler != null) {
+        final chTitle = currentChapter?['title'] as String?;
+        _pushMediaItem(_currentItemId!, _currentTitle ?? '', _currentAuthor ?? '',
+            _currentCoverUrl, _totalDuration, chapter: chTitle);
+      }
     }
     notifyListeners();
   }
