@@ -548,7 +548,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Padding(
                             padding: const EdgeInsets.only(top: 12),
                             child: SizedBox(
-                              height: 92,
+                              height: 96,
                               child: ListView.separated(
                                 scrollDirection: Axis.horizontal,
                                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -707,154 +707,120 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
           }
         },
         borderRadius: BorderRadius.circular(14),
-        child: Container(
-          width: 280,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: isCurrentItem
-                ? Border.all(color: cs.primary.withValues(alpha: 0.2))
-                : null,
-          ),
-          child: Row(
-            children: [
-              // Cover
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 52,
-                  height: 52,
-                  child: coverUrl != null
-                      ? coverUrl.startsWith('/')
-                          ? Image.file(File(coverUrl),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(
-                                  color: cs.surfaceContainerHighest,
-                                  child: Icon(Icons.headphones_rounded,
-                                      size: 18, color: cs.onSurfaceVariant)))
-                          : CachedNetworkImage(
-                              imageUrl: coverUrl,
-                              fit: BoxFit.cover,
-                              httpHeaders: lib.mediaHeaders,
-                              fadeInDuration: const Duration(milliseconds: 300),
-                              placeholder: (_, __) => Container(
-                                  color: cs.surfaceContainerHighest,
-                                  child: Icon(Icons.headphones_rounded,
-                                      size: 18, color: cs.onSurfaceVariant)),
-                              errorWidget: (_, __, ___) => Container(
-                                  color: cs.surfaceContainerHighest,
-                                  child: Icon(Icons.headphones_rounded,
-                                      size: 18, color: cs.onSurfaceVariant)))
-                      : Container(
-                          color: cs.surfaceContainerHighest,
-                          child: Icon(Icons.headphones_rounded,
-                              size: 18, color: cs.onSurfaceVariant)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              // Title + author + progress
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: tt.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600, color: cs.onSurface)),
-                    if (author.isNotEmpty)
-                      Text(author,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: tt.labelSmall?.copyWith(
-                              color: cs.onSurfaceVariant, fontSize: 11)),
-                    const SizedBox(height: 4),
-                    // Percentage + listened time
-                    Text.rich(
-                      TextSpan(children: [
-                        TextSpan(
-                            text: '${(progress * 100).round()}%',
-                            style: tt.labelSmall?.copyWith(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: cs.primary)),
-                        if (totalDuration > 0) ...[
-                          TextSpan(
-                              text: '  ·  ',
-                              style: tt.labelSmall?.copyWith(
-                                  fontSize: 10,
-                                  color: cs.onSurfaceVariant
-                                      .withValues(alpha: 0.5))),
-                          TextSpan(
-                              text:
-                                  '${_fmtTime(currentTime)} / ${_fmtTime(totalDuration)}',
-                              style: tt.labelSmall?.copyWith(
-                                  fontSize: 10, color: cs.onSurfaceVariant)),
-                        ],
-                      ]),
+        child: SizedBox(
+          width: 260,
+          child: Column(children: [
+            // Main content row
+            Expanded(
+              child: Row(children: [
+                // Cover with play overlay
+                AspectRatio(
+                  aspectRatio: 1,
+                  child: Stack(children: [
+                    Positioned.fill(
+                      child: coverUrl != null
+                          ? coverUrl.startsWith('/')
+                              ? Image.file(File(coverUrl), fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                      color: cs.surfaceContainerHighest,
+                                      child: Icon(Icons.headphones_rounded,
+                                          size: 22, color: cs.onSurfaceVariant)))
+                              : CachedNetworkImage(
+                                  imageUrl: coverUrl, fit: BoxFit.cover,
+                                  httpHeaders: lib.mediaHeaders,
+                                  fadeInDuration: const Duration(milliseconds: 300),
+                                  placeholder: (_, __) => Container(
+                                      color: cs.surfaceContainerHighest,
+                                      child: Icon(Icons.headphones_rounded,
+                                          size: 22, color: cs.onSurfaceVariant)),
+                                  errorWidget: (_, __, ___) => Container(
+                                      color: cs.surfaceContainerHighest,
+                                      child: Icon(Icons.headphones_rounded,
+                                          size: 22, color: cs.onSurfaceVariant)))
+                          : Container(
+                              color: cs.surfaceContainerHighest,
+                              child: Icon(Icons.headphones_rounded,
+                                  size: 22, color: cs.onSurfaceVariant)),
                     ),
-                    const SizedBox(height: 4),
-                    // Thin progress bar
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(2),
-                      child: LinearProgressIndicator(
-                        value: progress.clamp(0.0, 1.0),
-                        minHeight: 3,
-                        backgroundColor:
-                            cs.outlineVariant.withValues(alpha: 0.2),
-                        valueColor: AlwaysStoppedAnimation(cs.primary),
+                    // Play button
+                    Positioned(
+                      right: 4, bottom: 4,
+                      child: GestureDetector(
+                        onTap: _isLoading
+                            ? null
+                            : () {
+                                if (isCurrentItem) {
+                                  player.togglePlayPause();
+                                } else {
+                                  _startBook(context, itemId);
+                                }
+                              },
+                        child: Container(
+                          width: 30, height: 30,
+                          decoration: BoxDecoration(
+                            color: cs.primary,
+                            shape: BoxShape.circle,
+                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 4)],
+                          ),
+                          child: _isLoading
+                              ? Padding(
+                                  padding: const EdgeInsets.all(7),
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: cs.onPrimary))
+                              : Icon(
+                                  isCurrentItem && player.isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  size: 16, color: cs.onPrimary),
+                        ),
                       ),
                     ),
-                  ],
+                  ]),
                 ),
-              ),
-              // Play button (48x48 hit area, 34x34 visual)
-              InkWell(
-                onTap: _isLoading
-                    ? null
-                    : () {
-                        if (isCurrentItem) {
-                          player.togglePlayPause();
-                        } else {
-                          _startBook(context, itemId);
-                        }
-                      },
-                customBorder: const CircleBorder(),
-                child: SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: Center(
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: cs.primary
-                            .withValues(alpha: isCurrentItem ? 1.0 : 0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: _isLoading
-                          ? Padding(
-                              padding: const EdgeInsets.all(9),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color:
-                                    isCurrentItem ? cs.onPrimary : cs.primary,
-                              ),
-                            )
-                          : Icon(
-                              isCurrentItem && player.isPlaying
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              size: 18,
-                              color: isCurrentItem ? cs.onPrimary : cs.primary,
-                            ),
+                // Info
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                            style: tt.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600, color: cs.onSurface, height: 1.2)),
+                        const SizedBox(height: 2),
+                        if (author.isNotEmpty)
+                          Text(author, maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: tt.labelSmall?.copyWith(
+                                  color: cs.onSurfaceVariant)),
+                        const Spacer(),
+                        Text.rich(TextSpan(children: [
+                          TextSpan(
+                              text: '${(progress * 100).round()}%',
+                              style: tt.labelSmall?.copyWith(
+                                  fontWeight: FontWeight.w700, color: cs.primary, fontSize: 11)),
+                          if (totalDuration > 0)
+                            TextSpan(
+                                text: '  ${_fmtTime(currentTime)} / ${_fmtTime(totalDuration)}',
+                                style: tt.labelSmall?.copyWith(
+                                    color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 10)),
+                        ])),
+                      ],
                     ),
                   ),
                 ),
+              ]),
+            ),
+            // Progress bar flush at bottom
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(14)),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0), minHeight: 3,
+                backgroundColor: Colors.transparent,
+                valueColor: AlwaysStoppedAnimation(cs.primary),
               ),
-            ],
-          ),
+            ),
+          ]),
         ),
       ),
     );

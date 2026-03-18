@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../providers/auth_provider.dart';
@@ -177,11 +178,18 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   }
 
   String? get _coverUrl {
-    // Check for local override cover first
     final localCover = _item?['_localCoverUrl'] as String?;
     if (localCover != null && localCover.isNotEmpty) return localCover;
     final auth = context.read<AuthProvider>();
     return auth.apiService?.getCoverUrl(widget.itemId, width: 800);
+  }
+
+  /// Low-res cover for the blurred background - saves GPU work.
+  String? get _blurCoverUrl {
+    final localCover = _item?['_localCoverUrl'] as String?;
+    if (localCover != null && localCover.isNotEmpty) return localCover;
+    final auth = context.read<AuthProvider>();
+    return auth.apiService?.getCoverUrl(widget.itemId, width: 200);
   }
 
   @override Widget build(BuildContext context) {
@@ -191,24 +199,28 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(color: Theme.of(context).scaffoldBackgroundColor, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
       child: Stack(children: [
-        if (_coverUrl != null)
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: CachedNetworkImage(
-                imageUrl: _coverUrl!, fit: BoxFit.cover,
-                httpHeaders: context.read<LibraryProvider>().mediaHeaders,
-                imageBuilder: (_, p) => ImageFiltered(
-                  imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50, tileMode: TileMode.decal),
-                  child: Image(image: p, fit: BoxFit.cover)),
-                placeholder: (_, __) => const SizedBox(),
-                errorWidget: (_, __, ___) => const SizedBox(),
+        // Blurred cover + gradient scrim as a single cached layer to avoid
+        // expensive re-compositing of ImageFilter.blur during sheet drag.
+        RepaintBoundary(
+          child: Stack(children: [
+            if (_blurCoverUrl != null)
+              Positioned.fill(
+                child: CachedNetworkImage(
+                  imageUrl: _blurCoverUrl!, fit: BoxFit.cover,
+                  httpHeaders: context.read<LibraryProvider>().mediaHeaders,
+                  imageBuilder: (_, p) => ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 25, sigmaY: 25, tileMode: TileMode.decal),
+                    child: Image(image: p, fit: BoxFit.cover)),
+                  placeholder: (_, __) => const SizedBox(),
+                  errorWidget: (_, __, ___) => const SizedBox(),
+                ),
               ),
-            ),
-          ),
-        Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
-          begin: Alignment.topCenter, end: Alignment.bottomCenter,
-          colors: [Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.6), Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.85), Theme.of(context).scaffoldBackgroundColor],
-        )))),
+            Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+              begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              colors: [Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.6), Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.85), Theme.of(context).scaffoldBackgroundColor],
+            )))),
+          ]),
+        ),
         _isLoading
             ? Center(child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurface.withValues(alpha: 0.24)))
             : _item == null
@@ -247,6 +259,26 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     return ListView(controller: widget.scrollController, padding: EdgeInsets.fromLTRB(20, 8, 20, 32 + MediaQuery.of(context).viewPadding.bottom), children: [
       Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
+      if (_coverUrl != null) ...[
+        Center(child: GestureDetector(
+          onTap: () => _showFullCover(context, _coverUrl!, lib.mediaHeaders, title),
+          child: Container(
+            height: 240,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 4))],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: CachedNetworkImage(
+              imageUrl: _coverUrl!, fit: BoxFit.contain,
+              httpHeaders: lib.mediaHeaders,
+              placeholder: (_, __) => const SizedBox(),
+              errorWidget: (_, __, ___) => const SizedBox(),
+            ),
+          ),
+        )),
+        const SizedBox(height: 16),
+      ],
       Text(title, textAlign: TextAlign.center, style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)),
       const SizedBox(height: 4),
       _buildAuthorLinks(context, metadata, cs, tt),
@@ -1149,6 +1181,103 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         ));
       }
     }
+  }
+
+  void _showFullCover(BuildContext context, String url, Map<String, String> headers, String title) {
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      barrierColor: Colors.black87,
+      pageBuilder: (_, __, ___) => _FullCoverViewer(url: url, headers: headers, title: title),
+      transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+    ));
+  }
+}
+
+class _FullCoverViewer extends StatefulWidget {
+  final String url;
+  final Map<String, String> headers;
+  final String title;
+  const _FullCoverViewer({required this.url, required this.headers, required this.title});
+  @override State<_FullCoverViewer> createState() => _FullCoverViewerState();
+}
+
+class _FullCoverViewerState extends State<_FullCoverViewer> {
+  bool _saving = false;
+
+  Future<void> _saveAndShare() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final response = await http.get(Uri.parse(widget.url), headers: widget.headers);
+      if (response.statusCode != 200) throw Exception('Download failed');
+      final ext = widget.url.contains('.png') ? '.png' : '.jpg';
+      final safeTitle = widget.title.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$safeTitle$ext');
+      await file.writeAsBytes(response.bodyBytes);
+      if (!mounted) return;
+      await Share.shareXFiles([XFile(file.path)]);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to save: $e'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(children: [
+        // Dismiss on tap outside image
+        GestureDetector(onTap: () => Navigator.pop(context)),
+        // Zoomable cover — fills screen so zoomed content can pan freely
+        Positioned.fill(
+          child: InteractiveViewer(
+            clipBehavior: Clip.none,
+            minScale: 1.0,
+            maxScale: 5.0,
+            child: Center(
+              child: CachedNetworkImage(
+                imageUrl: widget.url,
+                httpHeaders: widget.headers,
+                fit: BoxFit.contain,
+                placeholder: (_, __) => const CircularProgressIndicator(strokeWidth: 2),
+                errorWidget: (_, __, ___) => const Icon(Icons.broken_image_rounded, size: 48, color: Colors.white54),
+              ),
+            ),
+          ),
+        ),
+        // Close button
+        Positioned(
+          top: MediaQuery.of(context).viewPadding.top + 8,
+          left: 8,
+          child: IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close_rounded, color: Colors.white),
+            style: IconButton.styleFrom(backgroundColor: Colors.black45),
+          ),
+        ),
+        // Save/share button
+        Positioned(
+          top: MediaQuery.of(context).viewPadding.top + 8,
+          right: 8,
+          child: IconButton(
+            onPressed: _saving ? null : _saveAndShare,
+            icon: _saving
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.save_alt_rounded, color: Colors.white),
+            style: IconButton.styleFrom(backgroundColor: Colors.black45),
+          ),
+        ),
+      ]),
+    );
   }
 }
 
