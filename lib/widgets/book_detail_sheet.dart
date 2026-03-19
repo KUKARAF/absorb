@@ -63,6 +63,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   bool _showGoodreads = false;
   bool _ebookSaved = false;
   bool _authorsExpanded = false;
+  ColorScheme? _coverScheme;
 
   @override void initState() {
     super.initState();
@@ -95,6 +96,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
           }
 
           setState(() { _item = finalItem; _isLoading = false; });
+          _deriveCoverScheme();
 
           // Fetch Audible rating
           final media = finalItem['media'] as Map<String, dynamic>? ?? {};
@@ -136,6 +138,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         final localItem = session['libraryItem'] as Map<String, dynamic>?;
         if (localItem != null && mounted) {
           setState(() { _item = localItem; _isLoading = false; });
+          _deriveCoverScheme();
           return;
         }
         // Build a synthetic item from session-level fields (mediaMetadata,
@@ -153,6 +156,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
             };
             _isLoading = false;
           });
+          _deriveCoverScheme();
           return;
         }
       } catch (_) {}
@@ -171,10 +175,27 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         };
         _isLoading = false;
       });
+      _deriveCoverScheme();
       return;
     }
 
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  void _deriveCoverScheme() {
+    final url = _coverUrl;
+    if (url == null) return;
+    final brightness = Theme.of(context).brightness;
+    final ImageProvider provider;
+    if (url.startsWith('/')) {
+      provider = FileImage(File(url));
+    } else {
+      final lib = context.read<LibraryProvider>();
+      provider = CachedNetworkImageProvider(url, headers: lib.mediaHeaders);
+    }
+    ColorScheme.fromImageProvider(provider: provider, brightness: brightness)
+        .then((s) { if (mounted) setState(() => _coverScheme = s); })
+        .catchError((_) {});
   }
 
   String? get _coverUrl {
@@ -221,7 +242,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
             )))),
           ]),
         ),
-        _isLoading
+        _isLoading || (_item != null && _coverUrl != null && _coverScheme == null)
             ? Center(child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurface.withValues(alpha: 0.24)))
             : _item == null
                 ? Center(child: Text('Failed to load', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)))
@@ -233,6 +254,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   }
 
   Widget _buildContent(BuildContext context, ColorScheme cs, TextTheme tt) {
+    final accent = _coverScheme?.primary ?? cs.primary;
     final media = _item!['media'] as Map<String, dynamic>? ?? {};
     final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
     final chapters = media['chapters'] as List<dynamic>? ?? [];
@@ -281,7 +303,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       ],
       Text(title, textAlign: TextAlign.center, style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)),
       const SizedBox(height: 4),
-      _buildAuthorLinks(context, metadata, cs, tt),
+      _buildAuthorLinks(context, metadata, cs, tt, accent),
       if (narrator.isNotEmpty) ...[const SizedBox(height: 2),
         Text('Narrated by $narrator', textAlign: TextAlign.center, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))],
       // ─── AUDIBLE RATING (space always reserved) ─────────
@@ -298,7 +320,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                 border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                ..._buildStars((_rating!['rating'] as num).toDouble(), cs),
+                ..._buildStars((_rating!['rating'] as num).toDouble(), accent),
                 const SizedBox(width: 6),
                 Text((_rating!['rating'] as num).toStringAsFixed(1),
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
@@ -314,7 +336,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       if (progress > 0 && !isFinished) ...[
         ClipRRect(borderRadius: BorderRadius.circular(3),
           child: LinearProgressIndicator(value: progress.clamp(0.0, 1.0), minHeight: 4,
-            backgroundColor: cs.onSurface.withValues(alpha: 0.1), valueColor: AlwaysStoppedAnimation(cs.primary))),
+            backgroundColor: cs.onSurface.withValues(alpha: 0.1), valueColor: AlwaysStoppedAnimation(accent))),
         const SizedBox(height: 4),
         Text('${(progress * 100).toStringAsFixed(1)}% complete', textAlign: TextAlign.center,
           style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
@@ -358,11 +380,11 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                   ? SizedBox(
                       width: 24,
                       height: 24,
-                      child: AbsorbingWave(color: cs.onPrimary),
+                      child: AbsorbingWave(color: _coverScheme?.onPrimary ?? cs.onPrimary),
                     )
                   : isFinished
-                      ? AbsorbReplayIcon(size: 24, color: cs.onPrimary)
-                      : const Icon(Icons.waves_rounded, size: 24),
+                      ? AbsorbReplayIcon(size: 24, color: _coverScheme?.onPrimary ?? cs.onPrimary)
+                      : Icon(Icons.waves_rounded, size: 24, color: _coverScheme?.onPrimary ?? cs.onPrimary),
               label: Text(
                 showAbsorbingState
                     ? 'Absorbing…'
@@ -370,9 +392,10 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                         ? 'Absorb Again'
                         : 'Absorb',
                 style: tt.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w600, color: cs.onPrimary),
+                    ?.copyWith(fontWeight: FontWeight.w600, color: _coverScheme?.onPrimary ?? cs.onPrimary),
               ),
               style: FilledButton.styleFrom(
+                backgroundColor: accent,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
             );
@@ -383,7 +406,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       const SizedBox(height: 12),
       Row(children: [
         if (!isEbookOnly) ...[
-          Expanded(child: DownloadWideButton(itemId: widget.itemId, coverUrl: _coverUrl, title: title, author: authorName, accent: cs.primary)),
+          Expanded(child: DownloadWideButton(itemId: widget.itemId, coverUrl: _coverUrl, title: title, author: authorName, accent: accent)),
           const SizedBox(width: 8),
         ],
         Expanded(child: GestureDetector(
@@ -453,16 +476,16 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: 0.08),
+                  color: accent.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.primary.withValues(alpha: 0.15)),
+                  border: Border.all(color: accent.withValues(alpha: 0.15)),
                 ),
                 child: Row(children: [
-                  Icon(Icons.auto_stories_rounded, size: 16, color: cs.primary.withValues(alpha: 0.7)),
+                  Icon(Icons.auto_stories_rounded, size: 16, color: accent.withValues(alpha: 0.7)),
                   const SizedBox(width: 8),
                   Expanded(child: Text('$name${seq.isNotEmpty ? ' #$seq' : ''}',
-                    style: tt.bodySmall?.copyWith(color: cs.primary.withValues(alpha: 0.9), fontWeight: FontWeight.w500))),
-                  Icon(Icons.chevron_right_rounded, size: 18, color: cs.primary.withValues(alpha: 0.5)),
+                    style: tt.bodySmall?.copyWith(color: accent.withValues(alpha: 0.9), fontWeight: FontWeight.w500))),
+                  Icon(Icons.chevron_right_rounded, size: 18, color: accent.withValues(alpha: 0.5)),
                 ]),
               ),
             ));
@@ -474,7 +497,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
           html: descRaw,
           maxLines: 6,
           style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.7), height: 1.5),
-          linkColor: cs.primary,
+          linkColor: accent,
         )],
       if (chapters.isNotEmpty) ...[const SizedBox(height: 16),
         GestureDetector(onTap: () => setState(() => _chaptersExpanded = !_chaptersExpanded),
@@ -651,15 +674,16 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     return '${m}m';
   }
 
-  List<Widget> _buildStars(double rating, ColorScheme cs) {
+  List<Widget> _buildStars(double rating, Color accent) {
+    final cs = Theme.of(context).colorScheme;
     final stars = <Widget>[];
     final fullStars = rating.floor();
     final hasHalf = (rating - fullStars) >= 0.4;
     for (int i = 0; i < 5; i++) {
       if (i < fullStars) {
-        stars.add(Icon(Icons.star_rounded, size: 16, color: cs.primary));
+        stars.add(Icon(Icons.star_rounded, size: 16, color: accent));
       } else if (i == fullStars && hasHalf) {
-        stars.add(Icon(Icons.star_half_rounded, size: 16, color: cs.primary));
+        stars.add(Icon(Icons.star_half_rounded, size: 16, color: accent));
       } else {
         stars.add(Icon(Icons.star_outline_rounded, size: 16, color: cs.onSurface.withValues(alpha: 0.24)));
       }
@@ -750,7 +774,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     );
   }
 
-  Widget _buildAuthorLinks(BuildContext context, Map<String, dynamic> metadata, ColorScheme cs, TextTheme tt) {
+  Widget _buildAuthorLinks(BuildContext context, Map<String, dynamic> metadata, ColorScheme cs, TextTheme tt, Color accent) {
     final authors = metadata['authors'] as List<dynamic>? ?? [];
     // Fall back to authorName string if no structured authors array
     if (authors.isEmpty) {
@@ -765,11 +789,11 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     final remaining = authors.length - collapsedCount;
 
     final linkStyle = tt.bodyMedium?.copyWith(
-      color: cs.primary,
+      color: accent,
       decoration: TextDecoration.underline,
-      decorationColor: cs.primary.withValues(alpha: 0.4),
+      decorationColor: accent.withValues(alpha: 0.4),
     );
-    final commaStyle = tt.bodyMedium?.copyWith(color: cs.primary);
+    final commaStyle = tt.bodyMedium?.copyWith(color: accent);
 
     return Wrap(
       alignment: WrapAlignment.center,
@@ -797,7 +821,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
           GestureDetector(
             onTap: () => setState(() => _authorsExpanded = true),
             child: Text('and $remaining more', style: tt.bodyMedium?.copyWith(
-              color: cs.primary.withValues(alpha: 0.7),
+              color: accent.withValues(alpha: 0.7),
             )),
           ),
       ],
