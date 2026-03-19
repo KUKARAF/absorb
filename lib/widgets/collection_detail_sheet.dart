@@ -2,8 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import '../services/download_service.dart';
 import 'book_detail_sheet.dart';
 
 class CollectionDetailSheet extends StatefulWidget {
@@ -221,7 +223,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
   Widget _buildReorderList(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
     final items = _reorderItems!;
     return ReorderableListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.only(top: 8, bottom: 8 + MediaQuery.of(context).viewPadding.bottom),
       onReorderStart: (_) => HapticFeedback.mediumImpact(),
       onReorder: (oldIndex, newIndex) {
         setState(() {
@@ -284,9 +286,12 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
   }
 
   Widget _buildItemList(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> books, {required bool isRoot}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final doneColor = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
+
     return ListView.builder(
       controller: widget.scrollController,
-      padding: const EdgeInsets.only(bottom: 40),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4).copyWith(bottom: 40),
       itemCount: books.length,
       itemBuilder: (context, index) {
         final book = books[index] as Map<String, dynamic>;
@@ -296,39 +301,107 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
         final title = metadata['title'] as String? ?? 'Unknown';
         final author = metadata['authorName'] as String? ?? '';
         final coverUrl = lib.getCoverUrl(itemId);
+        final progress = lib.getProgress(itemId);
+        final isFinished = lib.getProgressData(itemId)?['isFinished'] == true;
+        final isDownloaded = DownloadService().isDownloaded(itemId);
 
-        final tile = ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-            leading: SizedBox(
-              width: 44, height: 44,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: coverUrl != null
-                    ? (coverUrl.startsWith('/')
-                        ? Image.file(File(coverUrl), fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _placeholder(cs))
-                        : Image.network(coverUrl, fit: BoxFit.cover,
-                            headers: lib.mediaHeaders,
-                            errorBuilder: (_, __, ___) => _placeholder(cs)))
-                    : _placeholder(cs),
+        final card = Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Card(
+            elevation: 0,
+            color: cs.surfaceContainerHigh,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => showBookDetailSheet(context, itemId),
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                height: 112,
+                child: Row(children: [
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: Stack(children: [
+                      Positioned.fill(
+                        child: coverUrl != null
+                            ? (coverUrl.startsWith('/')
+                                ? Image.file(File(coverUrl), fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => _placeholder(cs))
+                                : CachedNetworkImage(
+                                    imageUrl: coverUrl, fit: BoxFit.cover,
+                                    httpHeaders: lib.mediaHeaders,
+                                    placeholder: (_, __) => _placeholder(cs),
+                                    errorWidget: (_, __, ___) => _placeholder(cs),
+                                  ))
+                            : _placeholder(cs),
+                      ),
+                      if (progress > 0 && !isFinished)
+                        Positioned(
+                          left: 0, right: 0, bottom: 0,
+                          child: LinearProgressIndicator(
+                            value: progress.clamp(0.0, 1.0),
+                            minHeight: 3,
+                            backgroundColor: Colors.black38,
+                            valueColor: AlwaysStoppedAnimation(cs.primary),
+                          ),
+                        ),
+                      if (isFinished || isDownloaded)
+                        Positioned(
+                          left: 0, right: 0, bottom: 0,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.85),
+                                  Colors.black.withValues(alpha: 0.0),
+                                ],
+                              ),
+                            ),
+                            child: Column(mainAxisSize: MainAxisSize.min, children: [
+                              if (isFinished)
+                                Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                                  Icon(Icons.check_circle_rounded, size: 10, color: doneColor),
+                                  const SizedBox(width: 3),
+                                  Text('Done', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
+                                ]),
+                              if (isDownloaded)
+                                Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                                  Icon(Icons.download_done_rounded, size: 10, color: cs.primary),
+                                  const SizedBox(width: 3),
+                                  Text('Saved', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
+                                ]),
+                            ]),
+                          ),
+                        ),
+                    ]),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(title,
+                            maxLines: 2, overflow: TextOverflow.ellipsis,
+                            style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+                          const SizedBox(height: 4),
+                          Text(author,
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ]),
               ),
             ),
-            title: Text(
-              title,
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: tt.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w500, color: cs.onSurface,
-              ),
-            ),
-            subtitle: Text(
-              author,
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-            ),
-            onTap: () => showBookDetailSheet(context, itemId),
-          );
+          ),
+        );
 
-        if (!isRoot) return tile;
+        if (!isRoot) return card;
 
         return Dismissible(
           key: ValueKey(itemId),
@@ -340,7 +413,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
             color: cs.error.withValues(alpha: 0.1),
             child: Icon(Icons.delete_rounded, color: cs.error),
           ),
-          child: tile,
+          child: card,
         );
       },
     );
