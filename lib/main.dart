@@ -45,20 +45,29 @@ final ValueNotifier<String> colorSourceNotifier = ValueNotifier('wallpaper');
 /// null when nothing is playing or cover hasn't loaded yet.
 final ValueNotifier<ColorScheme?> coverSchemeNotifier = ValueNotifier(null);
 
+/// Whether to trust all certificates (for self-signed / custom CA setups).
+/// Checked dynamically by [_CertOverrides] when any HttpClient is created.
+bool trustAllCerts = false;
+
 /// Allows Dart's HTTP stack to trust user-installed / self-signed certificates.
 /// Android's network_security_config.xml only covers the native layer; Dart's
 /// BoringSSL ignores it, so we override badCertificateCallback globally.
-class _TrustAllCertsOverrides extends HttpOverrides {
+/// Installed once at startup; checks [trustAllCerts] at HttpClient creation time
+/// so that CachedNetworkImage / flutter_cache_manager pick up the setting.
+class _CertOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback = (_, __, ___) => true;
+    final client = super.createHttpClient(context);
+    if (trustAllCerts) {
+      client.badCertificateCallback = (_, __, ___) => true;
+    }
+    return client;
   }
 }
 
 /// Enable or disable the global trust-all-certs override.
 void applyTrustAllCerts(bool enabled) {
-  HttpOverrides.global = enabled ? _TrustAllCertsOverrides() : null;
+  trustAllCerts = enabled;
 }
 
 /// Global key so non-widget code (e.g. providers) can show snackbars.
@@ -80,6 +89,7 @@ void applyThemeMode(String value) {
 }
 
 void main() async {
+  HttpOverrides.global = _CertOverrides();
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
 
   // These calls use platform channels that require an Activity. When Android
@@ -119,9 +129,7 @@ void main() async {
 
   // Trust user-installed / self-signed certificates if the user opted in
   try {
-    if (await PlayerSettings.getTrustAllCerts()) {
-      applyTrustAllCerts(true);
-    }
+    trustAllCerts = await PlayerSettings.getTrustAllCerts();
   } catch (_) {}
 
   // Capture Flutter framework errors (widget build failures, etc.)
