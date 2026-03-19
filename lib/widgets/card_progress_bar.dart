@@ -75,7 +75,7 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
   }
 
   void _syncTicker() {
-    if (_isPlaying && widget.isActive) {
+    if (_isPlaying && (widget.isActive || _isCastMode)) {
       if (!_smoothTicker.isAnimating) _smoothTicker.repeat();
     } else {
       if (_smoothTicker.isAnimating) _smoothTicker.stop();

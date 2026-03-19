@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'api_service.dart';
 import 'audio_player_service.dart';
 import 'progress_sync_service.dart';
@@ -50,6 +51,13 @@ class ChromecastService extends ChangeNotifier {
   static void Function(String itemId)? _onBookFinishedCallback;
   static void setOnBookFinishedCallback(void Function(String itemId)? cb) {
     _onBookFinishedCallback = cb;
+  }
+
+  /// Called when cast playback state changes (playing/not playing).
+  /// Used by LibraryProvider for idle timer / battery-saving lifecycle.
+  static void Function(bool isPlaying)? _onPlaybackStateChangedCallback;
+  static void setOnPlaybackStateChangedCallback(void Function(bool isPlaying)? cb) {
+    _onPlaybackStateChangedCallback = cb;
   }
 
   StreamSubscription? _sessionSub, _mediaStatusSub, _positionSub;
@@ -136,6 +144,8 @@ class ChromecastService extends ChangeNotifier {
     _mediaStatusSub?.cancel();
     _positionSub?.cancel();
     _syncTimer?.cancel();
+    _updateWakeLock(false);
+    _onPlaybackStateChangedCallback?.call(false);
     notifyListeners();
   }
 
@@ -154,6 +164,14 @@ class ChromecastService extends ChangeNotifier {
           case CastMediaPlayerState.loading: _playbackState = CastPlaybackState.loading; break;
           default: _playbackState = CastPlaybackState.idle;
         }
+      }
+
+      // Notify listeners & manage wake lock on playback state transitions
+      final wasPlaying = prev == CastPlaybackState.playing || prev == CastPlaybackState.buffering;
+      final nowPlaying = _playbackState == CastPlaybackState.playing || _playbackState == CastPlaybackState.buffering;
+      if (wasPlaying != nowPlaying) {
+        _onPlaybackStateChangedCallback?.call(nowPlaying);
+        _updateWakeLock(nowPlaying);
       }
 
       // Detect playback completion: was playing/buffering → now idle
@@ -601,6 +619,8 @@ class ChromecastService extends ChangeNotifier {
     _castingItemId = _castingEpisodeId = _castingTitle = _castingAuthor = _castingCoverUrl = null;
     _castingDuration = 0; _castingChapters = [];
     _fallbackTracks = null; _fallbackOffsets = null; _fallbackTrackIdx = -1;
+    _updateWakeLock(false);
+    _onPlaybackStateChangedCallback?.call(false);
     notifyListeners();
   }
 
@@ -718,6 +738,18 @@ class ChromecastService extends ChangeNotifier {
       if (s < p - 3.0) { await seekTo(Duration(milliseconds: (s * 1000).round())); return; }
     }
     await seekTo(Duration.zero);
+  }
+
+  // ── Wake Lock ──
+
+  void _updateWakeLock(bool active) {
+    if (active) {
+      WakelockPlus.enable();
+      debugPrint('[Cast] Wake lock enabled');
+    } else {
+      WakelockPlus.disable();
+      debugPrint('[Cast] Wake lock disabled');
+    }
   }
 
   @override

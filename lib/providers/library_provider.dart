@@ -508,6 +508,13 @@ class LibraryProvider extends ChangeNotifier {
         }
       });
       ChromecastService.setOnBookFinishedCallback(markFinishedLocally);
+      ChromecastService.setOnPlaybackStateChangedCallback((playing) {
+        if (playing) {
+          onPlaybackStarted();
+        } else {
+          onPlaybackStopped();
+        }
+      });
 
       restoreOfflineMode().then((_) async {
         debugPrint(
