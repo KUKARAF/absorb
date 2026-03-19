@@ -596,8 +596,19 @@ class LibraryProvider extends ChangeNotifier {
         _stopServerPingTimer();
         setNetworkOffline(true);
       } else if (_networkOffline && !_manualOffline) {
-        // Device has connectivity but we're still offline — server was unreachable
-        _startServerPingTimer();
+        // Device has connectivity but we're still offline — server was unreachable.
+        // If on WiFi, try local server first before falling back to ping timer.
+        if (result.contains(ConnectivityResult.wifi)) {
+          _auth?.checkLocalServer().then((_) {
+            if (_auth?.serverReachable == true || _auth?.useLocalServer == true) {
+              setNetworkOffline(false);
+            } else {
+              _startServerPingTimer();
+            }
+          });
+        } else {
+          _startServerPingTimer();
+        }
       }
     });
     // Then listen for changes
@@ -638,6 +649,21 @@ class LibraryProvider extends ChangeNotifier {
       if (!_networkOffline || _manualOffline) {
         _stopServerPingTimer();
         return;
+      }
+      // Try local server first if enabled and on WiFi
+      final auth = _auth;
+      if (auth != null && auth.localServerEnabled && auth.localServerUrl.isNotEmpty) {
+        final localReachable = await ApiService.pingServer(
+          auth.localServerUrl,
+          customHeaders: auth.customHeaders,
+        ).timeout(const Duration(seconds: 3), onTimeout: () => false);
+        if (localReachable) {
+          debugPrint('[Library] Local server ping succeeded — going online');
+          await auth.checkLocalServer();
+          _stopServerPingTimer();
+          setNetworkOffline(false);
+          return;
+        }
       }
       final reachable = await ApiService.pingServer(
         serverUrl,

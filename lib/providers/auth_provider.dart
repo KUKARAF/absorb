@@ -102,15 +102,27 @@ class AuthProvider extends ChangeNotifier {
 
         // Check if server is actually reachable
         debugPrint('[Auth] pinging server... (${sw.elapsedMilliseconds}ms)');
-        final reachable = await ApiService.pingServer(savedUrl, customHeaders: _customHeaders);
-        _serverReachable = reachable;
+        var reachable = await ApiService.pingServer(savedUrl, customHeaders: _customHeaders);
         debugPrint('[Auth] ping result: reachable=$reachable (${sw.elapsedMilliseconds}ms)');
+
+        // If remote URL failed and local server is enabled, try local URL
+        if (!reachable && _localServerEnabled && _localServerUrl.isNotEmpty) {
+          debugPrint('[Auth] Remote unreachable, trying local server... (${sw.elapsedMilliseconds}ms)');
+          final localReachable = await ApiService.pingServer(_localServerUrl, customHeaders: _customHeaders)
+              .timeout(const Duration(seconds: 3), onTimeout: () => false);
+          if (localReachable) {
+            debugPrint('[Auth] Local server reachable - switching (${sw.elapsedMilliseconds}ms)');
+            _useLocalServer = true;
+            reachable = true;
+          }
+        }
+        _serverReachable = reachable;
 
         // Fetch full user info (needed for isAdmin, permissions, etc.)
         if (reachable) {
           try {
             debugPrint('[Auth] fetching /me... (${sw.elapsedMilliseconds}ms)');
-            final api = ApiService(baseUrl: savedUrl, token: savedToken, customHeaders: _customHeaders);
+            final api = ApiService(baseUrl: activeServerUrl!, token: savedToken, customHeaders: _customHeaders);
             final me = await api.getMe();
             if (me != null) {
               _userJson = me;
@@ -295,6 +307,7 @@ class AuthProvider extends ChangeNotifier {
       final reachable = await ApiService.pingServer(_localServerUrl, customHeaders: _customHeaders)
           .timeout(const Duration(seconds: 3), onTimeout: () => false);
       _useLocalServer = reachable;
+      if (reachable) _serverReachable = true;
     } catch (_) {
       _useLocalServer = false;
     }
