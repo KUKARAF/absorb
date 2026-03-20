@@ -1240,7 +1240,11 @@ class _FullCoverViewerState extends State<_FullCoverViewer> {
       final file = File('${dir.path}/$safeTitle$ext');
       await file.writeAsBytes(response.bodyBytes);
       if (!mounted) return;
-      await Share.shareXFiles([XFile(file.path)]);
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+      await Share.shareXFiles([XFile(file.path)], sharePositionOrigin: origin);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

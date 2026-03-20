@@ -563,18 +563,18 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> play() async {
-    debugPrint('[Handler] play() called — routing to service (state=${_player.processingState.name})');
+    debugPrint('[Handler] play() called - routing to service (state=${_player.processingState.name})');
     if (_service != null) {
       await _service!.play();
     } else {
-      debugPrint('[Handler] play() — no service ref, using player directly');
+      debugPrint('[Handler] play() - no service ref, using player directly');
       await _player.play();
     }
   }
 
   @override
   Future<void> pause() async {
-    debugPrint('[Handler] pause() called — routing to service');
+    debugPrint('[Handler] pause() called - routing to service');
     if (_service != null) {
       await _service!.pause();
     } else {
@@ -586,15 +586,10 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   Future<void> seek(Duration position) async {
     debugPrint('[Handler] seek(${position.inSeconds}s)');
     if (_service != null) {
-      // The MediaSession reports speed-adjusted position/duration (divided
-      // by speed), so incoming seek positions are also speed-adjusted.
-      // Multiply by speed to get the real content position.
       final speed = _player.speed;
       final realPos = speed > 0 && speed != 1.0
           ? Duration(milliseconds: (position.inMilliseconds * speed).round())
           : position;
-      // In chapter mode, the notification sends chapter-relative position —
-      // convert back to absolute book position.
       final absPos = _service!.notifChapterMode
           ? realPos + Duration(seconds: _service!.currentChapterStart.round())
           : realPos;
@@ -614,8 +609,9 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   /// Called when the user swipes the app away from recents.
   @override
   Future<void> onTaskRemoved() async {
-    debugPrint('[Handler] onTaskRemoved — app swiped away');
-    // Stop playback and sync via the service if available
+    debugPrint('[Handler] onTaskRemoved - app swiped away');
+    // Don't stop cast playback when app is swiped away
+    if (ChromecastService().isCasting) return;
     if (_service != null) {
       await _service!.pause();
       await _service!.stop();
@@ -627,7 +623,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> fastForward() async {
-    debugPrint('[Handler] fastForward() — seeking forward');
+    debugPrint('[Handler] fastForward() - seeking forward');
     if (_service != null) {
       final skipAmount = await PlayerSettings.getForwardSkip();
       await _service!.skipForward(skipAmount);
@@ -639,7 +635,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> rewind() async {
-    debugPrint('[Handler] rewind() — seeking back');
+    debugPrint('[Handler] rewind() - seeking back');
     if (_service != null) {
       final skipAmount = await PlayerSettings.getBackSkip();
       await _service!.skipBackward(skipAmount);
@@ -985,6 +981,7 @@ class AudioPlayerService extends ChangeNotifier {
   }
 
   static AudioPlayerHandler? _handler;
+  static AudioPlayerHandler? get handler => _handler;
   static Completer<void> _initCompleter = Completer<void>();
   AudioPlayer? get _player => _handler?.player;
 
@@ -1770,9 +1767,23 @@ class AudioPlayerService extends ChangeNotifier {
       final speed = bookSpeed ?? await PlayerSettings.getDefaultSpeed();
       await _player!.setSpeed(speed);
       debugPrint('[Player] Starting local playback at ${speed}x');
+      // Re-activate audio session before play so the first playback event
+      // reaches the audio_service iOS plugin with an active session.
+      // Without this, iOS ignores the MPNowPlayingInfoCenter update and
+      // lock screen / Control Center / AirPod controls never appear.
+      if (!_audioFocusDisabled) {
+        try { (await AudioSession.instance).setActive(true); } catch (_) {}
+      }
       _player!.play();
       notifyListeners();
       _setupSync();
+      // Ensure iOS lock screen / Control Center controls appear by pushing
+      // a fresh playback state after a short delay. The initial event from
+      // playbackEventStream can arrive before AVPlayer is fully "playing",
+      // causing the audio_service iOS plugin to skip command center activation.
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _handler?.refreshPlaybackState();
+      });
       // Fresh session — reset auto sleep dismiss and check
       final sleepTimer = SleepTimerService();
       sleepTimer.resetDismiss();
@@ -1907,9 +1918,17 @@ class AudioPlayerService extends ChangeNotifier {
       final speed = bookSpeed ?? await PlayerSettings.getDefaultSpeed();
       await _player!.setSpeed(speed);
       debugPrint('[Player] Starting stream playback at ${speed}x');
+      // Re-activate audio session before play (see local playback comment above)
+      if (!_audioFocusDisabled) {
+        try { (await AudioSession.instance).setActive(true); } catch (_) {}
+      }
       _player!.play();
       notifyListeners();
       _setupSync();
+      // Ensure iOS lock screen / Control Center controls appear (see local playback comment)
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _handler?.refreshPlaybackState();
+      });
       // Fresh session — reset auto sleep dismiss and check
       final sleepTimer = SleepTimerService();
       sleepTimer.resetDismiss();
@@ -2271,6 +2290,28 @@ class AudioPlayerService extends ChangeNotifier {
     if (_isCompletingBook) return; // prevent re-entry
     _isCompletingBook = true;
 
+    // Sanity check: if we're not near the end of the book, this is a spurious
+    // completion signal (iOS AVPlayer can fire completed on audio interruptions,
+    // buffer errors, etc.). Save current position and stop - don't mark finished
+    // or advance the queue.
+    if (_totalDuration > 0 && _lastKnownPositionSec > 0 &&
+        _lastKnownPositionSec < _totalDuration * 0.9 &&
+        _lastKnownPositionSec < _totalDuration - 30) {
+      debugPrint('[Player] Spurious completion at ${_lastKnownPositionSec.toStringAsFixed(1)}s / ${_totalDuration.toStringAsFixed(1)}s — saving position instead of marking finished');
+      _logEvent(PlaybackEventType.pause, detail: 'Spurious completion blocked');
+      _syncSub?.cancel();
+      _syncSub = null;
+      _completionSub?.cancel();
+      _completionSub = null;
+      _bgSaveTimer?.cancel();
+      _bgSaveTimer = null;
+      await _player?.stop();
+      await _saveProgressLocal(Duration(milliseconds: (_lastKnownPositionSec * 1000).round()));
+      _isCompletingBook = false;
+      notifyListeners();
+      return;
+    }
+
     debugPrint('[Player] Book complete: $_currentTitle');
     _logEvent(PlaybackEventType.pause, detail: 'Book finished');
 
@@ -2629,8 +2670,9 @@ class AudioPlayerService extends ChangeNotifier {
     if (SleepTimerService().isActive) {
       SleepTimerService().cancel();
     }
-    // Release audio focus so other apps can use it
-    if (!_audioFocusDisabled) {
+    // Release audio focus so other apps can use it - but not during casting,
+    // because deactivating the session can interfere with cast playback.
+    if (!_audioFocusDisabled && !ChromecastService().isCasting) {
       try { (await AudioSession.instance).setActive(false); } catch (_) {}
     }
   }

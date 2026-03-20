@@ -157,7 +157,11 @@ class _NotesSheetState extends State<NotesSheet> {
     final safe = widget.itemTitle.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
     final file = File('${dir.path}/${safe}_notes.$format');
     await file.writeAsString(buffer.toString());
-    await Share.shareXFiles([XFile(file.path)]);
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box != null
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
+    await Share.shareXFiles([XFile(file.path)], sharePositionOrigin: origin);
   }
 
   Future<_NoteEditResult?> _showEditor(BuildContext context, {String title = '', String body = ''}) {

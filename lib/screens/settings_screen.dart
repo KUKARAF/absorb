@@ -771,7 +771,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     SwitchListTile(
                       title: Row(children: [
-                        const Text('Merge libraries'),
+                        const Flexible(child: Text('Merge libraries')),
                         _infoIcon('Merge Libraries', 'When enabled, the Absorbing screen shows all your in-progress books and podcasts from every library in a single view. When disabled, only items from the library you currently have selected are shown.'),
                       ]),
                       subtitle: Text(
@@ -827,6 +827,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                           const SizedBox(height: 8),
                           SizedBox(width: double.infinity, child: SegmentedButton<String>(
+                            showSelectedIcon: false,
                             segments: const [
                               ButtonSegment(value: 'off', icon: Icon(Icons.stop_rounded), label: Text('Off')),
                               ButtonSegment(value: 'manual', icon: Icon(Icons.queue_music_rounded), label: Text('Manual')),
@@ -848,6 +849,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Text('Books', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
                           const SizedBox(height: 4),
                           SizedBox(width: double.infinity, child: SegmentedButton<String>(
+                            showSelectedIcon: false,
                             segments: const [
                               ButtonSegment(value: 'off', icon: Icon(Icons.stop_rounded), label: Text('Off')),
                               ButtonSegment(value: 'manual', icon: Icon(Icons.queue_music_rounded), label: Text('Manual')),
@@ -865,6 +867,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Text('Podcasts', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
                             const SizedBox(height: 4),
                             SizedBox(width: double.infinity, child: SegmentedButton<String>(
+                              showSelectedIcon: false,
                               segments: const [
                                 ButtonSegment(value: 'off', icon: Icon(Icons.stop_rounded), label: Text('Off')),
                                 ButtonSegment(value: 'manual', icon: Icon(Icons.queue_music_rounded), label: Text('Manual')),
@@ -1143,6 +1146,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: SizedBox(
                         width: double.infinity,
                         child: SegmentedButton<String>(
+                          showSelectedIcon: false,
                           segments: const [
                             ButtonSegment(value: 'off', label: Text('Off')),
                             ButtonSegment(value: 'addTime', label: Text('Add Time')),
@@ -1343,7 +1347,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     SwitchListTile(
                       title: Row(children: [
-                        const Text('Auto download on Wi-Fi'),
+                        const Flexible(child: Text('Auto download on Wi-Fi')),
                         _infoIcon('Auto Download on Wi-Fi', 'When you start streaming a book over Wi-Fi, it will automatically begin downloading the full book in the background. This way you\'ll have it available offline without having to manually start the download.'),
                       ]),
                       subtitle: Text(
@@ -1367,6 +1371,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Text('Concurrent downloads', style: tt.bodyMedium?.copyWith(color: cs.onSurface)),
                           const SizedBox(height: 8),
                           SizedBox(width: double.infinity, child: SegmentedButton<int>(
+                            showSelectedIcon: false,
                             segments: const [
                               ButtonSegment(value: 1, label: Text('1')),
                               ButtonSegment(value: 2, label: Text('2')),
@@ -1403,6 +1408,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ]),
                           const SizedBox(height: 8),
                           SizedBox(width: double.infinity, child: SegmentedButton<int>(
+                            showSelectedIcon: false,
                             segments: const [
                               ButtonSegment(value: 2, label: Text('2')),
                               ButtonSegment(value: 3, label: Text('3')),
@@ -1421,7 +1427,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     SwitchListTile(
                       title: Row(children: [
-                        const Text('Delete absorbed downloads'),
+                        const Flexible(child: Text('Delete absorbed downloads')),
                         _infoIcon('Delete Absorbed Downloads', 'When enabled, downloaded books or episodes are automatically deleted from your device after you finish listening to them. This helps free up storage space as you work through your library.'),
                       ]),
                       subtitle: Text(
@@ -1489,6 +1495,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                           const SizedBox(height: 8),
                           SizedBox(width: double.infinity, child: SegmentedButton<int>(
+                            showSelectedIcon: false,
                             segments: const [
                               ButtonSegment(value: 0, label: Text('Off')),
                               ButtonSegment(value: 128, label: Text('128 MB')),
@@ -1717,8 +1724,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         trailing: const Icon(Icons.chevron_right_rounded),
                         onTap: () async {
                           try {
+                            final box = context.findRenderObject() as RenderBox?;
+                            final origin = box != null
+                                ? box.localToGlobal(Offset.zero) & box.size
+                                : null;
                             await LogService().shareLogs(
                               serverVersion: auth.serverVersion,
+                              sharePositionOrigin: origin,
                             );
                           } catch (e) {
                             if (mounted) {
@@ -1758,7 +1770,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     SwitchListTile(
                       title: Row(children: [
-                        const Text('Local server'),
+                        const Flexible(child: Text('Local server')),
                         _infoIcon('Local Server', 'If you run your Audiobookshelf server at home, you can set a local/LAN URL here. Absorb will automatically switch to the faster local connection when it detects you\'re on your home network, and fall back to your remote URL when you\'re away.'),
                       ]),
                       subtitle: Text(
@@ -1820,7 +1832,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     SwitchListTile(
                       title: Row(children: [
-                        const Text('Disable audio focus'),
+                        const Flexible(child: Text('Disable audio focus')),
                         _infoIcon('Audio Focus', 'By default, Android gives audio "focus" to one app at a time - when Absorb plays, other audio (music, videos) will pause. Disabling audio focus lets Absorb play alongside other apps. Phone calls will still pause playback regardless of this setting.'),
                       ]),
                       subtitle: Text(
@@ -1855,7 +1867,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     SwitchListTile(
                       title: Row(children: [
-                        const Text('Trust all certificates'),
+                        const Flexible(child: Text('Trust all certificates')),
                         _infoIcon('Self-signed Certificates',
                           'Enable this if your Audiobookshelf server uses a self-signed certificate or a custom root CA. '
                           'When enabled, Absorb will skip TLS certificate verification for all connections. '

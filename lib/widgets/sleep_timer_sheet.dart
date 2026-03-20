@@ -331,6 +331,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
       SizedBox(
         width: double.infinity,
         child: SegmentedButton<String>(
+          showSelectedIcon: false,
           segments: const [
             ButtonSegment(value: 'off', label: Text('Off')),
             ButtonSegment(value: 'addTime', label: Text('Add Time')),

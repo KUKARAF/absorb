@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -126,7 +127,9 @@ class LogService {
   }
 
   /// Share log file as attachment via share sheet with device info.
-  Future<void> shareLogs({String? serverVersion}) async {
+  ///
+  /// [sharePositionOrigin] is required on iPad for the share popover anchor.
+  Future<void> shareLogs({String? serverVersion, Rect? sharePositionOrigin}) async {
     final info = _deviceInfo(serverVersion: serverVersion);
 
     final hasFile =
@@ -137,11 +140,13 @@ class LogService {
         [XFile(_logFile!.path)],
         subject: 'Absorb Log Report',
         text: 'Send to: $supportEmail\n\n$info',
+        sharePositionOrigin: sharePositionOrigin,
       );
     } else {
       await Share.share(
         'Send to: $supportEmail\n\n$info\n(No log file found — is logging enabled?)',
         subject: 'Absorb Log Report',
+        sharePositionOrigin: sharePositionOrigin,
       );
     }
   }
