@@ -497,7 +497,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                     listenable: ChromecastService(),
                     builder: (context, _) => LayoutBuilder(
                     builder: (context, constraints) {
-                      final maxW = constraints.maxWidth * 0.96;
+                      final maxW = constraints.maxWidth * 0.60;
                       final maxH = constraints.maxHeight;
                       double coverW, coverH;
                       if (_rectangleCovers) {
