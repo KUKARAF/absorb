@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'api_service.dart';
@@ -133,6 +134,7 @@ class ChromecastService extends ChangeNotifier {
 
   void _onDisconnected() {
     if (_castingItemId != null && _castPosition > Duration.zero) _saveProgressLocal();
+
     _connectionState = CastConnectionState.disconnected;
     _playbackState = CastPlaybackState.idle;
     _connectedDeviceName = null;
@@ -145,6 +147,7 @@ class ChromecastService extends ChangeNotifier {
     _positionSub?.cancel();
     _syncTimer?.cancel();
     _updateWakeLock(false);
+
     _onPlaybackStateChangedCallback?.call(false);
     notifyListeners();
   }
@@ -172,6 +175,7 @@ class ChromecastService extends ChangeNotifier {
       if (wasPlaying != nowPlaying) {
         _onPlaybackStateChangedCallback?.call(nowPlaying);
         _updateWakeLock(nowPlaying);
+
       }
 
       // Detect playback completion: was playing/buffering → now idle
@@ -188,6 +192,12 @@ class ChromecastService extends ChangeNotifier {
       }
 
       notifyListeners();
+    }, onError: (e) {
+      debugPrint('[Cast] mediaStatusStream error - re-subscribing: $e');
+      _listenToMediaStatus();
+    }, onDone: () {
+      debugPrint('[Cast] mediaStatusStream completed - re-subscribing');
+      if (isConnected) _listenToMediaStatus();
     });
   }
 
@@ -205,6 +215,12 @@ class ChromecastService extends ChangeNotifier {
           _castPosition = pos;
         }
       }
+    }, onError: (e) {
+      debugPrint('[Cast] positionStream error - re-subscribing: $e');
+      _listenToPosition();
+    }, onDone: () {
+      debugPrint('[Cast] positionStream completed - re-subscribing');
+      if (isConnected) _listenToPosition();
     });
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
@@ -305,6 +321,13 @@ class ChromecastService extends ChangeNotifier {
         final st = (sessionData['updatedAt'] as num?)?.toInt() ?? 0;
         if (st > lt && (serverPos - startTime).abs() > 1.0) startTime = serverPos;
         else if (startTime == 0 && serverPos > 0) startTime = serverPos;
+      }
+
+      // Update duration from server if we don't have it (common for podcast episodes)
+      final serverDuration = (sessionData['duration'] as num?)?.toDouble() ?? 0;
+      if (_castingDuration <= 0 && serverDuration > 0) {
+        _castingDuration = serverDuration;
+        debugPrint('[Cast] Updated duration from server: ${serverDuration}s');
       }
 
       final audioTracks = sessionData['audioTracks'] as List<dynamic>?;
@@ -615,6 +638,8 @@ class ChromecastService extends ChangeNotifier {
     await _saveProgressLocal();
     await _syncProgressToServer();
     try { await GoogleCastRemoteMediaClient.instance.stop(); } catch (_) {}
+
+
     _playbackState = CastPlaybackState.idle;
     _castingItemId = _castingEpisodeId = _castingTitle = _castingAuthor = _castingCoverUrl = null;
     _castingDuration = 0; _castingChapters = [];
@@ -673,6 +698,7 @@ class ChromecastService extends ChangeNotifier {
     }
 
     // Clear casting state but keep connection
+
     _syncTimer?.cancel();
     _castingItemId = _castingEpisodeId = _castingTitle = _castingAuthor = _castingCoverUrl = null;
     _castingDuration = 0;
@@ -695,16 +721,10 @@ class ChromecastService extends ChangeNotifier {
     final ct = _castPosition.inMilliseconds / 1000.0;
     if (ct <= 0) return;
     try {
-      final sessionData = _castingEpisodeId != null
-          ? await _api!.startEpisodePlaybackSession(_castingItemId!, _castingEpisodeId!)
-          : await _api!.startPlaybackSession(_castingItemId!);
-      if (sessionData != null) {
-        final sid = sessionData['id'] as String?;
-        if (sid != null) {
-          await _api!.syncPlaybackSession(sid, currentTime: ct, duration: _castingDuration);
-          await _api!.closePlaybackSession(sid);
-        }
-      }
+      final progressId = _castingEpisodeId != null
+          ? '$_castingItemId-$_castingEpisodeId'
+          : _castingItemId!;
+      await _api!.updateProgress(progressId, currentTime: ct, duration: _castingDuration);
     } catch (e) {
       debugPrint('[Cast] Server sync error: $e');
     }

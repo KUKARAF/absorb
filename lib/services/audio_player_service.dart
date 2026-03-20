@@ -1464,11 +1464,11 @@ class AudioPlayerService extends ChangeNotifier {
       return 'Player failed to initialize';
     }
 
-    // Stop Chromecast if currently casting
+    // Don't start local playback while casting
     final cast = ChromecastService();
     if (cast.isCasting) {
-      debugPrint('[Player] Stopping Chromecast before local playback');
-      await cast.stopCasting();
+      debugPrint('[Player] Cast active - skipping local playback');
+      return null;
     }
 
     _api = api;

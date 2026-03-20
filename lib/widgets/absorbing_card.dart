@@ -693,16 +693,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                                 final castActive = ChromecastService().isCasting && !_buttonOrder.take(_visibleButtonCount).contains('cast');
                                 return GestureDetector(
                                   behavior: HitTestBehavior.opaque,
-                                  onTap: castActive
-                                      ? () => showModalBottomSheet(
-                                            context: context,
-                                            backgroundColor: Theme.of(context).bottomSheetTheme.backgroundColor,
-                                            shape: const RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                                            ),
-                                            builder: (_) => const CastControlSheet(),
-                                          )
-                                      : () => _showMoreMenu(context, accent, tt),
+                                  onTap: () => _showMoreMenu(context, accent, tt),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                                     decoration: BoxDecoration(

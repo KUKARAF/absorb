@@ -497,7 +497,10 @@ class LibraryProvider extends ChangeNotifier {
       AudioPlayerService.setOnBookFinishedCallback(markFinishedLocally);
       AudioPlayerService.setOnPlayStartedCallback((key) {
         _checkRollingDownloads(key);
-        _checkQueueAutoDownloads(key);
+        // Delay queue auto-download so the absorbing queue has time to
+        // reorder (moveToFront) before we check positions. Without this,
+        // switching between adjacent books triggers unnecessary downloads.
+        Future.delayed(const Duration(seconds: 2), () => _checkQueueAutoDownloads(key));
         _checkAutoDownloadOnStream(key);
       });
       AudioPlayerService.setOnPlaybackStateChangedCallback((playing) {
@@ -2216,6 +2219,7 @@ class LibraryProvider extends ChangeNotifier {
 
     // Slide the rolling download window forward for the finished item's series
     _checkRollingDownloads(itemId);
+    _checkQueueAutoDownloads(itemId);
 
     // Auto-delete finished download if the setting is enabled
     if (DownloadService().isDownloaded(itemId)) {

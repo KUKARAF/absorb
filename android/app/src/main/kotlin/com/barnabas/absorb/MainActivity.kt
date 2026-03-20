@@ -358,4 +358,5 @@ class MainActivity : AudioServiceActivity() {
         releaseEffects()
         super.onDestroy()
     }
+
 }

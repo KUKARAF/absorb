@@ -325,7 +325,7 @@ class CardSpeedButtonInline extends StatelessWidget {
     final fontSize = compact ? 10.0 : (large ? 15.0 : 13.0);
     final radius = compact ? 10.0 : (large ? 16.0 : 14.0);
     return ListenableBuilder(
-      listenable: cast,
+      listenable: Listenable.merge([cast, player]),
       builder: (context, _) {
         final castNow = itemId != null && cast.isCasting && cast.castingItemId == itemId;
         final enabledNow = isActive || castNow;
