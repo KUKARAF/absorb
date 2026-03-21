@@ -251,6 +251,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _rectangleCovers = rectCovers;
       _coverPlayButton = coverPlay;
       _trustAllCerts = trustCerts;
+
       _loaded = true;
     });
   }

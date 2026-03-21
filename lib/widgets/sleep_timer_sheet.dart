@@ -24,23 +24,31 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
   int _customChapters = 1;
   String _shakeMode = 'addTime'; // 'off', 'addTime', 'resetTimer'
   int _shakeAddMinutes = 5;
+  int _sleepRewindSeconds = 0;
+
+  // Rewind presets in seconds - filtered by timer duration at build time
+  static const _rewindStops = [0, 15, 30, 60, 120, 300, 600, 900, 1200, 1800];
 
   @override
   void initState() {
     super.initState();
-    _loadShakeSettings();
+    _loadSettings();
   }
 
-  Future<void> _loadShakeSettings() async {
-    final mode = await PlayerSettings.getShakeMode();
-    final mins = await PlayerSettings.getShakeAddMinutes();
-    final timerMins = await PlayerSettings.getSleepTimerMinutes();
-    final timerCh = await PlayerSettings.getSleepTimerChapters();
+  Future<void> _loadSettings() async {
+    final results = await Future.wait([
+      PlayerSettings.getShakeMode(),
+      PlayerSettings.getShakeAddMinutes(),
+      PlayerSettings.getSleepTimerMinutes(),
+      PlayerSettings.getSleepTimerChapters(),
+      PlayerSettings.getSleepRewindSeconds(),
+    ]);
     if (mounted) setState(() {
-      _shakeMode = mode;
-      _shakeAddMinutes = mins;
-      _customMinutes = timerMins.toDouble();
-      _customChapters = timerCh;
+      _shakeMode = results[0] as String;
+      _shakeAddMinutes = results[1] as int;
+      _customMinutes = (results[2] as int).toDouble();
+      _customChapters = results[3] as int;
+      _sleepRewindSeconds = results[4] as int;
     });
   }
 
@@ -95,6 +103,13 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
               else _buildChapterTab(accent, tt),
 
               const SizedBox(height: 16),
+              Container(height: 0.5, color: cs.onSurface.withValues(alpha: 0.08)),
+              const SizedBox(height: 12),
+
+              // Rewind on sleep
+              _buildRewindSection(accent, tt),
+
+              const SizedBox(height: 12),
               Container(height: 0.5, color: cs.onSurface.withValues(alpha: 0.08)),
               const SizedBox(height: 12),
 
@@ -304,6 +319,54 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
         child: Text('Sleep after $_customChapters ${_customChapters == 1 ? 'chapter' : 'chapters'}',
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
       )),
+    ]);
+  }
+
+  /// Format seconds as a human-readable label (e.g. "30s", "5m", "1m 30s").
+  String _rewindLabel(int seconds) {
+    if (seconds == 0) return 'Off';
+    if (seconds < 60) return '${seconds}s';
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return s > 0 ? '${m}m ${s}s' : '${m}m';
+  }
+
+  Widget _buildRewindSection(Color accent, TextTheme tt) {
+    final cs = Theme.of(context).colorScheme;
+    final isEnabled = _sleepRewindSeconds > 0;
+
+    // Filter stops to those <= 2/3 of the timer duration (in seconds)
+    final timerSeconds = _tabIndex == 0
+        ? (_customMinutes * 60).round()
+        : _customChapters * 600; // rough estimate: ~10 min per chapter
+    final maxRewind = (timerSeconds * 2 ~/ 3).clamp(15, 1800);
+    final stops = _rewindStops.where((s) => s == 0 || s <= maxRewind).toList();
+
+    // Snap current value to nearest valid stop
+    if (_sleepRewindSeconds > 0 && !stops.contains(_sleepRewindSeconds)) {
+      final nearest = stops.where((s) => s > 0).reduce((a, b) =>
+          (a - _sleepRewindSeconds).abs() <= (b - _sleepRewindSeconds).abs() ? a : b);
+      _sleepRewindSeconds = nearest;
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Icon(Icons.replay_rounded, size: 18, color: isEnabled ? accent : cs.onSurface.withValues(alpha: 0.24)),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Rewind on sleep', style: TextStyle(color: isEnabled ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w500)),
+          Text(isEnabled ? 'Rewinds ${_rewindLabel(_sleepRewindSeconds)} when timer stops' : 'Disabled',
+            style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+        ])),
+      ]),
+      const SizedBox(height: 10),
+      Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
+        for (final s in stops)
+          _presetChip(accent, _rewindLabel(s), _sleepRewindSeconds == s, () {
+            setState(() => _sleepRewindSeconds = s);
+            PlayerSettings.setSleepRewindSeconds(s);
+          }),
+      ]),
     ]);
   }
 

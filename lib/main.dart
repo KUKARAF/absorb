@@ -55,9 +55,11 @@ class _CertOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
     final client = super.createHttpClient(context);
-    if (trustAllCerts) {
-      client.badCertificateCallback = (_, __, ___) => true;
-    }
+    // Always install the callback so it works even for HttpClient instances
+    // created before trustAllCerts is loaded from SharedPreferences.
+    // flutter_cache_manager (CachedNetworkImage) caches its HttpClient, so
+    // checking the flag at validation time (not creation time) is essential.
+    client.badCertificateCallback = (_, __, ___) => trustAllCerts;
     return client;
   }
 }

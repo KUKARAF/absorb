@@ -298,7 +298,7 @@ class SleepTimerService extends ChangeNotifier {
   bool _isFadingOut = false;
   bool get isFadingOut => _isFadingOut;
 
-  void _triggerSleep() {
+  void _triggerSleep() async {
     debugPrint('[SleepTimer] Triggering sleep — pausing playback');
     if (_cast.isCasting) {
       _cast.pause();
@@ -306,6 +306,14 @@ class SleepTimerService extends ChangeNotifier {
       _player.pause();
       // Restore volume so next playback starts at normal level
       _player.setVolume(_fadeStartVolume);
+      // Auto-rewind so the user resumes from a few seconds back
+      final rewindSeconds = await PlayerSettings.getSleepRewindSeconds();
+      if (rewindSeconds > 0) {
+        final currentPos = _player.position;
+        final newPos = currentPos - Duration(seconds: rewindSeconds);
+        _player.seekTo(newPos < Duration.zero ? Duration.zero : newPos);
+        debugPrint('[SleepTimer] Rewound ${rewindSeconds}s');
+      }
     }
     _isFadingOut = false;
     cancel();

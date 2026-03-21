@@ -204,6 +204,9 @@ class PlayerSettings {
   static Future<bool> getSleepFadeOut() => _get('sleepFadeOut', true);
   static Future<void> setSleepFadeOut(bool value) => _set('sleepFadeOut', value);
 
+  static Future<int> getSleepRewindSeconds() => _get('sleepRewindSeconds', 0);
+  static Future<void> setSleepRewindSeconds(int seconds) => _set('sleepRewindSeconds', seconds);
+
   static Future<bool> getHideEbookOnly() => _get('hideEbookOnly', false);
   static Future<void> setHideEbookOnly(bool value) => _set('hideEbookOnly', value, notify: true);
 
