@@ -1198,6 +1198,7 @@ class AudioPlayerService extends ChangeNotifier {
     if (_trackStartOffsets.length <= 1) {
       // Single file — seek directly
       await _player!.seek(Duration(milliseconds: (absoluteSeconds * 1000).round()));
+      notifyListeners();
       return;
     }
     // Multi-file — find the right track and local offset
@@ -1209,6 +1210,7 @@ class AudioPlayerService extends ChangeNotifier {
         // Update index BEFORE seeking so positionStream events use the right offset
         _currentTrackIndex = i;
         await _player!.seek(Duration(milliseconds: (localOffset * 1000).round()), index: i);
+        notifyListeners();
         return;
       }
     }
@@ -2179,6 +2181,10 @@ class AudioPlayerService extends ChangeNotifier {
         debugPrint('[Player] processingState → completed');
         _onPlaybackComplete();
       }
+      // Notify UI when buffering/loading state changes so spinners update
+      if (state == ProcessingState.ready || state == ProcessingState.loading || state == ProcessingState.buffering) {
+        notifyListeners();
+      }
     }, onError: (Object e, StackTrace st) {
       debugPrint('[Player] processingState stream error: $e');
       _attemptStreamRetry(e);
@@ -2261,6 +2267,14 @@ class AudioPlayerService extends ChangeNotifier {
         if (sec % 60 == 0) {
           final prefs = await SharedPreferences.getInstance();
           final manualOffline = prefs.getBool('manual_offline_mode') ?? false;
+
+          if (manualOffline || _isOfflineMode || _playbackSessionId == null) {
+            // Offline or no session - accumulate listening time locally
+            final progressKey = _currentEpisodeId != null
+                ? '$_currentItemId-$_currentEpisodeId'
+                : _currentItemId!;
+            _progressSync.addOfflineListeningTime(progressKey, 60);
+          }
 
           if (manualOffline) {
             // Manual offline — local save only, no server sync
@@ -2411,7 +2425,7 @@ class AudioPlayerService extends ChangeNotifier {
     if (_api == null || _playbackSessionId == null) return;
     final ct = pos.inMilliseconds / 1000.0;
     final now = DateTime.now();
-    final elapsed = now.difference(_lastServerSync).inSeconds.clamp(0, 120);
+    final elapsed = now.difference(_lastServerSync).inSeconds.clamp(0, 300);
     _lastServerSync = now;
     try {
       await _api!.syncPlaybackSession(
@@ -2574,14 +2588,42 @@ class AudioPlayerService extends ChangeNotifier {
     debugPrint('[Service] skipForward done — playing=${_player!.playing}');
   }
 
+  DateTime? _lastRewindChapterSnap;
+
   Future<void> skipBackward([int seconds = 10]) async {
     if (_player == null) return;
-    debugPrint('[Service] skipBackward(${seconds}s) — playing=${_player!.playing}');
-    var n = position - Duration(seconds: seconds);
-    if (n < Duration.zero) n = Duration.zero;
-    await _seekAbsolute(n.inMilliseconds / 1000.0);
+    final posS = position.inMilliseconds / 1000.0;
+    final targetS = posS - seconds;
+
+    // Find current chapter start
+    if (_chapters.isNotEmpty) {
+      double chapterStart = 0;
+      for (int i = _chapters.length - 1; i >= 0; i--) {
+        final s = (_chapters[i]['start'] as num?)?.toDouble() ?? 0;
+        if (s <= posS + 0.5) { chapterStart = s; break; }
+      }
+
+      final intoChapter = posS - chapterStart;
+      // If the rewind would cross the chapter boundary
+      if (targetS < chapterStart && intoChapter > 0.5) {
+        final now = DateTime.now();
+        final recentSnap = _lastRewindChapterSnap != null &&
+            now.difference(_lastRewindChapterSnap!).inMilliseconds < 2000;
+        if (!recentSnap) {
+          // Snap to chapter start instead of crossing
+          _lastRewindChapterSnap = now;
+          await _seekAbsolute(chapterStart);
+          _logEvent(PlaybackEventType.skipBackward, detail: 'snap to chapter start');
+          return;
+        }
+        // Double-tap within 2s - break through the barrier
+        _lastRewindChapterSnap = null;
+      }
+    }
+
+    var n = targetS < 0 ? 0.0 : targetS;
+    await _seekAbsolute(n);
     _logEvent(PlaybackEventType.skipBackward, detail: '-${seconds}s');
-    debugPrint('[Service] skipBackward done — playing=${_player!.playing}');
   }
 
   Future<void> skipToNextChapter() async {

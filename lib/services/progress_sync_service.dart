@@ -281,6 +281,87 @@ class ProgressSyncService {
     }
   }
 
+  // ── Offline listening time tracking ──
+
+  /// Add listening time for an item that was played offline.
+  Future<void> addOfflineListeningTime(String itemId, int seconds) async {
+    if (seconds <= 0) return;
+    final key = 'offline_listening_$itemId';
+    final existing = await ScopedPrefs.getInt(key) ?? 0;
+    await ScopedPrefs.setInt(key, existing + seconds);
+
+    // Track which items have pending offline time
+    final pending = await ScopedPrefs.getStringList('pending_offline_listening');
+    if (!pending.contains(itemId)) {
+      pending.add(itemId);
+      await ScopedPrefs.setStringList('pending_offline_listening', pending);
+    }
+  }
+
+  /// Flush accumulated offline listening time to the server by creating
+  /// a session, syncing the accumulated time, and closing it.
+  Future<void> flushOfflineListeningTime({required ApiService api}) async {
+    if (!_isOnline) return;
+
+    final pending = List<String>.from(
+        await ScopedPrefs.getStringList('pending_offline_listening'));
+    if (pending.isEmpty) return;
+    final flushed = <String>{};
+
+    debugPrint('[Sync] Flushing offline listening time for ${pending.length} item(s)');
+
+    for (final itemId in pending) {
+      final key = 'offline_listening_$itemId';
+      final seconds = await ScopedPrefs.getInt(key) ?? 0;
+      if (seconds <= 0) {
+        await ScopedPrefs.remove(key);
+        continue;
+      }
+
+      final data = await getLocal(itemId);
+      final currentTime = (data?['currentTime'] as num?)?.toDouble() ?? 0;
+      final duration = (data?['duration'] as num?)?.toDouble() ?? 0;
+
+      try {
+        final isCompound = itemId.length > 36;
+        final apiItemId = isCompound ? itemId.substring(0, 36) : itemId;
+        final episodeId = isCompound ? itemId.substring(37) : null;
+
+        final sessionData = episodeId != null
+            ? await api.startEpisodePlaybackSession(apiItemId, episodeId)
+            : await api.startPlaybackSession(apiItemId);
+
+        if (sessionData != null) {
+          final sid = sessionData['id'] as String?;
+          if (sid != null) {
+            await api.syncPlaybackSession(
+              sid,
+              currentTime: currentTime,
+              duration: duration,
+              timeListened: seconds,
+            );
+            await api.closePlaybackSession(sid);
+            debugPrint('[Sync] Flushed ${seconds}s offline listening for $itemId');
+          }
+        }
+        // Only remove after successful sync
+        await ScopedPrefs.remove(key);
+        flushed.add(itemId);
+      } catch (e) {
+        debugPrint('[Sync] Failed to flush offline listening for $itemId: $e');
+        if (e.toString().contains('SocketException')) break;
+      }
+    }
+
+    // Only remove successfully flushed items from pending list
+    if (flushed.isNotEmpty) {
+      final remaining = List<String>.from(
+          await ScopedPrefs.getStringList('pending_offline_listening'));
+      remaining.removeWhere((id) => flushed.contains(id));
+      await ScopedPrefs.setStringList('pending_offline_listening', remaining);
+    }
+  }
+
   void dispose() {
     _connectivitySub?.cancel();
   }

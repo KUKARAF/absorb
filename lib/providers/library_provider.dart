@@ -111,6 +111,42 @@ class LibraryProvider extends ChangeNotifier {
         'rolling_download_series', _rollingDownloadSeries.toList());
   }
 
+  // Per-podcast subscription (auto-download + queue new episodes)
+  Set<String> _subscribedPodcasts = {};
+
+  bool isPodcastSubscribed(String podcastId) =>
+      _subscribedPodcasts.contains(podcastId);
+
+  Future<void> subscribePodcast(String podcastId) async {
+    _subscribedPodcasts.add(podcastId);
+    await _saveSubscribedPodcasts();
+    notifyListeners();
+  }
+
+  Future<void> unsubscribePodcast(String podcastId) async {
+    _subscribedPodcasts.remove(podcastId);
+    await _saveSubscribedPodcasts();
+    notifyListeners();
+  }
+
+  Future<void> togglePodcastSubscription(String podcastId) async {
+    if (_subscribedPodcasts.contains(podcastId)) {
+      await unsubscribePodcast(podcastId);
+    } else {
+      await subscribePodcast(podcastId);
+    }
+  }
+
+  Future<void> _loadSubscribedPodcasts() async {
+    _subscribedPodcasts =
+        (await ScopedPrefs.getStringList('subscribed_podcasts')).toSet();
+  }
+
+  Future<void> _saveSubscribedPodcasts() async {
+    await ScopedPrefs.setStringList(
+        'subscribed_podcasts', _subscribedPodcasts.toList());
+  }
+
   // Offline mode
   bool _manualOffline = false;
   bool _networkOffline = false;
@@ -139,6 +175,7 @@ class LibraryProvider extends ChangeNotifier {
       if (_api != null) {
         debugPrint('[Library] Manual offline off — flushing pending syncs');
         ProgressSyncService().flushPendingSync(api: _api!);
+        ProgressSyncService().flushOfflineListeningTime(api: _api!);
       }
       if (_selectedLibraryId == null) {
         loadLibraries();
@@ -181,6 +218,7 @@ class LibraryProvider extends ChangeNotifier {
       if (_api != null) {
         debugPrint('[Library] Back online — flushing pending syncs');
         ProgressSyncService().flushPendingSync(api: _api!);
+        ProgressSyncService().flushOfflineListeningTime(api: _api!);
       }
       if (_selectedLibraryId == null) {
         loadLibraries();
@@ -525,6 +563,10 @@ class LibraryProvider extends ChangeNotifier {
         _startConnectivityMonitoring();
         _loadManualAbsorbing();
         await _loadRollingDownloadSeries();
+        await _loadSubscribedPodcasts();
+        // Seed episode counts in the background so first socket update
+        // doesn't treat all existing episodes as new.
+        Future.microtask(() => seedSubscribedPodcastCounts());
 
         // If server was unreachable on startup, force offline mode and ping
         if (!auth.serverReachable) {
@@ -540,6 +582,7 @@ class LibraryProvider extends ChangeNotifier {
         _buildProgressMap(auth);
         if (_api != null && !isOffline) {
           ProgressSyncService().flushPendingSync(api: _api!);
+          ProgressSyncService().flushOfflineListeningTime(api: _api!);
           DownloadService().enrichMetadata(_api!);
         }
         // Connect Socket.IO for online presence + cross-device sync
@@ -631,6 +674,7 @@ class LibraryProvider extends ChangeNotifier {
           _auth?.checkLocalServer();
           if (_rollingDownloadSeries.isNotEmpty) _catchUpRollingDownloads();
           _catchUpQueueAutoDownloads();
+          catchUpSubscribedPodcasts();
         } else {
           // WiFi dropped but still have connectivity (e.g. mobile data) —
           // local server won't be reachable, revert to remote URL.
@@ -816,6 +860,8 @@ class LibraryProvider extends ChangeNotifier {
   void _onRemoteItemUpdated(Map<String, dynamic> data) {
     // Refresh the personalized view so new/updated items appear
     loadPersonalizedView(force: true);
+    // Check if a subscribed podcast has new episodes
+    _checkSubscribedPodcastUpdate(data);
   }
 
   /// Handle library item removed from socket.
@@ -942,6 +988,7 @@ class LibraryProvider extends ChangeNotifier {
     // or WiFi wasn't available when the download should have triggered)
     _catchUpRollingDownloads();
     _catchUpQueueAutoDownloads();
+    catchUpSubscribedPodcasts();
   }
 
   /// Change the selected library and reload data.
@@ -3049,6 +3096,140 @@ class LibraryProvider extends ChangeNotifier {
         content: Text(message),
         duration: const Duration(seconds: 3),
       ));
+  }
+
+  // ── Podcast subscriptions ──
+
+  /// Track known episode counts per podcast so we can detect new ones.
+  final Map<String, int> _knownEpisodeCounts = {};
+
+  /// Called when a library item is updated via socket. If it's a subscribed
+  /// podcast with more episodes than we last knew about, auto-download and
+  /// queue the new ones.
+  void _checkSubscribedPodcastUpdate(Map<String, dynamic> data) {
+    if (_subscribedPodcasts.isEmpty || _api == null || isOffline) return;
+
+    final itemId = data['id'] as String?;
+    if (itemId == null || !_subscribedPodcasts.contains(itemId)) return;
+
+    final mediaType = data['mediaType'] as String?;
+    if (mediaType != 'podcast') return;
+
+    final media = data['media'] as Map<String, dynamic>? ?? {};
+    final episodes = media['episodes'] as List<dynamic>? ?? [];
+    final currentCount = episodes.length;
+    final knownCount = _knownEpisodeCounts[itemId] ?? 0;
+
+    if (knownCount > 0 && currentCount > knownCount) {
+      // New episodes detected
+      final newEpisodes = episodes.sublist(0, currentCount - knownCount);
+      debugPrint('[Subscription] ${currentCount - knownCount} new episode(s) for $itemId');
+
+      int queued = 0;
+
+      for (final ep in newEpisodes) {
+        final epMap = ep as Map<String, dynamic>;
+        final epId = epMap['id'] as String?;
+        if (epId == null) continue;
+        final key = '$itemId-$epId';
+
+        // Add to absorbing queue
+        _absorbingIdsAdd(key, atFront: true);
+        _absorbingItemCache[key] = {
+          'id': itemId,
+          'mediaType': 'podcast',
+          '_absorbingKey': key,
+          'recentEpisode': epMap,
+          'media': media,
+        };
+        queued++;
+      }
+
+      if (queued > 0) {
+        _saveManualAbsorbing();
+        notifyListeners();
+        // Download in background (respects WiFi-only setting)
+        _downloadSubscribedEpisodes(itemId);
+      }
+    }
+
+    _knownEpisodeCounts[itemId] = currentCount;
+  }
+
+  /// Seed known episode counts for subscribed podcasts so the first
+  /// socket update doesn't treat all existing episodes as new.
+  Future<void> seedSubscribedPodcastCounts() async {
+    if (_subscribedPodcasts.isEmpty || _api == null) return;
+    for (final podcastId in _subscribedPodcasts) {
+      if (_knownEpisodeCounts.containsKey(podcastId)) continue;
+      try {
+        final item = await _api!.getLibraryItem(podcastId);
+        if (item == null) continue;
+        final media = item['media'] as Map<String, dynamic>? ?? {};
+        final episodes = media['episodes'] as List<dynamic>? ?? [];
+        _knownEpisodeCounts[podcastId] = episodes.length;
+        debugPrint('[Subscription] Seeded $podcastId with ${episodes.length} episodes');
+      } catch (e) {
+        debugPrint('[Subscription] Failed to seed $podcastId: $e');
+      }
+    }
+  }
+
+  /// Download queued episodes for a subscribed podcast, respecting WiFi-only.
+  Future<void> _downloadSubscribedEpisodes(String podcastId) async {
+    if (_api == null || isOffline) return;
+    final wifiOnly = await PlayerSettings.getWifiOnlyDownloads();
+    if (wifiOnly) {
+      final connectivity = await Connectivity().checkConnectivity();
+      if (!connectivity.contains(ConnectivityResult.wifi)) {
+        debugPrint('[Subscription] Skipping download (not on WiFi) - will retry on WiFi');
+        return;
+      }
+    }
+
+    final dl = DownloadService();
+    int downloaded = 0;
+
+    for (final key in _absorbingBookIds) {
+      if (!key.startsWith(podcastId)) continue;
+      if (dl.isDownloaded(key) || dl.isDownloading(key)) continue;
+
+      final cached = _absorbingItemCache[key];
+      final epId = key.substring(37);
+      final ep = cached?['recentEpisode'] as Map<String, dynamic>?;
+      final media = cached?['media'] as Map<String, dynamic>? ?? {};
+      final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+
+      dl.downloadItem(
+        api: _api!,
+        itemId: key,
+        title: ep?['title'] as String? ?? 'Episode',
+        author: metadata['title'] as String? ?? '',
+        coverUrl: getCoverUrl(podcastId),
+        episodeId: epId,
+      );
+      downloaded++;
+    }
+
+    if (downloaded > 0) {
+      final cached = _absorbingItemCache.values.firstWhere(
+        (c) => (c['id'] as String?) == podcastId,
+        orElse: () => {},
+      );
+      final media = cached['media'] as Map<String, dynamic>? ?? {};
+      final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+      final showTitle = metadata['title'] as String? ?? 'Podcast';
+      _showRollingSnackBar('$showTitle: $downloaded new episode${downloaded == 1 ? '' : 's'} downloading');
+    }
+  }
+
+  /// Catch up on subscribed podcast downloads - called on WiFi reconnect
+  /// and app startup.
+  Future<void> catchUpSubscribedPodcasts() async {
+    if (_subscribedPodcasts.isEmpty || _api == null || isOffline) return;
+    for (final podcastId in _subscribedPodcasts) {
+      await _downloadSubscribedEpisodes(podcastId);
+    }
   }
 
   /// Check if a book/episode is on the absorbing page (persisted local list, not removed).

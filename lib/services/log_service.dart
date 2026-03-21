@@ -13,10 +13,9 @@ class LogService {
 
   static const supportEmail = 'barnabas.absorb@gmail.com';
 
-  // Keep 3MB max, trim to 2MB. At ~100 bytes/line this retains ~20k lines
-  // which covers multiple sessions across several days of normal use.
-  static const _maxSize = 3 * 1024 * 1024; // 3 MB
-  static const _keepSize = 2 * 1024 * 1024; // 2 MB
+  // Keep 1MB max, trim to 512KB.
+  static const _maxSize = 1 * 1024 * 1024; // 1 MB
+  static const _keepSize = 512 * 1024; // 512 KB
   static const _rotateCheckInterval = 500; // check every N writes
 
   File? _logFile;
@@ -34,6 +33,14 @@ class LogService {
 
     final dir = await getApplicationDocumentsDirectory();
     _logFile = File('${dir.path}/absorb_logs.txt');
+
+    // Auto-clear if log is older than 24 hours
+    if (_logFile!.existsSync()) {
+      final lastModified = _logFile!.lastModifiedSync();
+      if (DateTime.now().difference(lastModified).inHours >= 24) {
+        _logFile!.writeAsStringSync('');
+      }
+    }
 
     // Rotate on startup if needed
     await _rotateIfNeeded();

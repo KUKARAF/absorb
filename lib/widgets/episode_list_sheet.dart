@@ -56,6 +56,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
   bool _isLoading = true;
   bool _isDownloadingAll = false;
   bool _autoDownloadEnabled = false;
+  bool _subscribed = false;
   bool _newestFirst = true;
   bool _hideFinished = false;
   String _podcastAdvanceDir = 'oldest_first'; // 'oldest_first' or 'newest_first'
@@ -107,6 +108,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     final lib = context.read<LibraryProvider>();
     setState(() {
       _autoDownloadEnabled = lib.isRollingDownloadEnabled(_itemId);
+      _subscribed = lib.isPodcastSubscribed(_itemId);
     });
   }
 
@@ -416,6 +418,37 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                     await lib.toggleRollingDownload(_itemId);
                     setState(() => _autoDownloadEnabled = lib.isRollingDownloadEnabled(_itemId));
                   }),
+              if (_itemId.isNotEmpty)
+                _podMoreItem(cs,
+                  _subscribed ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+                  _subscribed ? 'Unsubscribe from New Episodes' : 'Subscribe to New Episodes',
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    if (_subscribed) {
+                      final lib = context.read<LibraryProvider>();
+                      await lib.unsubscribePodcast(_itemId);
+                      if (mounted) setState(() => _subscribed = false);
+                    } else {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (dCtx) => AlertDialog(
+                          icon: const Icon(Icons.notifications_active_rounded),
+                          title: const Text('Subscribe to this podcast?'),
+                          content: const Text(
+                            'New episodes will be automatically downloaded and added to your absorbing queue when they appear on the server.'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancel')),
+                            FilledButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('Subscribe')),
+                          ],
+                        ),
+                      );
+                      if (confirm == true && mounted) {
+                        final lib = context.read<LibraryProvider>();
+                        await lib.subscribePodcast(_itemId);
+                        setState(() => _subscribed = true);
+                      }
+                    }
+                  }),
               _podMoreItem(cs,
                 _hideFinished ? Icons.visibility_rounded : Icons.visibility_off_rounded,
                 _hideFinished ? 'Show Finished Episodes' : 'Hide Finished Episodes',
@@ -569,6 +602,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
               Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
                 if (!_isLoading) _chip(Icons.podcasts_rounded, '${_episodes.length} episode${_episodes.length == 1 ? '' : 's'}'),
                 if (_autoDownloadEnabled) _chip(Icons.downloading_rounded, 'Auto-Download'),
+                if (_subscribed) _chip(Icons.notifications_active_rounded, 'Subscribed', highlight: true),
                 ..._genres.take(3).map((g) => _chip(Icons.tag_rounded, g)),
                 if (_language.isNotEmpty) _chip(Icons.language_rounded, _language.toUpperCase()),
                 if (_explicit) _chip(Icons.explicit_rounded, 'Explicit'),
@@ -761,17 +795,19 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     );
   }
 
-  Widget _chip(IconData icon, String text) {
+  Widget _chip(IconData icon, String text, {bool highlight = false}) {
     final cs = Theme.of(context).colorScheme;
     return Container(
       constraints: const BoxConstraints(maxWidth: 200),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.onSurface.withValues(alpha: 0.08))),
+      decoration: BoxDecoration(
+        color: highlight ? cs.primary.withValues(alpha: 0.15) : cs.onSurface.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: highlight ? cs.primary.withValues(alpha: 0.3) : cs.onSurface.withValues(alpha: 0.08))),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 12, color: cs.onSurfaceVariant), const SizedBox(width: 4),
+        Icon(icon, size: 12, color: highlight ? cs.primary : cs.onSurfaceVariant), const SizedBox(width: 4),
         Flexible(child: Text(text, overflow: TextOverflow.ellipsis, maxLines: 1,
-          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11)))]));
+          style: TextStyle(color: highlight ? cs.primary : cs.onSurfaceVariant, fontSize: 11)))]));
   }
 }
 
