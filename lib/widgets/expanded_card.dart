@@ -593,7 +593,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                 final isCastingThis = castService.isCasting && castService.castingItemId == _itemId;
                                 final coverPlaying = isCastingThis ? castService.isPlaying : (_isActive && widget.player.isPlaying);
                                 final coverLoading = _isStarting || (_isActive && widget.player.isLoadingOrBuffering);
-                                return GestureDetector(
+                                return Center(child: GestureDetector(
                                   onTap: _coverPlayButton ? () {
                                     if (isCastingThis) {
                                       castService.togglePlayPause();
@@ -724,7 +724,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                       ),
                                     ),
                                   ),
-                                ));
+                                )));
                               },
                             ),
                           ),
