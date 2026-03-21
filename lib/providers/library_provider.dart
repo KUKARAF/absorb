@@ -120,6 +120,17 @@ class LibraryProvider extends ChangeNotifier {
   Future<void> subscribePodcast(String podcastId) async {
     _subscribedPodcasts.add(podcastId);
     await _saveSubscribedPodcasts();
+    // Seed the known episode IDs so future updates can detect new ones.
+    final item = await _api?.getLibraryItem(podcastId);
+    if (item != null) {
+      final media = item['media'] as Map<String, dynamic>? ?? {};
+      final episodes = media['episodes'] as List<dynamic>? ?? [];
+      final ids = episodes
+          .map((e) => (e as Map<String, dynamic>)['id'] as String?)
+          .whereType<String>()
+          .toSet();
+      _knownEpisodeIds[podcastId] = ids;
+    }
     notifyListeners();
   }
 
@@ -594,6 +605,7 @@ class LibraryProvider extends ChangeNotifier {
           socket.onSeriesUpdated = _onRemoteSeriesUpdated;
           socket.onCollectionUpdated = _onRemoteCollectionUpdated;
           socket.onUserUpdated = _onRemoteUserUpdated;
+          socket.onReconnectFailed = _onSocketReconnectFailed;
           socket.connect(auth.serverUrl!, auth.token!);
         }
         debugPrint('[Library] Calling loadLibraries()');
@@ -802,6 +814,12 @@ class LibraryProvider extends ChangeNotifier {
         error is TimeoutException ||
         error is HandshakeException ||
         error is HttpException;
+  }
+
+  /// Socket.IO exhausted all reconnection attempts - server is unreachable.
+  void _onSocketReconnectFailed() {
+    debugPrint('[Library] Socket reconnection failed — going offline');
+    _goOffline();
   }
 
   /// Go offline due to a network error. Builds offline sections and starts
@@ -3100,8 +3118,9 @@ class LibraryProvider extends ChangeNotifier {
 
   // ── Podcast subscriptions ──
 
-  /// Track known episode counts per podcast so we can detect new ones.
-  final Map<String, int> _knownEpisodeCounts = {};
+  /// Track known episode IDs per podcast so we can detect new ones
+  /// regardless of position or date.
+  final Map<String, Set<String>> _knownEpisodeIds = {};
 
   /// Called when a library item is updated via socket. If it's a subscribed
   /// podcast with more episodes than we last knew about, auto-download and
@@ -3115,25 +3134,50 @@ class LibraryProvider extends ChangeNotifier {
     final mediaType = data['mediaType'] as String?;
     if (mediaType != 'podcast') return;
 
-    final media = data['media'] as Map<String, dynamic>? ?? {};
+    // Socket payloads may not include the full episode list, so fetch the
+    // complete item from the API to get accurate episode data.
+    _fetchAndCheckSubscribedPodcast(itemId);
+  }
+
+  /// Fetch the full podcast item and check for new episodes.
+  Future<void> _fetchAndCheckSubscribedPodcast(String itemId) async {
+    if (_api == null || isOffline) return;
+
+    final item = await _api!.getLibraryItem(itemId);
+    if (item == null) return;
+
+    final media = item['media'] as Map<String, dynamic>? ?? {};
     final episodes = media['episodes'] as List<dynamic>? ?? [];
-    final currentCount = episodes.length;
-    final knownCount = _knownEpisodeCounts[itemId] ?? 0;
+    final knownIds = _knownEpisodeIds[itemId];
 
-    if (knownCount > 0 && currentCount > knownCount) {
-      // New episodes detected
-      final newEpisodes = episodes.sublist(0, currentCount - knownCount);
-      debugPrint('[Subscription] ${currentCount - knownCount} new episode(s) for $itemId');
+    if (knownIds == null) {
+      // First time seeing this podcast - seed and return
+      final ids = episodes
+          .map((e) => (e as Map<String, dynamic>)['id'] as String?)
+          .whereType<String>()
+          .toSet();
+      _knownEpisodeIds[itemId] = ids;
+      return;
+    }
 
+    // Find episodes we haven't seen before
+    final newEpisodes = <Map<String, dynamic>>[];
+    for (final ep in episodes) {
+      final epMap = ep as Map<String, dynamic>;
+      final epId = epMap['id'] as String?;
+      if (epId != null && !knownIds.contains(epId)) {
+        newEpisodes.add(epMap);
+      }
+    }
+
+    if (newEpisodes.isNotEmpty) {
+      debugPrint('[Subscription] ${newEpisodes.length} new episode(s) for $itemId');
       int queued = 0;
 
-      for (final ep in newEpisodes) {
-        final epMap = ep as Map<String, dynamic>;
-        final epId = epMap['id'] as String?;
-        if (epId == null) continue;
+      for (final epMap in newEpisodes) {
+        final epId = epMap['id'] as String;
         final key = '$itemId-$epId';
 
-        // Add to absorbing queue
         _absorbingIdsAdd(key, atFront: true);
         _absorbingItemCache[key] = {
           'id': itemId,
@@ -3142,33 +3186,39 @@ class LibraryProvider extends ChangeNotifier {
           'recentEpisode': epMap,
           'media': media,
         };
+        // Protect from pruning - no progress yet so _updateAbsorbingCache
+        // would remove it without this.
+        _manualAbsorbAdds.add(key);
+        _manualAbsorbRemoves.remove(key);
+        knownIds.add(epId);
         queued++;
       }
 
       if (queued > 0) {
         _saveManualAbsorbing();
         notifyListeners();
-        // Download in background (respects WiFi-only setting)
         _downloadSubscribedEpisodes(itemId);
       }
     }
-
-    _knownEpisodeCounts[itemId] = currentCount;
   }
 
-  /// Seed known episode counts for subscribed podcasts so the first
+  /// Seed known episode IDs for subscribed podcasts so the first
   /// socket update doesn't treat all existing episodes as new.
   Future<void> seedSubscribedPodcastCounts() async {
     if (_subscribedPodcasts.isEmpty || _api == null) return;
     for (final podcastId in _subscribedPodcasts) {
-      if (_knownEpisodeCounts.containsKey(podcastId)) continue;
+      if (_knownEpisodeIds.containsKey(podcastId)) continue;
       try {
         final item = await _api!.getLibraryItem(podcastId);
         if (item == null) continue;
         final media = item['media'] as Map<String, dynamic>? ?? {};
         final episodes = media['episodes'] as List<dynamic>? ?? [];
-        _knownEpisodeCounts[podcastId] = episodes.length;
-        debugPrint('[Subscription] Seeded $podcastId with ${episodes.length} episodes');
+        final ids = episodes
+            .map((e) => (e as Map<String, dynamic>)['id'] as String?)
+            .whereType<String>()
+            .toSet();
+        _knownEpisodeIds[podcastId] = ids;
+        debugPrint('[Subscription] Seeded $podcastId with ${ids.length} episodes');
       } catch (e) {
         debugPrint('[Subscription] Failed to seed $podcastId: $e');
       }

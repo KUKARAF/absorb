@@ -254,6 +254,7 @@ class _EpisodeCard extends StatelessWidget {
     final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
     final showTitle = metadata['title'] as String? ?? '';
     final coverUrl = lib.getCoverUrl(itemId);
+    final isSubscribed = lib.isPodcastSubscribed(itemId);
 
     // Get episode info from recentEpisode
     final episode = item['recentEpisode'] as Map<String, dynamic>?;
@@ -303,6 +304,21 @@ class _EpisodeCard extends StatelessWidget {
                       color: cs.surfaceContainerHigh,
                       child: Icon(Icons.podcasts_rounded, size: 32,
                         color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
+                    ),
+                  // Subscribed bell
+                  if (isSubscribed)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.notifications_rounded,
+                            size: 11, color: Colors.white),
+                      ),
                     ),
                 ],
               ),

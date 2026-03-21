@@ -57,6 +57,7 @@ class _GridBookTileState extends State<GridBookTile> {
     final progress = lib.getProgress(itemId);
     final isDownloaded = _dl.isDownloaded(itemId);
     final isFinished = lib.getProgressData(itemId)?['isFinished'] == true;
+    final isSubscribed = lib.isPodcastLibrary && lib.isPodcastSubscribed(itemId);
 
     return GestureDetector(
       onTap: () {
@@ -104,6 +105,22 @@ class _GridBookTileState extends State<GridBookTile> {
                         minHeight: 3,
                         backgroundColor: Colors.black38,
                         valueColor: AlwaysStoppedAnimation(cs.primary),
+                      ),
+                    ),
+
+                  // Subscribed bell
+                  if (isSubscribed)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.notifications_rounded,
+                            size: 11, color: Colors.white),
                       ),
                     ),
 

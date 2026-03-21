@@ -41,6 +41,9 @@ class SocketService {
   /// Called when the current user's data changes on the server.
   void Function(Map<String, dynamic> data)? onUserUpdated;
 
+  /// Called when socket.io exhausts all reconnection attempts.
+  VoidCallback? onReconnectFailed;
+
   void connect(String serverUrl, String token) {
     if (_socket != null) disconnect();
 
@@ -135,6 +138,7 @@ class SocketService {
         debugPrint('[Socket] Reconnection attempts exhausted — giving up');
         _socket?.dispose();
         _socket = null;
+        onReconnectFailed?.call();
       });
     } catch (e) {
       debugPrint('[Socket] Failed to connect: $e');
@@ -156,6 +160,7 @@ class SocketService {
     onSeriesUpdated = null;
     onCollectionUpdated = null;
     onUserUpdated = null;
+    onReconnectFailed = null;
   }
 
   /// Disconnect the socket but keep callbacks and credentials so we can
@@ -246,6 +251,7 @@ class SocketService {
         debugPrint('[Socket] Reconnection attempts exhausted — giving up');
         _socket?.dispose();
         _socket = null;
+        onReconnectFailed?.call();
       });
     } catch (e) {
       debugPrint('[Socket] Failed to reconnect: $e');
