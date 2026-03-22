@@ -581,11 +581,39 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
           episodeTitle = ep?['title'] as String?;
         }
 
+        final isOnAbsorbing = lib.isOnAbsorbingList(progressKey);
         return Dismissible(
           key: ValueKey('$libraryItemId-${episodeId ?? ''}'),
-          direction: DismissDirection.endToStart,
-          onDismissed: (_) => _removeItem(lib, libraryItemId, episodeId: episodeId),
+          direction: DismissDirection.horizontal,
+          confirmDismiss: (direction) async {
+            if (direction == DismissDirection.startToEnd) {
+              if (isOnAbsorbing) return false;
+              await lib.addToAbsorbingQueue(progressKey);
+              lib.absorbingItemCache[progressKey] = Map<String, dynamic>.from(libraryItem);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Added "${episodeTitle ?? title}" to Absorbing'),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 2),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ));
+              }
+              return false;
+            }
+            // endToStart = delete
+            _removeItem(lib, libraryItemId, episodeId: episodeId);
+            return true;
+          },
           background: Container(
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 20),
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.add_circle_outline_rounded, color: cs.primary),
+          ),
+          secondaryBackground: Container(
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.only(right: 20),
             color: cs.error.withValues(alpha: 0.1),

@@ -401,13 +401,68 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
           ),
         );
 
-        if (!isRoot) return card;
+        final isOnAbsorbing = lib.isOnAbsorbingList(itemId);
+
+        if (!isRoot) {
+          return Dismissible(
+            key: ValueKey('absorb-$itemId'),
+            direction: isOnAbsorbing ? DismissDirection.none : DismissDirection.startToEnd,
+            confirmDismiss: (_) async {
+              await lib.addToAbsorbingQueue(itemId);
+              lib.absorbingItemCache[itemId] = Map<String, dynamic>.from(book);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Added "$title" to Absorbing'),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 2),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ));
+              }
+              return false;
+            },
+            background: Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 20),
+              decoration: BoxDecoration(
+                color: cs.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(Icons.add_circle_outline_rounded, color: cs.primary),
+            ),
+            child: card,
+          );
+        }
 
         return Dismissible(
           key: ValueKey(itemId),
-          direction: DismissDirection.endToStart,
-          onDismissed: (_) => _removeItem(lib, itemId),
+          direction: isOnAbsorbing ? DismissDirection.endToStart : DismissDirection.horizontal,
+          confirmDismiss: (direction) async {
+            if (direction == DismissDirection.startToEnd) {
+              await lib.addToAbsorbingQueue(itemId);
+              lib.absorbingItemCache[itemId] = Map<String, dynamic>.from(book);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Added "$title" to Absorbing'),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 2),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ));
+              }
+              return false;
+            }
+            _removeItem(lib, itemId);
+            return true;
+          },
           background: Container(
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 20),
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.add_circle_outline_rounded, color: cs.primary),
+          ),
+          secondaryBackground: Container(
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.only(right: 20),
             color: cs.error.withValues(alpha: 0.1),

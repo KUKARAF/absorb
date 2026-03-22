@@ -152,14 +152,43 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
           ]),
         ));
         for (final book in books) {
+          final bookId = book['id'] as String? ?? '';
+          final bookTitle = (book['media'] as Map<String, dynamic>?)?['metadata']?['title'] as String? ?? 'Unknown';
+          final isOnAbsorbing = lib.isOnAbsorbingList(bookId);
           items.add(Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: BookResultTile(
-              item: book,
-              serverUrl: widget.serverUrl,
-              token: widget.token,
-              popOnTap: true,
-              subtitle: _sequenceFor(book, label),
+            child: Dismissible(
+              key: ValueKey('absorb-$bookId'),
+              direction: isOnAbsorbing ? DismissDirection.none : DismissDirection.startToEnd,
+              confirmDismiss: (_) async {
+                await lib.addToAbsorbingQueue(bookId);
+                lib.absorbingItemCache[bookId] = Map<String, dynamic>.from(book);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Added "$bookTitle" to Absorbing'),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 2),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ));
+                }
+                return false;
+              },
+              background: Container(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.only(left: 20),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.add_circle_outline_rounded, color: cs.primary),
+              ),
+              child: BookResultTile(
+                item: book,
+                serverUrl: widget.serverUrl,
+                token: widget.token,
+                popOnTap: true,
+                subtitle: _sequenceFor(book, label),
+              ),
             ),
           ));
         }
