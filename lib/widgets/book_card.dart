@@ -38,14 +38,15 @@ class BookCard extends StatelessWidget {
     // Progress from LibraryProvider (fetched via /api/me, same source as book detail)
     final progress = lib.getProgress(itemId);
     final isFinished = lib.getProgressData(itemId)?['isFinished'] == true;
+    final isExplicit = metadata['explicit'] == true;
     final isDownloaded = DownloadService().isDownloaded(itemId ?? '');
 
     final headers = lib.mediaHeaders;
 
     if (isWide) {
-      return _buildWideCard(context, cs, tt, title, authorName, coverUrl, progress, headers);
+      return _buildWideCard(context, cs, tt, title, authorName, coverUrl, progress, headers, isExplicit: isExplicit);
     }
-    return _buildCompactCard(context, cs, tt, title, authorName, coverUrl, progress, headers, isFinished: isFinished, isDownloaded: isDownloaded);
+    return _buildCompactCard(context, cs, tt, title, authorName, coverUrl, progress, headers, isFinished: isFinished, isDownloaded: isDownloaded, isExplicit: isExplicit);
   }
 
   void _navigateToDetail(BuildContext context) {
@@ -74,8 +75,9 @@ class BookCard extends StatelessWidget {
     String authorName,
     String? coverUrl,
     double progress,
-    Map<String, String> headers,
-  ) {
+    Map<String, String> headers, {
+    bool isExplicit = false,
+  }) {
     return Card(
       elevation: 0,
       color: cs.surfaceContainerHigh,
@@ -93,6 +95,18 @@ class BookCard extends StatelessWidget {
               child: Stack(
                 children: [
                   _CoverImage(coverUrl: coverUrl, cs: cs, fit: BoxFit.contain, httpHeaders: headers),
+                  if (isExplicit)
+                    Positioned(
+                      top: 4, right: DownloadService().isDownloaded(item['id'] as String? ?? '') ? 30 : 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
                   if (DownloadService().isDownloaded(item['id'] as String? ?? ''))
                     Positioned(
                       top: 4, right: 4,
@@ -185,6 +199,7 @@ class BookCard extends StatelessWidget {
     Map<String, String> headers, {
     bool isFinished = false,
     bool isDownloaded = false,
+    bool isExplicit = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,6 +238,18 @@ class BookCard extends StatelessWidget {
                           backgroundColor: Colors.transparent,
                           valueColor: AlwaysStoppedAnimation(cs.primary),
                         ),
+                      ),
+                    ),
+                  if (isExplicit)
+                    Positioned(
+                      top: 4, right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
                       ),
                     ),
                   if (isFinished || isDownloaded)

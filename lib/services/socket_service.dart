@@ -9,6 +9,7 @@ class SocketService {
   IO.Socket? _socket;
   String? _token;
   String? _serverUrl;
+  DateTime? _connectedAt;
 
   bool get isConnected => _socket?.connected ?? false;
   bool get hasSocket => _socket != null;
@@ -55,6 +56,7 @@ class SocketService {
 
       // onConnect fires on initial connect AND every reconnect
       _socket!.onConnect((_) {
+        _connectedAt = DateTime.now();
         debugPrint('[Socket] Connected, sending auth');
         _socket!.emit('auth', _token);
       });
@@ -126,8 +128,12 @@ class SocketService {
         if (data is Map<String, dynamic>) onUserUpdated?.call(data);
       });
 
-      _socket!.onDisconnect((_) {
-        debugPrint('[Socket] Disconnected');
+      _socket!.onDisconnect((reason) {
+        final duration = _connectedAt != null
+            ? DateTime.now().difference(_connectedAt!).inSeconds
+            : 0;
+        debugPrint('[Socket] Disconnected after ${duration}s (Reason: $reason)');
+        _connectedAt = null;
       });
 
       _socket!.onConnectError((err) {
@@ -197,6 +203,7 @@ class SocketService {
       _socket = IO.io(url, _buildOptions());
 
       _socket!.onConnect((_) {
+        _connectedAt = DateTime.now();
         debugPrint('[Socket] Connected, sending auth');
         _socket!.emit('auth', _token);
       });
@@ -239,8 +246,12 @@ class SocketService {
         if (data is Map<String, dynamic>) onUserUpdated?.call(data);
       });
 
-      _socket!.onDisconnect((_) {
-        debugPrint('[Socket] Disconnected');
+      _socket!.onDisconnect((reason) {
+        final duration = _connectedAt != null
+            ? DateTime.now().difference(_connectedAt!).inSeconds
+            : 0;
+        debugPrint('[Socket] Disconnected after ${duration}s (Reason: $reason)');
+        _connectedAt = null;
       });
 
       _socket!.onConnectError((err) {

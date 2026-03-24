@@ -38,6 +38,7 @@ class BookResultTile extends StatelessWidget {
     final title = metadata['title'] as String? ?? 'Unknown';
     final authorName = metadata['authorName'] as String? ?? '';
     final lib = context.watch<LibraryProvider>();
+    final isExplicit = metadata['explicit'] == true;
     final isDownloaded = itemId != null && DownloadService().isDownloaded(itemId);
     final isFinished = itemId != null && lib.getProgressData(itemId)?['isFinished'] == true;
     final greenColor = Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400]! : Colors.green.shade700;
@@ -103,6 +104,18 @@ class BookResultTile extends StatelessWidget {
                           ),
                           child: Text('#$sequenceBadge',
                             style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                    if (isExplicit)
+                      Positioned(
+                        top: 3, right: 3,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w800)),
                         ),
                       ),
                     if (isFinished || isDownloaded)

@@ -504,9 +504,13 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       action: MediaAction.fastForward,
     );
 
-    // 3 controls: rewind | play | forward. Consistent icons across phone
-    // notification, AA, and WearOS. Chapter navigation via AA queue browser.
-    final controls = [rewindControl, playPause, fastForwardControl];
+    // 3 controls: rewind | play | forward.
+    // ColorOS (OnePlus/Oppo/Realme) reverses control order, so pre-reverse.
+    final m = ApiService.deviceManufacturer.toLowerCase();
+    final isColorOS = m == 'oneplus' || m == 'oppo' || m == 'realme';
+    final controls = isColorOS
+        ? [fastForwardControl, playPause, rewindControl]
+        : [rewindControl, playPause, fastForwardControl];
     final compactIndices = const [0, 1, 2];
 
     return PlaybackState(
@@ -515,8 +519,6 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
         MediaAction.seek,
         MediaAction.seekForward,
         MediaAction.seekBackward,
-        MediaAction.skipToNext,
-        MediaAction.skipToPrevious,
         MediaAction.skipToQueueItem,
       },
       androidCompactActionIndices: compactIndices,
@@ -2481,6 +2483,7 @@ class AudioPlayerService extends ChangeNotifier {
     // Close the playback session
     if (_playbackSessionId != null && _api != null) {
       try {
+        debugPrint('[Player] Closing session (book finished)');
         await _api!.closePlaybackSession(_playbackSessionId!);
       } catch (_) {}
     }
@@ -2524,6 +2527,7 @@ class AudioPlayerService extends ChangeNotifier {
     final elapsed = now.difference(_lastServerSync).inSeconds.clamp(0, 300);
     _lastServerSync = now;
     try {
+      debugPrint('[Player] Sync session ${_playbackSessionId!.substring(0, 8)}... | currentTime=${ct.toStringAsFixed(1)}s, timeListened=${elapsed}s');
       await _api!.syncPlaybackSession(
         _playbackSessionId!,
         currentTime: ct,
@@ -2641,8 +2645,8 @@ class AudioPlayerService extends ChangeNotifier {
       if (_playbackSessionId != null && _api != null) {
         try {
           await _syncToServer(position);
+          debugPrint('[Player] Closing session (pause timeout)');
           await _api!.closePlaybackSession(_playbackSessionId!);
-          debugPrint('[Player] Server session closed');
         } catch (_) {}
         _playbackSessionId = null;
       }
@@ -2811,6 +2815,7 @@ class AudioPlayerService extends ChangeNotifier {
       if (_playbackSessionId != null && _api != null) {
         await _syncToServer(position);
         try {
+          debugPrint('[Player] Closing session (stop)');
           await _api!.closePlaybackSession(_playbackSessionId!);
         } catch (_) {}
       } else if (_currentItemId != null && _api != null) {
@@ -2839,6 +2844,7 @@ class AudioPlayerService extends ChangeNotifier {
     // Close server session without syncing position
     if (_playbackSessionId != null && _api != null) {
       try {
+        debugPrint('[Player] Closing session (reset progress)');
         await _api!.closePlaybackSession(_playbackSessionId!);
       } catch (_) {}
     }

@@ -661,6 +661,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                     ? (media['duration'] as num).toDouble()
                     : 0.0;
 
+                final isExplicit = metadata['explicit'] == true;
                 final progress = lib.getProgress(bookId);
                 final isFinished = lib.getProgressData(bookId)?['isFinished'] == true;
                 final isDownloaded = DownloadService().isDownloaded(bookId);
@@ -771,9 +772,22 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                                               fontWeight: FontWeight.w600)),
                                     ),
                                   ),
-                                if (!isDownloaded && isDownloading)
+                                if (isExplicit)
                                   Positioned(
                                     top: 4,
+                                    right: 4,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.withValues(alpha: 0.85),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                                    ),
+                                  ),
+                                if (!isDownloaded && isDownloading)
+                                  Positioned(
+                                    top: isExplicit ? 22 : 4,
                                     right: 4,
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(

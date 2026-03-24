@@ -1637,15 +1637,12 @@ class LibraryProvider extends ChangeNotifier {
     final orderJson = await ScopedPrefs.getStringList('home_section_order_$libId');
     final hiddenJson = await ScopedPrefs.getStringList('home_hidden_sections_$libId');
     _sectionOrder = orderJson.toList();
-    // If user has never customized (both order and hidden are empty),
-    // apply default hidden sections plus all playlists/collections
     if (hiddenJson.isEmpty && orderJson.isEmpty) {
       _hiddenSectionIds = Set<String>.from(_defaultHiddenSections);
-      _applyDefaultPlaylistCollectionHiding = true;
     } else {
       _hiddenSectionIds = hiddenJson.toSet();
-      _applyDefaultPlaylistCollectionHiding = false;
     }
+    _applyDefaultPlaylistCollectionHiding = false;
   }
 
   Future<void> _saveSectionPrefs() async {

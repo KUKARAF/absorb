@@ -110,7 +110,7 @@ class AuthProvider extends ChangeNotifier {
           if (connectivity.contains(ConnectivityResult.wifi)) {
             debugPrint('[Auth] On WiFi with local server enabled, trying local first... (${sw.elapsedMilliseconds}ms)');
             final localReachable = await ApiService.pingServer(_localServerUrl, customHeaders: _customHeaders)
-                .timeout(const Duration(seconds: 3), onTimeout: () => false);
+                .timeout(const Duration(seconds: 2), onTimeout: () => false);
             if (localReachable) {
               debugPrint('[Auth] Local server reachable - using local (${sw.elapsedMilliseconds}ms)');
               _useLocalServer = true;

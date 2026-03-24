@@ -589,7 +589,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                                 builder: (context, child) {
                                   double distFromCenter = 0.0;
                                   double rawDist = 0.0;
-                                  if (_pageController.position.haveDimensions) {
+                                  if (_pageController.hasClients && _pageController.positions.length == 1 && _pageController.position.haveDimensions) {
                                     final page = _pageController.page ?? _pageController.initialPage.toDouble();
                                     rawDist = page - i; // negative = card is to the right
                                     distFromCenter = rawDist.abs();
@@ -705,7 +705,7 @@ class _PageDots extends StatelessWidget {
       return ListenableBuilder(
         listenable: controller,
         builder: (_, __) {
-          final page = controller.hasClients ? (controller.page ?? 0).round() : 0;
+          final page = controller.hasClients && controller.positions.length == 1 ? (controller.page ?? 0).round() : 0;
           return Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(count, (i) {

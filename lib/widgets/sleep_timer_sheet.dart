@@ -26,7 +26,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
   int _shakeAddMinutes = 5;
   int _sleepRewindSeconds = 0;
 
-  static const _maxRewindMinutes = 60;
+  static const _maxRewindMinutes = 120;
 
   @override
   void initState() {
@@ -376,7 +376,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text('Off', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
-          Text('60m', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+          Text('120m', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
         ]),
       ),
     ]);

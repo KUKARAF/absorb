@@ -56,6 +56,7 @@ class _GridBookTileState extends State<GridBookTile> {
     final author = metadata['authorName'] as String? ?? '';
     final coverUrl = lib.getCoverUrl(itemId);
     final progress = lib.getProgress(itemId);
+    final isExplicit = metadata['explicit'] == true;
     final isDownloaded = _dl.isDownloaded(itemId);
     final isFinished = lib.getProgressData(itemId)?['isFinished'] == true;
     final isSubscribed = lib.isPodcastLibrary && lib.isPodcastSubscribed(itemId);
@@ -122,6 +123,21 @@ class _GridBookTileState extends State<GridBookTile> {
                         ),
                         child: const Icon(Icons.notifications_rounded,
                             size: 11, color: Colors.white),
+                      ),
+                    ),
+
+                  // Explicit badge
+                  if (isExplicit)
+                    Positioned(
+                      top: isSubscribed ? 22 : 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
                       ),
                     ),
 

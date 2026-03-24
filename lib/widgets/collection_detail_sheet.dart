@@ -301,6 +301,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
         final title = metadata['title'] as String? ?? 'Unknown';
         final author = metadata['authorName'] as String? ?? '';
         final coverUrl = lib.getCoverUrl(itemId);
+        final isExplicit = metadata['explicit'] == true;
         final progress = lib.getProgress(itemId);
         final isFinished = lib.getProgressData(itemId)?['isFinished'] == true;
         final isDownloaded = DownloadService().isDownloaded(itemId);
@@ -334,6 +335,18 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
                                   ))
                             : _placeholder(cs),
                       ),
+                      if (isExplicit)
+                        Positioned(
+                          top: 4, right: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.85),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                          ),
+                        ),
                       if (progress > 0 && !isFinished)
                         Positioned(
                           left: 0, right: 0, bottom: 0,

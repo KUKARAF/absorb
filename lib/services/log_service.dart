@@ -133,6 +133,45 @@ class LogService {
     return buf.toString();
   }
 
+  /// Sanitize URLs in log content, replacing server hosts with a connection
+  /// type label (e.g. [local-ip], [tailscale], [reverse-proxy]) while keeping
+  /// API paths intact for debugging.
+  static String _sanitizeUrls(String content) {
+    final urlPattern = RegExp(r'https?://[^\s\]"]+');
+    return content.replaceAllMapped(urlPattern, (match) {
+      final url = match.group(0)!;
+      try {
+        final uri = Uri.parse(url);
+        final host = uri.host.toLowerCase();
+        String label;
+        if (host == 'localhost' || host == '127.0.0.1') {
+          label = '[localhost]';
+        } else if (host.endsWith('.ts.net')) {
+          label = '[tailscale]';
+        } else if (_isPrivateIp(host)) {
+          label = '[local-ip]';
+        } else if (uri.scheme == 'https') {
+          label = '[reverse-proxy]';
+        } else {
+          label = '[remote-http]';
+        }
+        final path = uri.path.isNotEmpty ? uri.path : '';
+        return '$label$path';
+      } catch (_) {
+        return '[url-redacted]';
+      }
+    });
+  }
+
+  static bool _isPrivateIp(String host) {
+    final parts = host.split('.');
+    if (parts.length != 4) return false;
+    final a = int.tryParse(parts[0]);
+    final b = int.tryParse(parts[1]);
+    if (a == null || b == null) return false;
+    return a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168);
+  }
+
   /// Share log file as attachment via share sheet with device info.
   ///
   /// [sharePositionOrigin] is required on iPad for the share popover anchor.
@@ -143,8 +182,15 @@ class LogService {
         _logFile != null && await _logFile!.exists() && await _logFile!.length() > 0;
 
     if (hasFile) {
+      // Write sanitized copy to share instead of raw logs
+      final raw = await _logFile!.readAsString();
+      final sanitized = _sanitizeUrls(raw);
+      final dir = _logFile!.parent;
+      final sanitizedFile = File('${dir.path}/absorb_logs_share.txt');
+      await sanitizedFile.writeAsString(sanitized);
+
       await Share.shareXFiles(
-        [XFile(_logFile!.path)],
+        [XFile(sanitizedFile.path)],
         subject: 'Absorb Log Report',
         text: 'Send to: $supportEmail\n\n$info',
         sharePositionOrigin: sharePositionOrigin,

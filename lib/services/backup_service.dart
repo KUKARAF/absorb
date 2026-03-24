@@ -188,6 +188,22 @@ class BackupService {
   static Future<void> importSettings(Map<String, dynamic> data) async {
     final prefs = await SharedPreferences.getInstance();
 
+    // Restore accounts FIRST so ScopedPrefs has the right scope
+    // when we write settings below. saveAccount() sets the active scope key.
+    final accounts = data['accounts'] as List<dynamic>?;
+    if (accounts != null) {
+      for (final a in accounts) {
+        final map = a as Map<String, dynamic>;
+        await UserAccountService().saveAccount(SavedAccount.fromJson(map));
+      }
+    }
+
+    // Custom headers (restore early, before any API calls)
+    final customHeaders = data['customHeaders'] as Map<String, dynamic>?;
+    if (customHeaders != null) {
+      await prefs.setString('custom_headers', jsonEncode(customHeaders));
+    }
+
     // PlayerSettings (all go through scoped setters now)
     final s = data['settings'] as Map<String, dynamic>? ?? {};
     if (s['defaultSpeed'] != null) PlayerSettings.setDefaultSpeed((s['defaultSpeed'] as num).toDouble());
@@ -345,19 +361,5 @@ class BackupService {
       );
     }
 
-    // Accounts
-    final accounts = data['accounts'] as List<dynamic>?;
-    if (accounts != null) {
-      for (final a in accounts) {
-        final map = a as Map<String, dynamic>;
-        await UserAccountService().saveAccount(SavedAccount.fromJson(map));
-      }
-    }
-
-    // Custom headers
-    final customHeaders = data['customHeaders'] as Map<String, dynamic>?;
-    if (customHeaders != null) {
-      await prefs.setString('custom_headers', jsonEncode(customHeaders));
-    }
   }
 }

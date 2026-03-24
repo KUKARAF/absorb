@@ -438,17 +438,31 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
             dense: true,
             leading: SizedBox(
               width: 36, height: 36,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: coverUrl != null
-                    ? (coverUrl.startsWith('/')
-                        ? Image.file(File(coverUrl), fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _placeholder(cs))
-                        : Image.network(coverUrl, fit: BoxFit.cover,
-                            headers: lib.mediaHeaders,
-                            errorBuilder: (_, __, ___) => _placeholder(cs)))
-                    : _placeholder(cs),
-              ),
+              child: Stack(children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: coverUrl != null
+                      ? (coverUrl.startsWith('/')
+                          ? Image.file(File(coverUrl), fit: BoxFit.cover, width: 36, height: 36,
+                              errorBuilder: (_, __, ___) => _placeholder(cs))
+                          : Image.network(coverUrl, fit: BoxFit.cover, width: 36, height: 36,
+                              headers: lib.mediaHeaders,
+                              errorBuilder: (_, __, ___) => _placeholder(cs)))
+                      : _placeholder(cs),
+                ),
+                if (metadata['explicit'] == true)
+                  Positioned(
+                    top: 2, right: 2,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 0.5),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+              ]),
             ),
             title: Text(
               episodeTitle ?? title,
