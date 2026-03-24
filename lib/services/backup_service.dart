@@ -69,6 +69,11 @@ class BackupService {
       'cardButtonLayout': await PlayerSettings.getCardButtonLayout(),
       'rectangleCovers': await PlayerSettings.getRectangleCovers(),
       'coverPlayButton': await PlayerSettings.getCoverPlayButton(),
+      'whenFinished': await PlayerSettings.getWhenFinished(),
+      'sleepRewindSeconds': await PlayerSettings.getSleepRewindSeconds(),
+      'sleepTimerTab': await PlayerSettings.getSleepTimerTab(),
+      'sheetGridView': await PlayerSettings.getSheetGridView(),
+      'sheetCollapseSeries': await PlayerSettings.getSheetCollapseSeries(),
     };
 
     // AutoRewind (scoped)
@@ -252,6 +257,10 @@ class BackupService {
     if (s['cardButtonLayout'] != null) PlayerSettings.setCardButtonLayout(s['cardButtonLayout'] as String);
     if (s['rectangleCovers'] != null) PlayerSettings.setRectangleCovers(s['rectangleCovers'] as bool);
     if (s['coverPlayButton'] != null) PlayerSettings.setCoverPlayButton(s['coverPlayButton'] as bool);
+    if (s['sleepRewindSeconds'] != null) PlayerSettings.setSleepRewindSeconds(s['sleepRewindSeconds'] as int);
+    if (s['sleepTimerTab'] != null) PlayerSettings.setSleepTimerTab(s['sleepTimerTab'] as int);
+    if (s['sheetGridView'] != null) PlayerSettings.setSheetGridView(s['sheetGridView'] as bool);
+    if (s['sheetCollapseSeries'] != null) PlayerSettings.setSheetCollapseSeries(s['sheetCollapseSeries'] as bool);
 
     // AutoRewind (scoped via save())
     final r = data['autoRewind'] as Map<String, dynamic>?;

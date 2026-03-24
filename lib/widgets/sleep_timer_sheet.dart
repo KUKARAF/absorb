@@ -26,8 +26,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
   int _shakeAddMinutes = 5;
   int _sleepRewindSeconds = 0;
 
-  // Rewind presets in seconds - filtered by timer duration at build time
-  static const _rewindStops = [0, 15, 30, 60, 120, 300, 600, 900, 1200, 1800];
+  static const _maxRewindMinutes = 60;
 
   @override
   void initState() {
@@ -343,39 +342,43 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
   Widget _buildRewindSection(Color accent, TextTheme tt) {
     final cs = Theme.of(context).colorScheme;
     final isEnabled = _sleepRewindSeconds > 0;
-
-    // Filter stops to those <= 2/3 of the timer duration (in seconds)
-    final timerSeconds = _tabIndex == 0
-        ? (_customMinutes * 60).round()
-        : _customChapters * 600; // rough estimate: ~10 min per chapter
-    final maxRewind = (timerSeconds * 2 ~/ 3).clamp(15, 1800);
-    final stops = _rewindStops.where((s) => s == 0 || s <= maxRewind).toList();
-
-    // Snap current value to nearest valid stop
-    if (_sleepRewindSeconds > 0 && !stops.contains(_sleepRewindSeconds)) {
-      final nearest = stops.where((s) => s > 0).reduce((a, b) =>
-          (a - _sleepRewindSeconds).abs() <= (b - _sleepRewindSeconds).abs() ? a : b);
-      _sleepRewindSeconds = nearest;
-    }
+    final rewindMinutes = (_sleepRewindSeconds / 60).clamp(0.0, _maxRewindMinutes.toDouble());
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Icon(Icons.replay_rounded, size: 18, color: isEnabled ? accent : cs.onSurface.withValues(alpha: 0.24)),
         const SizedBox(width: 10),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Rewind on sleep', style: TextStyle(color: isEnabled ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w500)),
-          Text(isEnabled ? 'Rewinds ${_rewindLabel(_sleepRewindSeconds)} when timer stops' : 'Disabled',
-            style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
-        ])),
+        Expanded(child: Text('Rewind on sleep',
+          style: TextStyle(color: isEnabled ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w500))),
+        Text(isEnabled ? _rewindLabel(_sleepRewindSeconds) : 'Off',
+          style: TextStyle(color: isEnabled ? accent : cs.onSurface.withValues(alpha: 0.3), fontSize: 13, fontWeight: FontWeight.w600)),
       ]),
-      const SizedBox(height: 10),
-      Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
-        for (final s in stops)
-          _presetChip(accent, _rewindLabel(s), _sleepRewindSeconds == s, () {
-            setState(() => _sleepRewindSeconds = s);
-            PlayerSettings.setSleepRewindSeconds(s);
-          }),
-      ]),
+      const SizedBox(height: 4),
+      SliderTheme(
+        data: SliderThemeData(
+          activeTrackColor: accent,
+          inactiveTrackColor: cs.onSurface.withValues(alpha: 0.1),
+          thumbColor: accent,
+          overlayColor: accent.withValues(alpha: 0.1),
+          trackHeight: 4,
+        ),
+        child: Slider(
+          value: rewindMinutes,
+          min: 0, max: _maxRewindMinutes.toDouble(), divisions: _maxRewindMinutes,
+          onChanged: (v) {
+            final seconds = (v * 60).round();
+            setState(() => _sleepRewindSeconds = seconds);
+            PlayerSettings.setSleepRewindSeconds(seconds);
+          },
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('Off', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+          Text('60m', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+        ]),
+      ),
     ]);
   }
 

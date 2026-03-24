@@ -15,6 +15,7 @@ class BookResultTile extends StatelessWidget {
   final String? token;
   final bool popOnTap;
   final String? subtitle;
+  final String? sequenceBadge;
 
   const BookResultTile({
     super.key,
@@ -23,6 +24,7 @@ class BookResultTile extends StatelessWidget {
     required this.token,
     this.popOnTap = false,
     this.subtitle,
+    this.sequenceBadge,
   });
 
   @override
@@ -90,6 +92,19 @@ class BookResultTile extends StatelessWidget {
                             errorWidget: (_, __, ___) => _ph(cs),
                           )
                         : _ph(cs),
+                    if (sequenceBadge != null)
+                      Positioned(
+                        top: 3, left: 3,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('#$sequenceBadge',
+                            style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
                     if (isFinished || isDownloaded)
                       Positioned(
                         left: 0, right: 0, bottom: 0,

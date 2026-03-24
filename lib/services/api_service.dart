@@ -47,6 +47,38 @@ class ApiService {
 
   ApiService({required this.baseUrl, required this.token, this.customHeaders = const {}});
 
+  // ── HTTP ETag cache ──
+  // Stores ETag and response body per URL path so we can send If-None-Match
+  // and get 304 Not Modified on unchanged data (avoids re-serializing on server).
+  static final Map<String, String> _etagCache = {};
+  static final Map<String, String> _etagBodyCache = {};
+
+  /// GET with ETag support. Returns cached body on 304.
+  Future<http.Response> _cachedGet(Uri url, {Duration timeout = const Duration(seconds: 15)}) async {
+    final key = url.toString();
+    final headers = Map<String, String>.from(_headers);
+    final etag = _etagCache[key];
+    if (etag != null && _etagBodyCache.containsKey(key)) {
+      headers['If-None-Match'] = etag;
+    }
+    final resp = await http.get(url, headers: headers).timeout(timeout);
+    if (resp.statusCode == 304 && _etagBodyCache.containsKey(key)) {
+      return http.Response(_etagBodyCache[key]!, 200, headers: resp.headers);
+    }
+    // If 304 but no cached body, retry without If-None-Match
+    if (resp.statusCode == 304) {
+      debugPrint('[API] Got 304 without cached body, retrying: $key');
+      _etagCache.remove(key);
+      return http.get(url, headers: _headers).timeout(timeout);
+    }
+    final newEtag = resp.headers['etag'];
+    if (newEtag != null && resp.statusCode == 200) {
+      _etagCache[key] = newEtag;
+      _etagBodyCache[key] = resp.body;
+    }
+    return resp;
+  }
+
   Map<String, String> get _headers => {
         ...customHeaders,
         'Authorization': 'Bearer $token',
@@ -156,11 +188,11 @@ class ApiService {
       }
       if (limit != null) query['limit'] = '$limit';
 
-      final response = await http.get(
+      final response = await _cachedGet(
         Uri.parse('$_cleanBaseUrl/api/libraries/$libraryId/personalized')
             .replace(queryParameters: query.isEmpty ? null : query),
-        headers: _headers,
-      ).timeout(const Duration(seconds: 15));
+        timeout: const Duration(seconds: 15),
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -195,10 +227,10 @@ class ApiService {
       if (filter != null) url += '&filter=$filter';
       if (expanded) url += '&minified=0';
       if (collapseSeries) url += '&collapseseries=1';
-      final response = await http.get(
+      final response = await _cachedGet(
         Uri.parse(url),
-        headers: _headers,
-      ).timeout(const Duration(seconds: 15));
+        timeout: const Duration(seconds: 15),
+      );
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -271,13 +303,13 @@ class ApiService {
     int desc = 1,
   }) async {
     try {
-      final response = await http.get(
+      final response = await _cachedGet(
         Uri.parse(
           '$_cleanBaseUrl/api/libraries/$libraryId/series'
           '?page=$page&limit=$limit&sort=$sort&desc=$desc',
         ),
-        headers: _headers,
-      ).timeout(const Duration(seconds: 15));
+        timeout: const Duration(seconds: 30),
+      );
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -780,7 +812,9 @@ class ApiService {
   }
 
   /// Get a single series with its books (paginated).
-  Future<Map<String, dynamic>?> getSeries(String seriesId, {String? libraryId}) async {
+  /// If [onPageLoaded] is provided, it's called after each page with the
+  /// cumulative results and total so the UI can show books as they arrive.
+  Future<Map<String, dynamic>?> getSeries(String seriesId, {String? libraryId, void Function(List<dynamic> books, int total, {double? totalDuration})? onPageLoaded}) async {
     try {
       Map<String, dynamic>? seriesMeta;
 
@@ -789,7 +823,7 @@ class ApiService {
         final metaResp = await http.get(
           Uri.parse('$_cleanBaseUrl/api/libraries/$libraryId/series/$seriesId'),
           headers: _headers,
-        ).timeout(const Duration(seconds: 15));
+        ).timeout(const Duration(seconds: 30));
         if (metaResp.statusCode == 200) {
           seriesMeta = jsonDecode(metaResp.body) as Map<String, dynamic>;
         }
@@ -799,7 +833,7 @@ class ApiService {
       // ABS filter format: series.<base64(seriesId)>
       if (libraryId != null) {
         final filterValue = base64Encode(utf8.encode(seriesId));
-        const pageSize = 500;
+        const pageSize = 100;
         final allResults = <dynamic>[];
         int total = 0;
         int page = 0;
@@ -808,12 +842,16 @@ class ApiService {
           final itemsResp = await http.get(
             Uri.parse(url),
             headers: _headers,
-          ).timeout(const Duration(seconds: 15));
-          if (itemsResp.statusCode != 200) break;
+          ).timeout(const Duration(seconds: 30));
+          if (itemsResp.statusCode != 200) {
+            debugPrint('[API] getSeries items page $page failed: ${itemsResp.statusCode}');
+            break;
+          }
           final data = jsonDecode(itemsResp.body) as Map<String, dynamic>;
           final results = data['results'] as List<dynamic>? ?? [];
           total = (data['total'] as num?)?.toInt() ?? results.length;
           allResults.addAll(results);
+          onPageLoaded?.call(allResults, total, totalDuration: (seriesMeta?['totalDuration'] as num?)?.toDouble());
           if (allResults.length >= total || results.isEmpty) break;
           page++;
         }
@@ -823,6 +861,7 @@ class ApiService {
             'name': seriesMeta?['name'] ?? '',
             'books': allResults,
             'total': total,
+            if (seriesMeta != null) 'totalDuration': seriesMeta['totalDuration'],
           };
         }
       }
@@ -1102,12 +1141,14 @@ class ApiService {
     required String type,
     Map<String, dynamic>? permissions,
     List<String>? librariesAccessible,
+    bool isActive = true,
   }) async {
     try {
       final body = <String, dynamic>{
         'username': username,
         'password': password,
         'type': type,
+        'isActive': isActive,
       };
       if (permissions != null) body['permissions'] = permissions;
       if (librariesAccessible != null) body['librariesAccessible'] = librariesAccessible;

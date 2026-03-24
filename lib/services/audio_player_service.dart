@@ -209,6 +209,11 @@ class PlayerSettings {
   static Future<int> getSleepTimerTab() => _get('sleepTimerTab', 0);
   static Future<void> setSleepTimerTab(int tab) => _set('sleepTimerTab', tab);
 
+  static Future<bool> getSheetGridView() => _get('sheetGridView', false);
+  static Future<void> setSheetGridView(bool value) => _set('sheetGridView', value);
+  static Future<bool> getSheetCollapseSeries() => _get('sheetCollapseSeries', true);
+  static Future<void> setSheetCollapseSeries(bool value) => _set('sheetCollapseSeries', value);
+
   static Future<bool> getHideEbookOnly() => _get('hideEbookOnly', false);
   static Future<void> setHideEbookOnly(bool value) => _set('hideEbookOnly', value, notify: true);
 

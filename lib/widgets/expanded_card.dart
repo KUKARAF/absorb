@@ -994,8 +994,8 @@ class _ExpandedCardState extends State<ExpandedCard> {
       case 'chapters':
         return CardWideButton(
           icon: Icons.list_rounded, label: 'Chapters',
-          accent: accent, isActive: _isPlaybackActive, large: large, compact: compact,
-          onTap: () => _showChapters(context, accent, tt),
+          accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact,
+          onTap: _chapters.isNotEmpty ? () => _showChapters(context, accent, tt) : null,
         );
       case 'speed':
         return CardWideButton(
@@ -1006,8 +1006,8 @@ class _ExpandedCardState extends State<ExpandedCard> {
       case 'sleep':
         return CardWideButton(
           icon: Icons.bedtime_outlined, label: short ? 'Sleep' : 'Sleep Timer',
-          accent: accent, isActive: _isPlaybackActive, large: large, compact: compact,
-          child: CardSleepButtonInline(accent: accent, isActive: _isPlaybackActive, large: large, compact: compact),
+          accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact,
+          child: CardSleepButtonInline(accent: accent, isActive: true, large: large, compact: compact),
         );
       case 'bookmarks':
         return CardWideButton(
@@ -1067,7 +1067,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
       case 'history':
         return CardWideButton(
           icon: Icons.history_rounded, label: (compact || short) ? 'History' : 'Playback History',
-          accent: accent, isActive: _isActive, large: large, compact: compact,
+          accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact,
           onTap: () => _showHistory(context, accent, tt),
         );
       case 'remove':
@@ -1098,7 +1098,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
       case 'chapters':
         return MoreMenuItem(
           icon: Icons.list_rounded, label: 'Chapters', accent: accent,
-          enabled: _isPlaybackActive,
+          enabled: _chapters.isNotEmpty,
           onTap: () { Navigator.pop(ctx); _showChapters(context, accent, tt); },
         );
       case 'speed':
@@ -1114,7 +1114,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
       case 'sleep':
         return MoreMenuItem(
           icon: Icons.bedtime_outlined, label: 'Sleep Timer', accent: accent,
-          enabled: _isPlaybackActive,
+          enabled: true,
           onTap: () {
             Navigator.pop(ctx);
             showSleepTimerSheet(context, accent);
@@ -1181,7 +1181,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
       case 'history':
         return MoreMenuItem(
           icon: Icons.history_rounded, label: 'Playback History', accent: accent,
-          enabled: _isActive,
+          enabled: true,
           onTap: () { Navigator.pop(ctx); _showHistory(context, accent, tt); },
         );
       case 'remove':
@@ -1268,10 +1268,17 @@ class _ExpandedCardState extends State<ExpandedCard> {
 
     // Find current chapter index for auto-scroll
     int currentIdx = -1;
-    if (_isPlaybackActive) {
-      final pos = _isCastingThis
-          ? cast.castPosition.inMilliseconds / 1000.0
-          : widget.player.position.inMilliseconds / 1000.0;
+    {
+      double pos = 0;
+      if (_isCastingThis) {
+        pos = cast.castPosition.inMilliseconds / 1000.0;
+      } else if (_isActive) {
+        pos = widget.player.position.inMilliseconds / 1000.0;
+      } else {
+        final lib = context.read<LibraryProvider>();
+        final pd = lib.getProgressData(_itemId);
+        pos = (pd?['currentTime'] as num?)?.toDouble() ?? 0;
+      }
       for (int i = 0; i < chapters.length; i++) {
         final ch = chapters[i] as Map<String, dynamic>;
         final start = (ch['start'] as num?)?.toDouble() ?? 0;

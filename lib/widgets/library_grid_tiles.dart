@@ -16,8 +16,9 @@ import 'author_books_sheet.dart';
 class GridBookTile extends StatefulWidget {
   final Map<String, dynamic> item;
   final double coverAspectRatio;
+  final String? sequenceBadge;
 
-  const GridBookTile({super.key, required this.item, this.coverAspectRatio = 1.0});
+  const GridBookTile({super.key, required this.item, this.coverAspectRatio = 1.0, this.sequenceBadge});
 
   @override
   State<GridBookTile> createState() => _GridBookTileState();
@@ -121,6 +122,21 @@ class _GridBookTileState extends State<GridBookTile> {
                         ),
                         child: const Icon(Icons.notifications_rounded,
                             size: 11, color: Colors.white),
+                      ),
+                    ),
+
+                  // Sequence badge
+                  if (widget.sequenceBadge != null)
+                    Positioned(
+                      top: 4, left: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text('#${widget.sequenceBadge}',
+                          style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600)),
                       ),
                     ),
 

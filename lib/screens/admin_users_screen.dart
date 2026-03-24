@@ -617,7 +617,8 @@ class _UserEditorSheetState extends State<_UserEditorSheet> {
     bool ok;
     if (_isNew) {
       final r = await api.createUser(username: username, password: _passwordCtrl.text, type: _type,
-        permissions: perms, librariesAccessible: _accessAllLibraries ? [] : _selectedLibraries.toList());
+        permissions: perms, librariesAccessible: _accessAllLibraries ? [] : _selectedLibraries.toList(),
+        isActive: _isActive);
       ok = r != null;
     } else {
       final up = <String, dynamic>{'type': _type, 'isActive': _isActive, 'isLocked': _isLocked,

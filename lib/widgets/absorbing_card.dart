@@ -477,9 +477,18 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                   child: StreamBuilder<Duration>(
                     stream: widget.player.absolutePositionStream,
                     builder: (_, snap) {
-                      final pos = _isActive
-                          ? (snap.data?.inMilliseconds ?? 0) / 1000.0
-                          : bookProgress * _effectiveDuration;
+                      final double pos;
+                      if (_isActive) {
+                        pos = (snap.data?.inMilliseconds ?? 0) / 1000.0;
+                      } else {
+                        // Use exact currentTime from server progress if available,
+                        // otherwise fall back to progress ratio * duration.
+                        final pd = _episodeId != null
+                            ? lib.getEpisodeProgressData(_itemId, _episodeId!)
+                            : lib.getProgressData(_itemId);
+                        final ct = (pd?['currentTime'] as num?)?.toDouble();
+                        pos = (ct != null && ct > 0) ? ct : bookProgress * _effectiveDuration;
+                      }
                       final speed = _speedAdjustedTime && _isActive ? widget.player.speed : 1.0;
                       final elapsed = pos / speed;
                       final remaining = (_effectiveDuration - pos) / speed;
@@ -930,8 +939,8 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
       case 'chapters':
         return CardWideButton(
           icon: Icons.list_rounded, label: 'Chapters',
-          accent: accent, isActive: _isPlaybackActive, large: large, compact: compact,
-          onTap: () => _showChapters(context, accent, tt),
+          accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact,
+          onTap: _chapters.isNotEmpty ? () => _showChapters(context, accent, tt) : null,
         );
       case 'speed':
         return CardWideButton(
@@ -942,8 +951,8 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
       case 'sleep':
         return CardWideButton(
           icon: Icons.bedtime_outlined, label: short ? 'Sleep' : 'Sleep Timer',
-          accent: accent, isActive: _isPlaybackActive, large: large, compact: compact,
-          child: CardSleepButtonInline(accent: accent, isActive: _isPlaybackActive, large: large, compact: compact),
+          accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact,
+          child: CardSleepButtonInline(accent: accent, isActive: true, large: large, compact: compact),
         );
       case 'bookmarks':
         return CardWideButton(
@@ -1003,7 +1012,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
       case 'history':
         return CardWideButton(
           icon: Icons.history_rounded, label: (compact || short) ? 'History' : 'Playback History',
-          accent: accent, isActive: _isActive, large: large, compact: compact,
+          accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact,
           onTap: () => _showHistory(context, accent, tt),
         );
       case 'remove':
@@ -1034,7 +1043,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
       case 'chapters':
         return MoreMenuItem(
           icon: Icons.list_rounded, label: 'Chapters', accent: accent,
-          enabled: _isPlaybackActive,
+          enabled: _chapters.isNotEmpty,
           onTap: () { Navigator.pop(ctx); _showChapters(context, accent, tt); },
         );
       case 'speed':
@@ -1050,7 +1059,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
       case 'sleep':
         return MoreMenuItem(
           icon: Icons.bedtime_outlined, label: 'Sleep Timer', accent: accent,
-          enabled: _isPlaybackActive,
+          enabled: true,
           onTap: () {
             Navigator.pop(ctx);
             showSleepTimerSheet(context, accent);
@@ -1117,7 +1126,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
       case 'history':
         return MoreMenuItem(
           icon: Icons.history_rounded, label: 'Playback History', accent: accent,
-          enabled: _isActive,
+          enabled: true,
           onTap: () { Navigator.pop(ctx); _showHistory(context, accent, tt); },
         );
       case 'remove':
@@ -1202,10 +1211,20 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
 
     // Find current chapter index for auto-scroll
     int currentIdx = -1;
-    if (_isPlaybackActive) {
-      final pos = _isCastingThis
-          ? cast.castPosition.inMilliseconds / 1000.0
-          : widget.player.position.inMilliseconds / 1000.0;
+    {
+      double pos = 0;
+      if (_isCastingThis) {
+        pos = cast.castPosition.inMilliseconds / 1000.0;
+      } else if (_isActive) {
+        pos = widget.player.position.inMilliseconds / 1000.0;
+      } else {
+        // Use server progress currentTime when inactive
+        final lib = context.read<LibraryProvider>();
+        final pd = _episodeId != null
+            ? lib.getEpisodeProgressData(_itemId, _episodeId!)
+            : lib.getProgressData(_itemId);
+        pos = (pd?['currentTime'] as num?)?.toDouble() ?? 0;
+      }
       for (int i = 0; i < chapters.length; i++) {
         final ch = chapters[i] as Map<String, dynamic>;
         final start = (ch['start'] as num?)?.toDouble() ?? 0;

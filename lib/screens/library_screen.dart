@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import '../services/api_service.dart';
 import '../services/download_service.dart';
 import '../services/audio_player_service.dart';
 import '../widgets/absorb_page_header.dart';
@@ -517,6 +518,30 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         sort = 'name'; break;
     }
 
+    // For large libraries (250+ series), serve cached data on first load
+    final cacheKey = '${lib.selectedLibraryId}:$sort:${_seriesSortAsc ? 0 : 1}';
+    if (_seriesPage == 0 && _seriesItems.isEmpty) {
+      final cached = lib.getSeriesTabCache(cacheKey);
+      if (cached != null) {
+        final cachedTotal = (cached['total'] as int?) ?? 0;
+        if (cachedTotal >= 250) {
+          final items = (cached['items'] as List<Map<String, dynamic>>?) ?? [];
+          if (items.isNotEmpty && mounted) {
+            setState(() {
+              _seriesItems.addAll(items);
+              _totalSeries = cachedTotal;
+              _seriesPage = (items.length / 50).ceil();
+              _hasMoreSeries = items.length < cachedTotal;
+              _isLoadingSeriesPage = false;
+            });
+            // Refresh in background
+            _refreshSeriesInBackground(api, lib, sort, cacheKey);
+            return;
+          }
+        }
+      }
+    }
+
     final result = await api.getLibrarySeries(
       lib.selectedLibraryId!,
       page: _seriesPage,
@@ -539,8 +564,45 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         _hasMoreSeries = _seriesItems.length < total;
         _isLoadingSeriesPage = false;
       });
+      // Update cache
+      if (total >= 250) {
+        lib.setSeriesTabCache(cacheKey, List<Map<String, dynamic>>.from(_seriesItems), total);
+      }
     } else if (mounted) {
       setState(() => _isLoadingSeriesPage = false);
+    }
+  }
+
+  Future<void> _refreshSeriesInBackground(ApiService api, LibraryProvider lib, String sort, String cacheKey) async {
+    final allItems = <Map<String, dynamic>>[];
+    int page = 0;
+    int total = 0;
+    while (true) {
+      final result = await api.getLibrarySeries(
+        lib.selectedLibraryId!,
+        page: page,
+        limit: 50,
+        sort: sort,
+        desc: _seriesSortAsc ? 0 : 1,
+      );
+      if (result == null) break;
+      final results = (result['results'] as List<dynamic>?) ?? [];
+      total = (result['total'] as int?) ?? 0;
+      for (final r in results) {
+        if (r is Map<String, dynamic>) allItems.add(r);
+      }
+      if (allItems.length >= total || results.isEmpty) break;
+      page++;
+    }
+    if (allItems.isNotEmpty && mounted) {
+      lib.setSeriesTabCache(cacheKey, allItems, total);
+      setState(() {
+        _seriesItems.clear();
+        _seriesItems.addAll(allItems);
+        _totalSeries = total;
+        _seriesPage = (allItems.length / 50).ceil();
+        _hasMoreSeries = allItems.length < total;
+      });
     }
   }
 

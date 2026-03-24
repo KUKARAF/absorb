@@ -3,8 +3,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
 import 'book_detail_sheet.dart';
+import 'library_grid_tiles.dart';
 import 'episode_list_sheet.dart';
 
 /// Show a bottom sheet with all books in a series, sorted by sequence.
@@ -72,8 +74,11 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
   bool _autoDownloadEnabled = false;
 
   bool _didAutoScroll = false;
+  LibraryProvider? _lib;
 
   int _totalBooks = 0;
+  double _seriesDuration = 0; // from metadata, available before all books load
+  bool _gridView = false;
 
   @override
   void initState() {
@@ -88,18 +93,24 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
     // Fetch full data from API for proper sequence info
     _fetchFromApi();
     _loadAutoDownloadState();
-    context.read<LibraryProvider>().addListener(_onLibraryChanged);
+    PlayerSettings.getSheetGridView().then((v) {
+      if (mounted && v != _gridView) setState(() => _gridView = v);
+    });
+    _lib = context.read<LibraryProvider>();
+    _lib!.addListener(_onLibraryChanged);
   }
 
   @override
   void dispose() {
-    context.read<LibraryProvider>().removeListener(_onLibraryChanged);
+    _lib?.removeListener(_onLibraryChanged);
     super.dispose();
   }
 
   void _onLibraryChanged() {
-    // Re-fetch to pick up cover changes, metadata updates, etc.
-    _fetchFromApi();
+    // Just rebuild to pick up progress/cover changes — don't re-fetch
+    if (mounted) {
+      try { setState(() {}); } catch (_) {}
+    }
   }
 
   void _scrollToUpNext() {
@@ -222,23 +233,47 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
       return;
     }
     final lib = context.read<LibraryProvider>();
-    final data = await api.getSeries(seriesId, libraryId: widget.libraryId ?? lib.selectedLibraryId);
-    if (data != null && mounted) {
-      final rawBooks = data['books'] ?? data['libraryItems'] ?? [];
-      final total = (data['total'] as num?)?.toInt() ?? 0;
-      if (rawBooks is List && rawBooks.isNotEmpty) {
-        final fetched = _unwrapBooks(rawBooks);
+    final libraryId = widget.libraryId ?? lib.selectedLibraryId;
+
+    // For large series (100+ books), serve cached data instantly
+    // then refresh in background. Small series always fetch fresh.
+    final cached = lib.getSeriesBooksCache(seriesId);
+    if (cached != null) {
+      final cachedTotal = (cached['total'] as num?)?.toInt() ?? 0;
+      if (cachedTotal >= 100) {
+        final fetched = _unwrapBooks(cached['books'] as List<dynamic>);
+        if (fetched.isNotEmpty && mounted) {
+          setState(() {
+            _books = fetched;
+            _sortBooks();
+            _isLoading = false;
+            _totalBooks = cachedTotal;
+          });
+          _scrollToUpNext();
+        }
+      }
+    }
+
+    // Fetch fresh data (updates cache as pages arrive)
+    final data = await api.getSeries(seriesId, libraryId: libraryId,
+      onPageLoaded: (books, total, {double? totalDuration}) {
+        if (!mounted) return;
+        final fetched = _unwrapBooks(books);
         setState(() {
           _books = fetched;
           _sortBooks();
           _isLoading = false;
           _totalBooks = total;
+          if (totalDuration != null && totalDuration > 0) _seriesDuration = totalDuration;
         });
-        _scrollToUpNext();
-        return;
-      }
-    }
-    if (mounted) setState(() => _isLoading = false);
+        if (!_didAutoScroll) _scrollToUpNext();
+        // Update cache - re-read lib safely, only cache non-empty results
+        if (mounted && books.isNotEmpty) {
+          try { context.read<LibraryProvider>().setSeriesBooksCache(seriesId, books, total); } catch (_) {}
+        }
+      },
+    );
+    if (data == null && mounted) setState(() => _isLoading = false);
   }
 
 
@@ -513,8 +548,12 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
           TextSpan(
             children: [
               TextSpan(
-                text: '${_totalBooks > 0 ? _totalBooks : _books.length} book${(_totalBooks > 0 ? _totalBooks : _books.length) != 1 ? 's' : ''} in this series'
-                    '${totalDuration > 0 ? ' · ${_formatDuration(totalDuration)}' : ''}',
+                text: () {
+                  final displayDuration = _seriesDuration > totalDuration ? _seriesDuration : totalDuration;
+                  final bookCount = _totalBooks > 0 ? _totalBooks : _books.length;
+                  return '$bookCount book${bookCount != 1 ? 's' : ''} in this series'
+                    '${displayDuration > 0 ? ' · ${_formatDuration(displayDuration)}' : ''}';
+                }(),
               ),
               if (_autoDownloadEnabled) ...[
                 const TextSpan(text: ' · '),
@@ -555,6 +594,27 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
               ],
             ),
           ),
+        if (_books.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.view_list_rounded, size: 20,
+                    color: !_gridView ? cs.primary : cs.onSurfaceVariant),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () { setState(() => _gridView = false); PlayerSettings.setSheetGridView(false); },
+                ),
+                IconButton(
+                  icon: Icon(Icons.apps_rounded, size: 20,
+                    color: _gridView ? cs.primary : cs.onSurfaceVariant),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () { setState(() => _gridView = true); PlayerSettings.setSheetGridView(true); },
+                ),
+              ],
+            ),
+          ),
         if (_isLoading && _books.isEmpty)
           const Expanded(
               child: Center(child: CircularProgressIndicator()))
@@ -566,6 +626,20 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                       ?.copyWith(color: cs.onSurfaceVariant)),
             ),
           )
+        else if (_gridView)
+          Expanded(
+            child: ListenableBuilder(
+              listenable: DownloadService(),
+              builder: (context, _) => GridView.builder(
+              controller: widget.scrollController,
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).viewPadding.bottom),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3, mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 0.55,
+              ),
+              itemCount: _books.length,
+              itemBuilder: (context, index) => GridBookTile(item: _books[index], sequenceBadge: _getSequenceString(_books[index])),
+            ),
+          ))
         else
           Expanded(
             child: ListenableBuilder(
@@ -684,23 +758,17 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                                     left: 4,
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
+                                          horizontal: 5, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: cs.primary,
+                                        color: Colors.black.withValues(alpha: 0.7),
                                         borderRadius:
-                                            BorderRadius.circular(8),
-                                        boxShadow: [
-                                          BoxShadow(
-                                              color: Colors.black
-                                                  .withValues(alpha: 0.3),
-                                              blurRadius: 4)
-                                        ],
+                                            BorderRadius.circular(6),
                                       ),
                                       child: Text('#$sequence',
-                                          style: TextStyle(
-                                              color: cs.onPrimary,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w800)),
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w600)),
                                     ),
                                   ),
                                 if (!isDownloaded && isDownloading)

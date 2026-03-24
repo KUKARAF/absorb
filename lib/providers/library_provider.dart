@@ -67,6 +67,20 @@ class LibraryProvider extends ChangeNotifier {
   Set<String> _hiddenSectionIds = {};
   bool _applyDefaultPlaylistCollectionHiding = false;
 
+  // Series books cache — keyed by seriesId, holds fetched books + total
+  final Map<String, Map<String, dynamic>> _seriesBooksCache = {};
+  Map<String, dynamic>? getSeriesBooksCache(String seriesId) => _seriesBooksCache[seriesId];
+  void setSeriesBooksCache(String seriesId, List<dynamic> books, int total) {
+    _seriesBooksCache[seriesId] = {'books': books, 'total': total};
+  }
+
+  // Series tab cache — keyed by "libraryId:sort:desc", holds series list + total
+  final Map<String, Map<String, dynamic>> _seriesTabCache = {};
+  Map<String, dynamic>? getSeriesTabCache(String key) => _seriesTabCache[key];
+  void setSeriesTabCache(String key, List<Map<String, dynamic>> items, int total) {
+    _seriesTabCache[key] = {'items': items, 'total': total};
+  }
+
   // Per-series/show rolling download opt-in
   Set<String> _rollingDownloadSeries = {};
 
@@ -541,6 +555,8 @@ class LibraryProvider extends ChangeNotifier {
         _absorbingItemCache.clear();
         _rollingDownloadSeries.clear();
         _itemUpdatedAt.clear();
+        _seriesBooksCache.clear();
+        _seriesTabCache.clear();
         _personalizedInFlight = null;
         _lastPersonalizedFetchAt = null;
         _lastPersonalizedFetchLibraryId = null;
