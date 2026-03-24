@@ -179,6 +179,8 @@ class PlayerSettings {
 
   static Future<int> getBackSkip() => _get('backSkip', 10);
   static Future<void> setBackSkip(int seconds) => _set('backSkip', seconds, notify: true);
+  static Future<bool> getSkipChapterBarrier() => _get('skipChapterBarrier', true);
+  static Future<void> setSkipChapterBarrier(bool value) => _set('skipChapterBarrier', value);
 
   static Future<bool> getNotificationChapterProgress() => _get('notificationChapterProgress', false);
   static Future<void> setNotificationChapterProgress(bool value) => _set('notificationChapterProgress', value, notify: true);
@@ -2698,8 +2700,9 @@ class AudioPlayerService extends ChangeNotifier {
     final posS = position.inMilliseconds / 1000.0;
     final targetS = posS - seconds;
 
-    // Find current chapter start
-    if (_chapters.isNotEmpty) {
+    // Find current chapter start (gated by setting)
+    final chapterBarrier = await PlayerSettings.getSkipChapterBarrier();
+    if (chapterBarrier && _chapters.isNotEmpty) {
       double chapterStart = 0;
       for (int i = _chapters.length - 1; i >= 0; i--) {
         final s = (_chapters[i]['start'] as num?)?.toDouble() ?? 0;

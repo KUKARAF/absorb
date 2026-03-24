@@ -44,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _speedAdjustedTime = true;
   int _forwardSkip = 30;
   int _backSkip = 10;
+  bool _skipChapterBarrier = true;
   String _shakeMode = 'addTime';
   bool _resetSleepOnPause = false;
   bool _sleepFadeOut = true;
@@ -165,6 +166,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PlayerSettings.getRectangleCovers(),                           // 39
       PlayerSettings.getTrustAllCerts(),                               // 40
       PlayerSettings.getCoverPlayButton(),                             // 41
+      PlayerSettings.getSkipChapterBarrier(),                            // 42
     ]);
     final s = results[0] as AutoRewindSettings;
     final speed = results[1] as double;
@@ -206,6 +208,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final rectCovers = results[37] as bool;
     final trustCerts = results[38] as bool;
     final coverPlay = results[39] as bool;
+    final skipBarrier = results[40] as bool;
     if (mounted) setState(() {
       _rewindSettings = s;
       _defaultSpeed = speed;
@@ -250,6 +253,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _cardButtonLayout = cardBtnLayout;
       _rectangleCovers = rectCovers;
       _coverPlayButton = coverPlay;
+      _skipChapterBarrier = skipBarrier;
       _trustAllCerts = trustCerts;
 
       _loaded = true;
@@ -313,7 +317,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _tipCard(cs, tt,
                 icon: Icons.touch_app_rounded,
                 title: 'Cover Play/Pause',
-                desc: 'Tap the cover art on any card to play or pause. A faint pause icon shows when playing so you know it\'s tappable. Use the expand icon in the top-right corner to open the full screen player.',
+                desc: 'Tap the cover art on any card to play or pause. Toggle this in Settings under Absorbing Cards. A faint pause icon shows when playing so you know it\'s tappable.',
+              ),
+              _tipCard(cs, tt,
+                icon: Icons.swipe_up_rounded,
+                title: 'Full Screen Player',
+                desc: 'Swipe up on any absorbing card to open the full screen player. Swipe down to dismiss it.',
+              ),
+              _tipCard(cs, tt,
+                icon: Icons.swipe_right_rounded,
+                title: 'Quick Add to Absorbing',
+                desc: 'Swipe right on any book in a list sheet (series, author, search results) to instantly add it to your absorbing queue.',
               ),
               _tipCard(cs, tt,
                 icon: Icons.edit_note_rounded,
@@ -1007,6 +1021,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         PlayerSettings.setForwardSkip(v.round());
                       } : null,
                     ),
+                    SwitchListTile(
+                      title: Row(children: [
+                        const Expanded(child: Text('Chapter barrier on rewind')),
+                        Tooltip(
+                          message: 'When skipping back, snap to the chapter start instead of crossing it.\nDouble-tap within 2 seconds to break through.',
+                          child: Icon(Icons.info_outline_rounded, size: 18, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+                        ),
+                      ]),
+                      subtitle: Text(
+                        _skipChapterBarrier ? 'On - rewind snaps to chapter start' : 'Off - rewind crosses chapter boundaries',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                      value: _skipChapterBarrier,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _skipChapterBarrier = v);
+                        PlayerSettings.setSkipChapterBarrier(v);
+                      } : null,
+                    ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     SwitchListTile(
                       title: const Text('Chapter progress in notification'),
@@ -1680,7 +1712,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       trailing: Icon(Icons.open_in_new_rounded,
                           size: 18, color: cs.onSurfaceVariant),
                       onTap: () => launchUrl(
-                          Uri.parse('https://discord.gg/pcMJb5SM'),
+                          Uri.parse('https://discord.gg/bwH6hdvzZ4'),
                           mode: LaunchMode.externalApplication),
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),

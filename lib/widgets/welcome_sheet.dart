@@ -113,7 +113,9 @@ class _WelcomeContent extends StatelessWidget {
                   _subsection(cs, tt,
                     title: 'Managing your queue',
                     items: [
-                      'Tap the cover art to play/pause, use the expand icon to open the full screen player',
+                      'Tap the cover art to play/pause (toggleable in Settings)',
+                      'Swipe up on a card to open the full screen player, swipe down to dismiss',
+                      'Swipe right on any book in a list sheet to quickly add it to your queue',
                       'Tap the reorder icon to drag cards into your preferred order or swipe to remove',
                       'Add books manually from any book\'s detail sheet',
                       'Finished books are automatically removed from your queue',

@@ -74,6 +74,7 @@ class BackupService {
       'sleepTimerTab': await PlayerSettings.getSleepTimerTab(),
       'sheetGridView': await PlayerSettings.getSheetGridView(),
       'sheetCollapseSeries': await PlayerSettings.getSheetCollapseSeries(),
+      'skipChapterBarrier': await PlayerSettings.getSkipChapterBarrier(),
     };
 
     // AutoRewind (scoped)
@@ -277,6 +278,7 @@ class BackupService {
     if (s['sleepTimerTab'] != null) PlayerSettings.setSleepTimerTab(s['sleepTimerTab'] as int);
     if (s['sheetGridView'] != null) PlayerSettings.setSheetGridView(s['sheetGridView'] as bool);
     if (s['sheetCollapseSeries'] != null) PlayerSettings.setSheetCollapseSeries(s['sheetCollapseSeries'] as bool);
+    if (s['skipChapterBarrier'] != null) PlayerSettings.setSkipChapterBarrier(s['skipChapterBarrier'] as bool);
 
     // AutoRewind (scoped via save())
     final r = data['autoRewind'] as Map<String, dynamic>?;
