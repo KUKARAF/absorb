@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
@@ -663,18 +664,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                     .clamp(0, 100)
                     .round();
 
-                String? coverUrl;
-                if (bookId.isNotEmpty &&
-                    widget.serverUrl != null &&
-                    widget.token != null) {
-                  final cleanUrl = widget.serverUrl!.endsWith('/')
-                      ? widget.serverUrl!
-                          .substring(0, widget.serverUrl!.length - 1)
-                      : widget.serverUrl!;
-                  final updatedAt = book['updatedAt'] as num? ?? 0;
-                  coverUrl =
-                      '$cleanUrl/api/items/$bookId/cover?width=400&token=${widget.token}&u=$updatedAt';
-                }
+                final coverUrl = lib.getCoverUrl(bookId);
 
                 final isOnAbsorbing = lib.isOnAbsorbingList(bookId);
                 return Padding(
@@ -732,15 +722,18 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                               children: [
                                 Positioned.fill(
                                   child: coverUrl != null
-                                      ? CachedNetworkImage(
-                                          imageUrl: coverUrl,
-                                          fit: BoxFit.cover,
-                                          httpHeaders: context.read<LibraryProvider>().mediaHeaders,
-                                          placeholder: (_, __) =>
-                                              _placeholder(cs),
-                                          errorWidget: (_, __, ___) =>
-                                              _placeholder(cs),
-                                        )
+                                      ? (coverUrl.startsWith('/')
+                                          ? Image.file(File(coverUrl), fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) => _placeholder(cs))
+                                          : CachedNetworkImage(
+                                              imageUrl: coverUrl,
+                                              fit: BoxFit.cover,
+                                              httpHeaders: lib.mediaHeaders,
+                                              placeholder: (_, __) =>
+                                                  _placeholder(cs),
+                                              errorWidget: (_, __, ___) =>
+                                                  _placeholder(cs),
+                                            ))
                                       : _placeholder(cs),
                                 ),
                                 if (sequence != null && sequence.isNotEmpty)
