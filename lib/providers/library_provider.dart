@@ -429,6 +429,7 @@ class LibraryProvider extends ChangeNotifier {
     if (_resetItems.contains(itemId)) return null;
     final data = _progressMap[itemId];
     if (_locallyFinishedItems.contains(itemId)) {
+      debugPrint('[Progress] getProgressData($itemId) — forcing isFinished from local override (server isFinished=${data?['isFinished']})');
       return {...?data, 'isFinished': true};
     }
     return data;
@@ -464,13 +465,21 @@ class LibraryProvider extends ChangeNotifier {
       itemIds.add(dl.itemId);
     }
     for (final itemId in itemIds) {
+      if (_locallyFinishedItems.contains(itemId)) continue;
+      if (_resetItems.contains(itemId)) continue;
+      final serverFinished = _progressMap[itemId]?['isFinished'] == true;
       final data = await sync.getLocal(itemId);
       if (data != null) {
         final currentTime = (data['currentTime'] as num?)?.toDouble() ?? 0;
         final duration = (data['duration'] as num?)?.toDouble() ?? 0;
         if (duration > 0) {
-          _localProgressOverrides[itemId] =
-              (currentTime / duration).clamp(0.0, 1.0);
+          final progress = (currentTime / duration).clamp(0.0, 1.0);
+          // Skip stale 100% overrides for items the server says aren't
+          // finished (e.g. user marked series finished then un-finished).
+          if (progress >= 0.99 && !serverFinished) continue;
+          // Skip items already confirmed finished on server
+          if (serverFinished) continue;
+          _localProgressOverrides[itemId] = progress;
           // If item was reset but is now being played, clear the reset flag
           if (currentTime > 0) _resetItems.remove(itemId);
         }
@@ -604,7 +613,7 @@ class LibraryProvider extends ChangeNotifier {
         debugPrint(
             '[Library] restoreOfflineMode done, serverReachable=${auth.serverReachable} api=${_api != null} offline=$isOffline');
         _startConnectivityMonitoring();
-        _loadManualAbsorbing();
+        await _loadManualAbsorbing();
         await _loadRollingDownloadSeries();
         await _loadSubscribedPodcasts();
         await _loadKnownEpisodeIds();
@@ -1364,6 +1373,35 @@ class LibraryProvider extends ChangeNotifier {
               _progressMap[entry.key] = {...?serverEntry, ...entry.value};
             }
           }
+          // Clear local overrides - server data is now authoritative.
+          // These kept coming back like zombies from refreshLocalProgress,
+          // so we have to be aggressive about cleaning them up here.
+          if (_locallyFinishedItems.isNotEmpty) {
+            debugPrint('[Progress] locallyFinished before cleanup: $_locallyFinishedItems');
+          }
+          if (_localProgressOverrides.isNotEmpty) {
+            debugPrint('[Progress] localOverrides before cleanup: ${_localProgressOverrides.keys.toList()}');
+          }
+          _locallyFinishedItems.removeWhere((key) {
+            final serverData = _progressMap[key];
+            if (serverData?['isFinished'] == true) {
+              debugPrint('[Progress] Clearing local finished (server confirmed): $key');
+              return true;
+            }
+            if (serverData != null && serverData['isFinished'] == false) {
+              debugPrint('[Progress] Clearing local finished (server says not finished): $key');
+              return true;
+            }
+            debugPrint('[Progress] Keeping local finished (no server data): $key');
+            return false;
+          });
+          _localProgressOverrides.removeWhere((key, _) {
+            if (!_locallyFinishedItems.contains(key)) {
+              debugPrint('[Progress] Clearing override for $key');
+              return true;
+            }
+            return false;
+          });
         }
       }
     } catch (_) {}
@@ -1979,6 +2017,10 @@ class LibraryProvider extends ChangeNotifier {
             } else {
               // Book — use plain itemId
               allowedKeys.add(itemId);
+              // Continue-series items ALWAYS override manual removes. If the
+              // server says "this is the next book" then stop fighting it
+              // and just add the damn thing.
+              if (isContinueSeries) _manualAbsorbRemoves.remove(itemId);
               if (!_manualAbsorbRemoves.contains(itemId)) {
                 _absorbingIdsAdd(itemId, atFront: false);
                 _absorbingItemCache[itemId] = e;
@@ -2243,7 +2285,7 @@ class LibraryProvider extends ChangeNotifier {
   /// [key] can be a plain itemId (books) or compound "itemId-episodeId" (podcasts).
   void unblockFromAbsorbing(String key,
       {String? episodeTitle, double? episodeDuration}) {
-    // Clear stale finished state so the overlay doesn't persist when replaying
+    // Clear stale finished state so the card resets when replaying
     _localProgressOverrides.remove(key);
     _locallyFinishedItems.remove(key);
     final pm = _progressMap[key];
@@ -2313,14 +2355,16 @@ class LibraryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Mark an item as finished locally so the overlay appears immediately,
+  /// Mark an item as finished locally so the card updates immediately,
   /// before the next server refresh confirms isFinished.
   /// [itemId] can be a plain book ID or a compound "showId-episodeId" key.
   /// If [skipRefresh] is true, the caller handles refreshing (e.g.
   /// book_detail_sheet calls refresh() after api.markFinished).
   void markFinishedLocally(String itemId,
       {bool skipRefresh = false, bool skipAutoAdvance = false}) {
-    if (_resetItems.contains(itemId)) return;
+    // For the love of god, don't bail out just because the item was reset.
+    // The user un-finished it and is now re-finishing it. Let it happen.
+    _resetItems.remove(itemId);
     final existing = _progressMap[itemId] ?? {};
     _progressMap[itemId] = {...existing, 'isFinished': true};
     _localProgressOverrides[itemId] = 1.0;
@@ -2386,18 +2430,14 @@ class LibraryProvider extends ChangeNotifier {
             if (_selectedLibraryId != null && !isOffline) {
               refreshProgressShelves(force: true, reason: 'podcast-finished');
             }
-            PlayerSettings.getWhenFinished().then((mode) {
-              if (mode == 'auto_remove') removeFromAbsorbing(itemId);
-            });
+            removeFromAbsorbing(itemId);
           });
         } else {
-          // manual or off — still refresh and handle auto-remove, just don't add next episode
+          // manual or off — still refresh and remove finished item
           if (_selectedLibraryId != null && !isOffline) {
             refreshProgressShelves(force: true, reason: 'item-finished');
           }
-          PlayerSettings.getWhenFinished().then((mode) {
-            if (mode == 'auto_remove') removeFromAbsorbing(itemId);
-          });
+          removeFromAbsorbing(itemId);
         }
       });
       return; // skip the default refresh below — handled above
@@ -2411,16 +2451,12 @@ class LibraryProvider extends ChangeNotifier {
       Future.delayed(const Duration(milliseconds: 500), () async {
         await _refreshProgress(); // refresh _progressMap so stale isFinished flags don't block auto-advance
         refreshProgressShelves(force: true, reason: 'item-finished');
-        PlayerSettings.getWhenFinished().then((mode) {
-          if (mode == 'auto_remove') removeFromAbsorbing(itemId);
-        });
+        removeFromAbsorbing(itemId);
       });
     }
 
     if (isOffline) {
-      PlayerSettings.getWhenFinished().then((mode) {
-        if (mode == 'auto_remove') removeFromAbsorbing(itemId);
-      });
+      removeFromAbsorbing(itemId);
     }
   }
 

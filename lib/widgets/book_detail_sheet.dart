@@ -978,7 +978,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     final rootNav = Navigator.of(context, rootNavigator: true);
 
     // Ensure this book is on the absorbing list (clear any manual remove)
-    // Clear finished state so the overlay disappears immediately
+    // Clear finished state so the card updates immediately
     if (context.mounted) {
       final lib = context.read<LibraryProvider>();
       lib.addToAbsorbing(widget.itemId);
@@ -1032,8 +1032,8 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     final api = auth.apiService;
     if (api == null) return;
     final player = AudioPlayerService();
-    // Mark finished locally first so the absorbing card shows the overlay
-    // immediately when the player stops (which triggers the expanded card to pop)
+    // Mark finished locally first so the card updates immediately
+    // when the player stops (which triggers the expanded card to pop)
     if (context.mounted) {
       context.read<LibraryProvider>().markFinishedLocally(widget.itemId, skipRefresh: true, skipAutoAdvance: true);
     }
@@ -1045,10 +1045,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         final lib = context.read<LibraryProvider>();
         await _loadItem();
         await lib.refresh();
-        final mode = await PlayerSettings.getWhenFinished();
-        if (mode == 'auto_remove') {
-          await lib.removeFromAbsorbing(widget.itemId);
-        }
+        await lib.removeFromAbsorbing(widget.itemId);
         if (mounted) setState(() {});
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -1082,8 +1079,11 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       await api.markNotFinished(widget.itemId, currentTime: currentTime, duration: duration);
       await ProgressSyncService().deleteLocal(widget.itemId);
       if (context.mounted) {
+        final lib = context.read<LibraryProvider>();
+        lib.resetProgressFor(widget.itemId);
+        lib.unblockFromAbsorbing(widget.itemId);
         await _loadItem();
-        await context.read<LibraryProvider>().refresh();
+        await lib.refresh();
         if (mounted) setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           duration: const Duration(seconds: 3), content: const Text('Marked as not finished — back at it!'),

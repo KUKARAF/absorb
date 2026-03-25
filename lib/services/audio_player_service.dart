@@ -165,7 +165,7 @@ class PlayerSettings {
   static Future<bool> getAutoPlayNextPodcast() => _get('autoPlayNextPodcast', false);
   static Future<void> setAutoPlayNextPodcast(bool value) => _set('autoPlayNextPodcast', value);
 
-  static Future<String> getWhenFinished() => _get('whenFinished', 'overlay');
+  static Future<String> getWhenFinished() => _get('whenFinished', 'auto_remove');
   static Future<void> setWhenFinished(String value) => _set('whenFinished', value);
 
   // ── Player UI settings (notify listeners on change) ──
