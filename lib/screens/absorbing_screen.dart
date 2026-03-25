@@ -154,9 +154,22 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
     // when it stops/disconnects, keep that card at front.
     final nowCasting = _cast.isCasting;
     if (nowCasting && !_wasCasting) {
-      // Casting just started — scroll to the cast card
+      // Casting just started — move cast card to front, same as local playback
       _lastCastItemId = _cast.castingItemId;
       _lastCastEpisodeId = _cast.castingEpisodeId;
+      final castKey = _lastCastEpisodeId != null
+          ? '$_lastCastItemId-$_lastCastEpisodeId'
+          : _lastCastItemId!;
+      final lib = context.read<LibraryProvider>();
+      lib.unblockFromAbsorbing(castKey);
+      _lastFinishedId = castKey;
+      ScopedPrefs.setString('absorbing_last_finished', castKey);
+      final currentPage = _pageController.hasClients
+          ? (_pageController.page ?? 0).round() : 0;
+      _suppressReorder = currentPage > 0;
+      if (!_suppressReorder) {
+        lib.moveAbsorbingToFront(castKey);
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToActiveCard());
     } else if (nowCasting) {
       _lastCastItemId = _cast.castingItemId;
@@ -392,7 +405,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
 
     // When nothing is playing, keep the last-finished item at the front
     // Only if it matches the current library type
-    if (!_player.hasBook && _lastFinishedId != null && !removes.contains(_lastFinishedId)) {
+    if (!_player.hasBook && !_cast.isCasting && _lastFinishedId != null && !removes.contains(_lastFinishedId)) {
       // Compound podcast keys are "uuid-uuid" (>36 chars); plain book UUIDs are 36.
       final finishedIsPodcast = _lastFinishedId!.length > 36;
       if (_mergeLibraries || finishedIsPodcast == isPod) {
@@ -508,7 +521,10 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.stop_rounded, size: 18, color: muted),
+                          if (_isSyncing)
+                            SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 1.5, color: muted))
+                          else
+                            Icon(Icons.stop_rounded, size: 18, color: muted),
                           const SizedBox(width: 4),
                           Text('Stop', style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500)),
                         ],

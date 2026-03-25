@@ -209,7 +209,14 @@ class ProgressSyncService {
             final serverTimestamp = (serverProgress['lastUpdate'] as num?)?.toInt() ?? 0;
             final serverTime = (serverProgress['currentTime'] as num?)?.toDouble() ?? 0;
 
-            if (serverTimestamp > localTimestamp) {
+            // Check if there's pending offline listening time for this item.
+            // If so, the server doesn't have the full picture yet - always
+            // push local to avoid overwriting progress with a stale position.
+            final hasOfflineListening =
+                (await ScopedPrefs.getInt('offline_listening_$itemId') ?? 0) > 0;
+
+            if (serverTimestamp > localTimestamp &&
+                (serverTime >= localTime || !hasOfflineListening)) {
               debugPrint('[Sync] Server is newer for $itemId: server=$serverTime s ($serverTimestamp) vs local=$localTime s ($localTimestamp) — pulling');
               await cacheServerProgress(
                 itemId: itemId,
