@@ -111,6 +111,7 @@ void main() async {
     final savedTheme = await PlayerSettings.getThemeMode();
     applyThemeMode(savedTheme);
     snappyTransitionsNotifier.value = await PlayerSettings.getSnappyTransitions();
+    PlayerSettings.showExplicitBadge = await PlayerSettings.getShowExplicitBadge();
     // Restore last cover seed color so the theme doesn't flash on startup
     {
       final seedInt = await PlayerSettings.getCoverSeedColor();
@@ -383,6 +384,7 @@ class _AuthGateState extends State<AuthGate> {
     final scopedTheme = await PlayerSettings.getThemeMode();
     applyThemeMode(scopedTheme);
     snappyTransitionsNotifier.value = await PlayerSettings.getSnappyTransitions();
+    PlayerSettings.showExplicitBadge = await PlayerSettings.getShowExplicitBadge();
     // Restore cover seed color
     {
       final seedInt = await PlayerSettings.getCoverSeedColor();

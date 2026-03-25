@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
 import 'book_detail_sheet.dart';
 import 'episode_list_sheet.dart';
@@ -419,7 +420,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                               errorBuilder: (_, __, ___) => _placeholder(cs)))
                       : _placeholder(cs),
                 ),
-                if (metadata['explicit'] == true)
+                if (PlayerSettings.showExplicitBadge && metadata['explicit'] == true)
                   Positioned(
                     top: 2, right: 2,
                     child: Container(

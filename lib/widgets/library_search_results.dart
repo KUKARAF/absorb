@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/library_provider.dart';
+import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
 import 'author_books_sheet.dart';
 import 'book_detail_sheet.dart';
@@ -37,7 +38,7 @@ class BookResultTile extends StatelessWidget {
     final title = metadata['title'] as String? ?? 'Unknown';
     final authorName = metadata['authorName'] as String? ?? '';
     final lib = context.watch<LibraryProvider>();
-    final isExplicit = metadata['explicit'] == true;
+    final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
     final isDownloaded = itemId != null && DownloadService().isDownloaded(itemId);
     final isFinished = itemId != null && lib.getProgressData(itemId)?['isFinished'] == true;
     final greenColor = Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400]! : Colors.green.shade700;

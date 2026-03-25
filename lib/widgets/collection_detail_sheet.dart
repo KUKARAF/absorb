@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
 import 'book_detail_sheet.dart';
 import 'stackable_sheet.dart';
@@ -270,7 +271,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
         final title = metadata['title'] as String? ?? 'Unknown';
         final author = metadata['authorName'] as String? ?? '';
         final coverUrl = lib.getCoverUrl(itemId);
-        final isExplicit = metadata['explicit'] == true;
+        final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
         final progress = lib.getProgress(itemId);
         final isFinished = lib.getProgressData(itemId)?['isFinished'] == true;
         final isDownloaded = DownloadService().isDownloaded(itemId);

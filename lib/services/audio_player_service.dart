@@ -184,6 +184,14 @@ class PlayerSettings {
   static Future<bool> getSkipChapterBarrier() => _get('skipChapterBarrier', true);
   static Future<void> setSkipChapterBarrier(bool value) => _set('skipChapterBarrier', value);
 
+  /// Cached value for synchronous access in widget build methods.
+  static bool showExplicitBadge = true;
+  static Future<bool> getShowExplicitBadge() => _get('showExplicitBadge', true);
+  static Future<void> setShowExplicitBadge(bool value) async {
+    showExplicitBadge = value;
+    await _set('showExplicitBadge', value);
+  }
+
   static Future<bool> getNotificationChapterProgress() => _get('notificationChapterProgress', false);
   static Future<void> setNotificationChapterProgress(bool value) => _set('notificationChapterProgress', value, notify: true);
 

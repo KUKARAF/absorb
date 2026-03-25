@@ -64,6 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _maxConcurrentDownloads = 1;
   bool _hideEbookOnly = false;
   bool _showGoodreadsButton = false;
+  bool _showExplicitBadge = true;
   bool _loggingEnabled = false;
   bool _fullScreenPlayer = false;
   String _cardButtonLayout = 'standard';
@@ -167,6 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PlayerSettings.getTrustAllCerts(),                               // 40
       PlayerSettings.getCoverPlayButton(),                             // 41
       PlayerSettings.getSkipChapterBarrier(),                            // 42
+      PlayerSettings.getShowExplicitBadge(),                               // 43
     ]);
     final s = results[0] as AutoRewindSettings;
     final speed = results[1] as double;
@@ -209,6 +211,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final trustCerts = results[38] as bool;
     final coverPlay = results[39] as bool;
     final skipBarrier = results[40] as bool;
+    final showExplicit = results[41] as bool;
     if (mounted) setState(() {
       _rewindSettings = s;
       _defaultSpeed = speed;
@@ -255,6 +258,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _coverPlayButton = coverPlay;
       _skipChapterBarrier = skipBarrier;
       _trustAllCerts = trustCerts;
+      _showExplicitBadge = showExplicit;
 
       _loaded = true;
     });
@@ -1607,6 +1611,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: _loaded ? (v) {
                         setState(() => _showGoodreadsButton = v);
                         PlayerSettings.setShowGoodreadsButton(v);
+                      } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Show explicit badge'),
+                      subtitle: Text(
+                        _showExplicitBadge
+                            ? 'Explicit items show an "E" badge'
+                            : 'Off - explicit badge hidden',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _showExplicitBadge,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _showExplicitBadge = v);
+                        PlayerSettings.setShowExplicitBadge(v);
                       } : null,
                     ),
                     if (lib.libraries.length > 1) ...[

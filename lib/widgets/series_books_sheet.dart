@@ -655,7 +655,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                     ? (media['duration'] as num).toDouble()
                     : 0.0;
 
-                final isExplicit = metadata['explicit'] == true;
+                final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
                 final progress = lib.getProgress(bookId);
                 final isFinished = lib.getProgressData(bookId)?['isFinished'] == true;
                 final isDownloaded = DownloadService().isDownloaded(bookId);

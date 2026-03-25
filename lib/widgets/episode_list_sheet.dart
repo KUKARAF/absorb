@@ -74,7 +74,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
   List<String> get _genres =>
       (_metadata['genres'] as List<dynamic>?)?.cast<String>() ?? [];
   String get _language => _metadata['language'] as String? ?? '';
-  bool get _explicit => _metadata['explicit'] == true;
+  bool get _explicit => PlayerSettings.showExplicitBadge && _metadata['explicit'] == true;
   String get _type => _metadata['type'] as String? ?? '';
 
   @override
