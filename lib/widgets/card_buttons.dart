@@ -9,6 +9,41 @@ import 'audio_output_sheet.dart';
 import 'card_button_config.dart';
 import 'sleep_timer_sheet.dart';
 
+/// Wrapper that gives any child a press-down opacity+scale effect.
+class Pressable extends StatefulWidget {
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final HitTestBehavior? behavior;
+  final Widget child;
+  const Pressable({super.key, this.onTap, this.onLongPress, this.behavior, required this.child});
+  @override State<Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<Pressable> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: widget.behavior,
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.90 : 1.0,
+        duration: Duration(milliseconds: _pressed ? 0 : 150),
+        child: AnimatedOpacity(
+          opacity: _pressed ? 0.4 : 1.0,
+          duration: Duration(milliseconds: _pressed ? 0 : 150),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 /// Show a toast when the user taps a button that requires active playback.
 void showInactiveToast(BuildContext context) {
   ScaffoldMessenger.of(context)
@@ -60,7 +95,7 @@ class CardWideButton extends StatelessWidget {
     final fontSize = compact ? 10.0 : (large ? 13.0 : 11.0);
     final vPad = compact ? 8.0 : (large ? 14.0 : 10.0);
     final radius = compact ? 10.0 : (large ? 14.0 : 12.0);
-    return GestureDetector(
+    return Pressable(
       onTap: enabled ? onTap : () => showInactiveToast(context),
       child: Container(
         padding: EdgeInsets.symmetric(vertical: vPad),
@@ -103,7 +138,7 @@ class MoreMenuItem extends StatelessWidget {
 
   @override Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
+    return Pressable(
       onTap: enabled ? onTap : () => showInactiveToast(context),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
@@ -162,7 +197,7 @@ class CardSleepButtonInline extends StatelessWidget {
         final fontSize = compact ? 10.0 : (large ? (active && isTime ? 15.0 : 14.0) : (active && isTime ? 13.0 : 12.0));
         final radius = compact ? 10.0 : (large ? 16.0 : 14.0);
 
-        return GestureDetector(
+        return Pressable(
           onTap: isActive ? () {
             showSleepTimerSheet(context, accent);
           } : () => showInactiveToast(context),
@@ -242,7 +277,7 @@ class _CardBookmarkButtonInlineState extends State<CardBookmarkButtonInline> {
     final radius = cp ? 10.0 : (lg ? 14.0 : 12.0);
     final sh = widget.short;
     final label = cp ? (_count > 0 ? '$_count' : 'Bookmark') : sh ? 'Bookmarks' : (_count > 0 ? 'Bookmarks ($_count)' : 'Bookmark');
-    return GestureDetector(
+    return Pressable(
       onTap: enabled ? () => _showBookmarks(context) : () => showInactiveToast(context),
       onLongPress: enabled ? () => _quickAdd(context) : null,
       child: Container(
@@ -355,7 +390,7 @@ class _CardSpeedButtonInlineState extends State<CardSpeedButtonInline> {
       builder: (context, _) {
         final castNow = widget.itemId != null && cast.isCasting && cast.castingItemId == widget.itemId;
         final speedNow = castNow ? cast.castSpeed : (widget.isActive ? widget.player.speed : _savedSpeed);
-        return GestureDetector(
+        return Pressable(
           onTap: () {
             showModalBottomSheet(context: context, backgroundColor: Colors.transparent,
               useSafeArea: true,

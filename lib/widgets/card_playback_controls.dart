@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/audio_player_service.dart';
 import '../services/chromecast_service.dart';
+import 'card_buttons.dart';
 
 // ─── PLAYBACK CONTROLS (card version) ───────────────────────
 
@@ -12,7 +13,8 @@ class CardPlaybackControls extends StatefulWidget {
   final VoidCallback onStart;
   final String? itemId;
   final bool showPlayButton;
-  const CardPlaybackControls({super.key, required this.player, required this.accent, required this.isActive, required this.isStarting, required this.onStart, this.itemId, this.showPlayButton = false});
+  final double playButtonSize;
+  const CardPlaybackControls({super.key, required this.player, required this.accent, required this.isActive, required this.isStarting, required this.onStart, this.itemId, this.showPlayButton = false, this.playButtonSize = 65});
   @override State<CardPlaybackControls> createState() => _CardPlaybackControlsState();
 }
 
@@ -72,18 +74,21 @@ class _CardPlaybackControlsState extends State<CardPlaybackControls> {
   }
 
   Widget _playPauseButton(ColorScheme cs, {required bool playing, required bool loading, required VoidCallback? onTap}) {
-    return GestureDetector(
+    final s = widget.playButtonSize;
+    final iconSize = s * 0.49;
+    final spinnerSize = s * 0.4;
+    return Pressable(
       onTap: onTap,
       child: Container(
-        width: 56, height: 56,
+        width: s, height: s,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: cs.onSurface,
           boxShadow: [BoxShadow(color: widget.accent.withValues(alpha: 0.4), blurRadius: 25, spreadRadius: -5)],
         ),
         child: loading
-            ? Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: widget.accent)))
-            : Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 30, color: cs.surface),
+            ? Center(child: SizedBox(width: spinnerSize, height: spinnerSize, child: CircularProgressIndicator(strokeWidth: 2, color: widget.accent)))
+            : Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: iconSize, color: cs.surface),
       ),
     );
   }
@@ -95,23 +100,23 @@ class _CardPlaybackControlsState extends State<CardPlaybackControls> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Flexible(child: GestureDetector(
+        Flexible(child: Pressable(
           onTap: cast.skipToPreviousChapter,
           child: SizedBox(width: 52, height: 52, child: Center(
             child: Icon(Icons.skip_previous_rounded, size: 34, color: cs.onSurfaceVariant),
           )),
         )),
-        Flexible(child: GestureDetector(
+        Flexible(child: Pressable(
           onTap: () => cast.skipBackward(_backSkip),
           child: SizedBox(width: 60, height: 60, child: Center(child: _skipIcon(_backSkip, false))),
         )),
         if (widget.showPlayButton)
           Flexible(child: _playPauseButton(cs, playing: cast.isPlaying, loading: false, onTap: cast.togglePlayPause)),
-        Flexible(child: GestureDetector(
+        Flexible(child: Pressable(
           onTap: () => cast.skipForward(_forwardSkip),
           child: SizedBox(width: 60, height: 60, child: Center(child: _skipIcon(_forwardSkip, true))),
         )),
-        Flexible(child: GestureDetector(
+        Flexible(child: Pressable(
           onTap: cast.skipToNextChapter,
           child: SizedBox(width: 52, height: 52, child: Center(
             child: Icon(Icons.skip_next_rounded, size: 34, color: cs.onSurfaceVariant),
@@ -128,24 +133,24 @@ class _CardPlaybackControlsState extends State<CardPlaybackControls> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Flexible(child: GestureDetector(
+        Flexible(child: Pressable(
           onTap: widget.isActive ? widget.player.skipToPreviousChapter : null,
           child: SizedBox(width: 52, height: 52, child: Center(
             child: Icon(Icons.skip_previous_rounded, size: 34, color: widget.isActive ? cs.onSurfaceVariant : cs.onSurface.withValues(alpha: 0.12)),
           )),
         )),
-        Flexible(child: GestureDetector(
+        Flexible(child: Pressable(
           onTap: widget.isActive ? () => widget.player.skipBackward(_backSkip) : null,
           child: SizedBox(width: 60, height: 60, child: Center(child: _skipIcon(_backSkip, false, active: widget.isActive))),
         )),
         if (widget.showPlayButton)
           Flexible(child: _playPauseButton(cs, playing: widget.isActive && widget.player.isPlaying, loading: loading,
             onTap: widget.isActive ? widget.player.togglePlayPause : widget.onStart)),
-        Flexible(child: GestureDetector(
+        Flexible(child: Pressable(
           onTap: widget.isActive ? () => widget.player.skipForward(_forwardSkip) : null,
           child: SizedBox(width: 60, height: 60, child: Center(child: _skipIcon(_forwardSkip, true, active: widget.isActive))),
         )),
-        Flexible(child: GestureDetector(
+        Flexible(child: Pressable(
           onTap: widget.isActive ? widget.player.skipToNextChapter : null,
           child: SizedBox(width: 52, height: 52, child: Center(
             child: Icon(Icons.skip_next_rounded, size: 34, color: widget.isActive ? cs.onSurfaceVariant : cs.onSurface.withValues(alpha: 0.12)),

@@ -807,7 +807,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                         listenable: ChromecastService(),
                                         builder: (context, _) {
                                           final castActive = ChromecastService().isCasting && !_buttonOrder.take(_visibleButtonCount).contains('cast');
-                                          return GestureDetector(
+                                          return Pressable(
                                             behavior: HitTestBehavior.opaque,
                                             onTap: () => _showMoreMenu(context, accent, tt),
                                             child: Container(
