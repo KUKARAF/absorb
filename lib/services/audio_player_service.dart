@@ -1161,7 +1161,11 @@ class AudioPlayerService extends ChangeNotifier {
   }
   bool get hasBook => _currentItemId != null;
   bool get isPlaying => _player?.playing ?? false;
+  /// True while [playItem] is setting up a new audio source.
+  bool _isLoadingNewItem = false;
+  bool get isLoadingNewItem => _isLoadingNewItem;
   bool get isLoadingOrBuffering {
+    if (_isLoadingNewItem) return true;
     final s = _player?.processingState;
     return s == ProcessingState.loading || s == ProcessingState.buffering;
   }
@@ -1179,6 +1183,12 @@ class AudioPlayerService extends ChangeNotifier {
   /// Absolute book position (accounts for multi-file track offsets).
   Duration get position {
     if (_player == null) return Duration.zero;
+    // While swapping to a new item, return the target seek position so the UI
+    // doesn't flash stale progress from the previous book.
+    final seekTarget = _lastSeekTargetSeconds;
+    if (_isLoadingNewItem && seekTarget != null && seekTarget > 0) {
+      return Duration(milliseconds: (seekTarget * 1000).round());
+    }
     final trackRelative = _player!.position;
     if (_trackStartOffsets.length <= 1) return trackRelative; // single file
     final offsetMs = (_trackStartOffsets[_currentTrackIndex] * 1000).round();
@@ -1525,6 +1535,11 @@ class AudioPlayerService extends ChangeNotifier {
       return null;
     }
 
+    // Stop old audio immediately so it doesn't keep playing while the new
+    // source is loading (avoids briefly hearing the previous book).
+    await _player?.pause();
+
+    _isLoadingNewItem = true;
     _api = api;
     _currentItemId = itemId;
     _currentEpisodeId = episodeId;
@@ -1589,6 +1604,9 @@ class AudioPlayerService extends ChangeNotifier {
       result = await _playFromServer(api, itemId, title, author, coverUrl,
           totalDuration, chapters, startTime);
     }
+
+    _isLoadingNewItem = false;
+    notifyListeners();
 
     // Auto-navigate to Absorbing tab when an episode starts playing
     if (result == null && episodeId != null) {
