@@ -144,13 +144,16 @@ class LibraryProvider extends ChangeNotifier {
           .whereType<String>()
           .toSet();
       _knownEpisodeIds[podcastId] = ids;
+      _saveKnownEpisodeIds(podcastId);
     }
     notifyListeners();
   }
 
   Future<void> unsubscribePodcast(String podcastId) async {
     _subscribedPodcasts.remove(podcastId);
+    _knownEpisodeIds.remove(podcastId);
     await _saveSubscribedPodcasts();
+    await ScopedPrefs.remove('known_episodes_$podcastId');
     notifyListeners();
   }
 
@@ -604,9 +607,10 @@ class LibraryProvider extends ChangeNotifier {
         _loadManualAbsorbing();
         await _loadRollingDownloadSeries();
         await _loadSubscribedPodcasts();
-        // Seed episode counts in the background so first socket update
-        // doesn't treat all existing episodes as new.
-        Future.microtask(() => seedSubscribedPodcastCounts());
+        await _loadKnownEpisodeIds();
+        // Check subscribed podcasts for new episodes added while app was closed,
+        // and seed counts so socket updates can detect future new episodes.
+        Future.microtask(() => checkSubscribedPodcasts());
 
         // If server was unreachable on startup, force offline mode and ping
         if (!auth.serverReachable) {
@@ -3193,8 +3197,27 @@ class LibraryProvider extends ChangeNotifier {
   // ── Podcast subscriptions ──
 
   /// Track known episode IDs per podcast so we can detect new ones
-  /// regardless of position or date.
+  /// regardless of position or date. Persisted so episodes added while
+  /// the app was closed are detected on next startup.
   final Map<String, Set<String>> _knownEpisodeIds = {};
+
+  Future<void> _loadKnownEpisodeIds() async {
+    for (final podcastId in _subscribedPodcasts) {
+      final ids = await ScopedPrefs.getStringList('known_episodes_$podcastId');
+      if (ids.isNotEmpty) {
+        _knownEpisodeIds[podcastId] = ids.toSet();
+      }
+    }
+  }
+
+  Future<void> _saveKnownEpisodeIds(String podcastId) async {
+    final ids = _knownEpisodeIds[podcastId];
+    if (ids != null) {
+      await ScopedPrefs.setStringList('known_episodes_$podcastId', ids.toList());
+    } else {
+      await ScopedPrefs.remove('known_episodes_$podcastId');
+    }
+  }
 
   /// Called when a library item is updated via socket. If it's a subscribed
   /// podcast with more episodes than we last knew about, auto-download and
@@ -3231,6 +3254,8 @@ class LibraryProvider extends ChangeNotifier {
           .whereType<String>()
           .toSet();
       _knownEpisodeIds[itemId] = ids;
+      _saveKnownEpisodeIds(itemId);
+      debugPrint('[Subscription] Seeded $itemId with ${ids.length} episodes');
       return;
     }
 
@@ -3269,6 +3294,7 @@ class LibraryProvider extends ChangeNotifier {
       }
 
       if (queued > 0) {
+        _saveKnownEpisodeIds(itemId);
         _saveManualAbsorbing();
         notifyListeners();
         _downloadSubscribedEpisodes(itemId);
@@ -3276,25 +3302,15 @@ class LibraryProvider extends ChangeNotifier {
     }
   }
 
-  /// Seed known episode IDs for subscribed podcasts so the first
-  /// socket update doesn't treat all existing episodes as new.
-  Future<void> seedSubscribedPodcastCounts() async {
+  /// Check subscribed podcasts for new episodes (added while app was closed)
+  /// and seed known IDs for future socket-based detection.
+  Future<void> checkSubscribedPodcasts() async {
     if (_subscribedPodcasts.isEmpty || _api == null) return;
     for (final podcastId in _subscribedPodcasts) {
-      if (_knownEpisodeIds.containsKey(podcastId)) continue;
       try {
-        final item = await _api!.getLibraryItem(podcastId);
-        if (item == null) continue;
-        final media = item['media'] as Map<String, dynamic>? ?? {};
-        final episodes = media['episodes'] as List<dynamic>? ?? [];
-        final ids = episodes
-            .map((e) => (e as Map<String, dynamic>)['id'] as String?)
-            .whereType<String>()
-            .toSet();
-        _knownEpisodeIds[podcastId] = ids;
-        debugPrint('[Subscription] Seeded $podcastId with ${ids.length} episodes');
+        await _fetchAndCheckSubscribedPodcast(podcastId);
       } catch (e) {
-        debugPrint('[Subscription] Failed to seed $podcastId: $e');
+        debugPrint('[Subscription] Failed to check $podcastId: $e');
       }
     }
   }

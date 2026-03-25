@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/library_provider.dart';
+import '../services/download_service.dart';
 import 'book_card.dart';
 import 'author_card.dart';
 import 'series_card.dart';
@@ -259,6 +260,10 @@ class _EpisodeCard extends StatelessWidget {
     // Get episode info from recentEpisode
     final episode = item['recentEpisode'] as Map<String, dynamic>?;
     final episodeTitle = episode?['title'] as String? ?? showTitle;
+    final episodeId = episode?['id'] as String?;
+    final progress = episodeId != null ? lib.getEpisodeProgress(itemId, episodeId) : 0.0;
+    final isFinished = episodeId != null && lib.getEpisodeProgressData(itemId, episodeId)?['isFinished'] == true;
+    final isDownloaded = episodeId != null && DownloadService().isDownloaded('$itemId-$episodeId');
 
     return GestureDetector(
       onTap: () {
@@ -304,6 +309,67 @@ class _EpisodeCard extends StatelessWidget {
                       color: cs.surfaceContainerHigh,
                       child: Icon(Icons.podcasts_rounded, size: 32,
                         color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
+                    ),
+                  // Progress bar
+                  if (progress > 0 && !isFinished)
+                    Positioned(
+                      left: 0, right: 0, bottom: 0,
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                        child: LinearProgressIndicator(
+                          value: progress.clamp(0, 1),
+                          minHeight: 3,
+                          backgroundColor: Colors.transparent,
+                          valueColor: AlwaysStoppedAnimation(cs.primary),
+                        ),
+                      ),
+                    ),
+                  // Finished / downloaded badge
+                  if (isFinished || isDownloaded)
+                    Positioned(
+                      left: 0, right: 0, bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.85),
+                              Colors.black.withValues(alpha: 0.0),
+                            ],
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isFinished) ...[
+                              Icon(Icons.check_circle_rounded,
+                                  size: 10, color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700),
+                              const SizedBox(width: 3),
+                              Text('Done',
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700)),
+                            ],
+                            if (isFinished && isDownloaded)
+                              const SizedBox(width: 6),
+                            if (isDownloaded) ...[
+                              Icon(Icons.download_done_rounded,
+                                  size: 10, color: cs.primary),
+                              const SizedBox(width: 3),
+                              Text('Saved',
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w600,
+                                      color: cs.primary)),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                   // Subscribed bell
                   if (isSubscribed)
