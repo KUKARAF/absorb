@@ -28,6 +28,10 @@ class CardDualProgressBar extends StatefulWidget {
 class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerProviderStateMixin, WidgetsBindingObserver {
   double? _chapterDragValue;
   double? _bookDragValue;
+  double _bookDragStartDy = 0;
+  double _chapterDragStartDy = 0;
+  double _bookScrubSpeed = 1.0;
+  double _chapterScrubSpeed = 1.0;
   bool _showBookSlider = false;
   bool _speedAdjustedTime = true;
   late AnimationController _smoothTicker;
@@ -184,6 +188,19 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
     }
   }
 
+  static double _scrubScale(double vertDist) {
+    if (vertDist < 50) return 1.0;
+    if (vertDist < 100) return 0.5;
+    if (vertDist < 175) return 0.25;
+    return 0.1;
+  }
+
+  static String _scrubSpeedLabel(double scale) {
+    if (scale <= 0.1) return 'Fine Scrubbing';
+    if (scale <= 0.25) return 'Quarter Speed';
+    return 'Half Speed';
+  }
+
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
@@ -270,8 +287,8 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
                 final p = _bookDragValue ?? bookProgress;
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onHorizontalDragStart: active ? (d) { setState(() => _bookDragValue = (d.localPosition.dx / w).clamp(0.0, 1.0)); } : null,
-                  onHorizontalDragUpdate: active ? (d) { setState(() => _bookDragValue = (d.localPosition.dx / w).clamp(0.0, 1.0)); } : null,
+                  onHorizontalDragStart: active ? (d) { _bookDragStartDy = d.localPosition.dy; _bookScrubSpeed = 1.0; setState(() => _bookDragValue = (d.localPosition.dx / w).clamp(0.0, 1.0)); } : null,
+                  onHorizontalDragUpdate: active ? (d) { _bookScrubSpeed = _scrubScale((d.localPosition.dy - _bookDragStartDy).abs()); setState(() => _bookDragValue = ((_bookDragValue ?? bookProgress) + d.delta.dx / w * _bookScrubSpeed).clamp(0.0, 1.0)); } : null,
                   onHorizontalDragEnd: active ? (_) { if (_bookDragValue != null) { final seekMs = (_bookDragValue! * totalDur * 1000).round(); _doSeek(seekMs); } setState(() => _bookDragValue = null); } : null,
                   onTapUp: active ? (d) { final v = (d.localPosition.dx / w).clamp(0.0, 1.0); final seekMs = (v * totalDur * 1000).round(); _doSeek(seekMs); } : null,
                   child: CustomPaint(size: Size(w, 32), painter: AbsorbProgressPainter(progress: p, accent: widget.accent.withValues(alpha: 0.5), isDragging: _bookDragValue != null)),
@@ -281,6 +298,7 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_fmt(_bookDragValue != null ? _bookDragValue! * totalDur : bookElapsed), style: tt.labelSmall?.copyWith(color: _bookDragValue != null ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w600, shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
+                  if (_bookDragValue != null && _bookScrubSpeed < 1.0) Text(_scrubSpeedLabel(_bookScrubSpeed), style: tt.labelSmall?.copyWith(color: widget.accent, fontSize: 11, fontWeight: FontWeight.w500)),
                   Text('-${_fmt(_bookDragValue != null ? (1.0 - _bookDragValue!) * totalDur : bookRemaining)}', style: tt.labelSmall?.copyWith(color: _bookDragValue != null ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w600, shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
                 ],
               )),
@@ -309,8 +327,8 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
 
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onHorizontalDragStart: active ? (d) { setState(() => _chapterDragValue = (d.localPosition.dx / w).clamp(0.0, 1.0)); } : null,
-                onHorizontalDragUpdate: active ? (d) { setState(() => _chapterDragValue = (d.localPosition.dx / w).clamp(0.0, 1.0)); } : null,
+                onHorizontalDragStart: active ? (d) { _chapterDragStartDy = d.localPosition.dy; _chapterScrubSpeed = 1.0; setState(() => _chapterDragValue = (d.localPosition.dx / w).clamp(0.0, 1.0)); } : null,
+                onHorizontalDragUpdate: active ? (d) { _chapterScrubSpeed = _scrubScale((d.localPosition.dy - _chapterDragStartDy).abs()); setState(() => _chapterDragValue = ((_chapterDragValue ?? chapterProgress) + d.delta.dx / w * _chapterScrubSpeed).clamp(0.0, 1.0)); } : null,
                 onHorizontalDragEnd: active ? (_) { if (_chapterDragValue != null) { final seekMs = ((chapterStart + _chapterDragValue! * chapterDur) * 1000).round(); _doSeek(seekMs); } setState(() => _chapterDragValue = null); } : null,
                 onTapUp: active ? (d) { final v = (d.localPosition.dx / w).clamp(0.0, 1.0); final seekMs = ((chapterStart + v * chapterDur) * 1000).round(); _doSeek(seekMs); } : null,
                 child: CustomPaint(
@@ -352,6 +370,7 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
                     fontSize: 11, fontWeight: FontWeight.w600,
                     fontFeatures: const [FontFeature.tabularFigures()],
                     shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
+                if (_chapterDragValue != null && _chapterScrubSpeed < 1.0) Text(_scrubSpeedLabel(_chapterScrubSpeed), style: tt.labelSmall?.copyWith(color: widget.accent, fontSize: 11, fontWeight: FontWeight.w500)),
                 Text('-${_fmt(_chapterDragValue != null ? ((1.0 - _chapterDragValue!) * chapterDur) / speedDiv : chapterRemaining)}',
                   style: tt.labelSmall?.copyWith(
                     color: _chapterDragValue != null ? widget.accent : cs.onSurface.withValues(alpha: 0.5),

@@ -51,6 +51,9 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
   // ── Expand/collapse animation ──
   late AnimationController _expandController;
   double? _dragValue;
+  double _dragStartDy = 0;
+  double _lastLongPressDx = 0;
+  double _edgeScrubSpeed = 1.0;
   bool _showBookSlider = false;
 
   static const _thinHeight = 3.5;
@@ -190,6 +193,19 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
     }
   }
 
+  static double _scrubScale(double vertDist) {
+    if (vertDist < 50) return 1.0;
+    if (vertDist < 100) return 0.5;
+    if (vertDist < 175) return 0.25;
+    return 0.1;
+  }
+
+  static String _scrubSpeedLabel(double scale) {
+    if (scale <= 0.1) return 'Fine Scrubbing';
+    if (scale <= 0.25) return 'Quarter Speed';
+    return 'Half Speed';
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -249,12 +265,15 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
             if (!_expandController.isAnimating && _expandController.value < 1.0) {
               _expandController.forward();
             }
+            _dragStartDy = d.localPosition.dy;
+            _edgeScrubSpeed = 1.0;
             final box = context.findRenderObject() as RenderBox;
             setState(() => _dragValue = (d.localPosition.dx / box.size.width).clamp(0.0, 1.0));
           } : null,
           onHorizontalDragUpdate: interactive ? (d) {
             final box = context.findRenderObject() as RenderBox;
-            setState(() => _dragValue = (d.localPosition.dx / box.size.width).clamp(0.0, 1.0));
+            _edgeScrubSpeed = _scrubScale((d.localPosition.dy - _dragStartDy).abs());
+            setState(() => _dragValue = ((_dragValue ?? bookProgress) + d.delta.dx / box.size.width * _edgeScrubSpeed).clamp(0.0, 1.0));
           } : null,
           onHorizontalDragEnd: interactive ? (_) {
             if (_dragValue != null) {
@@ -266,12 +285,18 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
           } : null,
           onLongPressStart: interactive ? (d) {
             _expandController.forward();
+            _dragStartDy = d.localPosition.dy;
+            _lastLongPressDx = d.localPosition.dx;
+            _edgeScrubSpeed = 1.0;
             final box = context.findRenderObject() as RenderBox;
             setState(() => _dragValue = (d.localPosition.dx / box.size.width).clamp(0.0, 1.0));
           } : null,
           onLongPressMoveUpdate: interactive ? (d) {
             final box = context.findRenderObject() as RenderBox;
-            setState(() => _dragValue = (d.localPosition.dx / box.size.width).clamp(0.0, 1.0));
+            _edgeScrubSpeed = _scrubScale((d.localPosition.dy - _dragStartDy).abs());
+            final delta = d.localPosition.dx - _lastLongPressDx;
+            _lastLongPressDx = d.localPosition.dx;
+            setState(() => _dragValue = ((_dragValue ?? bookProgress) + delta / box.size.width * _edgeScrubSpeed).clamp(0.0, 1.0));
           } : null,
           onLongPressEnd: interactive ? (_) {
             if (_dragValue != null) {
@@ -329,6 +354,7 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
                               )],
                             ),
                           ),
+                          if (_dragValue != null && _edgeScrubSpeed < 1.0) Text(_scrubSpeedLabel(_edgeScrubSpeed), style: tt.labelSmall?.copyWith(color: widget.accent, fontSize: 11, fontWeight: FontWeight.w500)),
                           Text(
                             '-${_fmt(_dragValue != null ? (1.0 - _dragValue!) * totalDur / speedDiv : bookRemaining)}',
                             style: tt.labelSmall?.copyWith(
