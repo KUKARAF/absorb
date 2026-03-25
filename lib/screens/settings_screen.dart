@@ -117,12 +117,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _localServerController = TextEditingController();
     _loadSettings();
+    PlayerSettings.settingsChanged.addListener(_onExternalSettingsChange);
   }
 
   @override
   void dispose() {
+    PlayerSettings.settingsChanged.removeListener(_onExternalSettingsChange);
     _localServerController.dispose();
     super.dispose();
+  }
+
+  void _onExternalSettingsChange() async {
+    final bookMode = await PlayerSettings.getBookQueueMode();
+    final podMode = await PlayerSettings.getPodcastQueueMode();
+    if (mounted) {
+      setState(() {
+        _bookQueueMode = bookMode;
+        _podcastQueueMode = podMode;
+      });
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -2780,6 +2793,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (context.mounted) {
       lib.updateAuth(auth);
       await lib.refresh();
+      // Reload settings for the new account
+      _loadSettings();
       // Jump to the absorbing screen
       AppShell.goToAbsorbingGlobal();
     }

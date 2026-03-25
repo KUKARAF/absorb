@@ -499,6 +499,8 @@ class AuthProvider extends ChangeNotifier {
       _serverReachable = false;
     }
 
+    await _loadLocalServerSettings();
+    _useLocalServer = false;
     _fetchServerVersion(_serverUrl!);
     notifyListeners();
     return true;
