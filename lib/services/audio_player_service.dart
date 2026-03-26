@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'api_service.dart';
 import 'download_service.dart';
 import 'playback_history_service.dart' hide PlaybackEvent;
@@ -183,6 +184,8 @@ class PlayerSettings {
   static Future<void> setBackSkip(int seconds) => _set('backSkip', seconds, notify: true);
   static Future<bool> getSkipChapterBarrier() => _get('skipChapterBarrier', true);
   static Future<void> setSkipChapterBarrier(bool value) => _set('skipChapterBarrier', value);
+
+  static bool keepScreenAwake = false;
 
   /// Cached value for synchronous access in widget build methods.
   static bool showExplicitBadge = true;
@@ -2081,6 +2084,14 @@ class AudioPlayerService extends ChangeNotifier {
     ));
   }
 
+  void _updateWakeLock(bool playing) {
+    if (PlayerSettings.keepScreenAwake && playing) {
+      WakelockPlus.enable();
+    } else {
+      WakelockPlus.disable();
+    }
+  }
+
   void _clearState() {
     _currentItemId = null;
     _currentEpisodeId = null;
@@ -2644,6 +2655,7 @@ class AudioPlayerService extends ChangeNotifier {
     _player?.play();
     _logEvent(PlaybackEventType.play);
     _onPlaybackStateChangedCallback?.call(true);
+    _updateWakeLock(true);
     // Check auto sleep on every resume — catches window entry between pauses
     SleepTimerService().checkAutoSleep();
     notifyListeners();
@@ -2656,6 +2668,7 @@ class AudioPlayerService extends ChangeNotifier {
     await _player?.pause();
     _logEvent(PlaybackEventType.pause);
     _onPlaybackStateChangedCallback?.call(false);
+    _updateWakeLock(false);
     notifyListeners();
     final pos = position;
     debugPrint('[Player] Saving on pause: ${(pos.inMilliseconds / 1000.0).toStringAsFixed(1)}s');
@@ -2866,6 +2879,7 @@ class AudioPlayerService extends ChangeNotifier {
 
     await _player?.stop();
     _onPlaybackStateChangedCallback?.call(false);
+    _updateWakeLock(false);
     _clearState();
     _chapters = [];
     _handler?.updateChaptersQueue(const []);

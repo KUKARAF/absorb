@@ -77,6 +77,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _localServerEnabled = false;
   String _localServerUrl = '';
   late final TextEditingController _localServerController;
+  bool _keepScreenAwake = false;
   bool _disableAudioFocus = false;
   bool _trustAllCerts = false;
   bool _loaded = false;
@@ -1079,6 +1080,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: _loaded ? (v) {
                         setState(() => _notifChapterProgress = v);
                         PlayerSettings.setNotificationChapterProgress(v);
+                      } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    SwitchListTile(
+                      title: const Text('Keep screen awake'),
+                      subtitle: Text(
+                        _keepScreenAwake ? 'On - screen stays on during playback' : 'Off',
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      value: _keepScreenAwake,
+                      onChanged: _loaded ? (v) {
+                        setState(() => _keepScreenAwake = v);
+                        PlayerSettings.keepScreenAwake = v;
                       } : null,
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
