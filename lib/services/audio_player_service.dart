@@ -1860,6 +1860,7 @@ class AudioPlayerService extends ChangeNotifier {
       final sleepTimer = SleepTimerService();
       sleepTimer.resetDismiss();
       sleepTimer.checkAutoSleep();
+
       return null;
     } catch (e, stack) {
       debugPrint('[Player] Local play error: $e\n$stack');
@@ -2477,28 +2478,33 @@ class AudioPlayerService extends ChangeNotifier {
     _bgSaveTimer = null;
     await _player?.stop();
 
-    // Mark as finished on the server
+    // Mark as finished on the server (fire-and-forget to avoid blocking
+    // auto-advance — the local save below is the source of truth).
     final itemId = _currentItemId;
     final episodeId = _currentEpisodeId;
     if (itemId != null && _api != null) {
-      try {
-        if (episodeId != null) {
-          await _api!.updateEpisodeProgress(
-            itemId, episodeId,
-            currentTime: _totalDuration,
-            duration: _totalDuration,
-            isFinished: true,
-          );
-        } else {
-          await _api!.markFinished(itemId, _totalDuration);
+      final api = _api!;
+      final dur = _totalDuration;
+      unawaited(() async {
+        try {
+          if (episodeId != null) {
+            await api.updateEpisodeProgress(
+              itemId, episodeId,
+              currentTime: dur,
+              duration: dur,
+              isFinished: true,
+            );
+          } else {
+            await api.markFinished(itemId, dur);
+          }
+          debugPrint('[Player] Marked as finished on server');
+        } catch (e) {
+          debugPrint('[Player] Failed to mark finished: $e');
         }
-        debugPrint('[Player] Marked as finished on server');
-      } catch (e) {
-        debugPrint('[Player] Failed to mark finished: $e');
-      }
+      }());
     }
 
-    // Also save locally as finished (use compound key for episodes)
+    // Save locally as finished (fast, ensures offline correctness)
     if (itemId != null) {
       final progressKey = episodeId != null ? '$itemId-$episodeId' : itemId;
       await _progressSync.saveLocal(
@@ -2510,12 +2516,16 @@ class AudioPlayerService extends ChangeNotifier {
       );
     }
 
-    // Close the playback session
+    // Close the playback session (fire-and-forget)
     if (_playbackSessionId != null && _api != null) {
-      try {
-        debugPrint('[Player] Closing session (book finished)');
-        await _api!.closePlaybackSession(_playbackSessionId!);
-      } catch (_) {}
+      final api = _api!;
+      final sessionId = _playbackSessionId!;
+      unawaited(() async {
+        try {
+          debugPrint('[Player] Closing session (book finished)');
+          await api.closePlaybackSession(sessionId);
+        } catch (_) {}
+      }());
     }
 
     // Notify LibraryProvider before clearing state so it can update isFinished locally.

@@ -315,12 +315,82 @@ class DownloadService extends ChangeNotifier {
         debugPrint('[Download] Init error: $e');
       }
     }
+    // On iOS, remap paths when the app container UUID changes after updates
+    await _migrateIOSPaths();
+
     // Re-save to persist any metadata extracted from sessionData
     if (_downloads.isNotEmpty) await _save();
     notifyListeners();
 
     // Validate files and clean up orphans in background after startup
     _validateDownloads();
+  }
+
+  /// On iOS, the app container UUID changes on every update, which breaks
+  /// stored absolute paths. Detect stale prefixes and remap to the current
+  /// container path so downloads survive TestFlight / App Store updates.
+  Future<void> _migrateIOSPaths() async {
+    if (!Platform.isIOS || _downloads.isEmpty) return;
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final currentPrefix = appDir.path; // .../Documents
+
+    bool changed = false;
+    final entries = Map<String, DownloadInfo>.from(_downloads);
+
+    for (final entry in entries.entries) {
+      final info = entry.value;
+      bool needsUpdate = false;
+
+      // Remap localPaths
+      final newPaths = <String>[];
+      for (final path in info.localPaths) {
+        final remapped = _remapIOSPath(path, currentPrefix);
+        newPaths.add(remapped);
+        if (remapped != path) needsUpdate = true;
+      }
+
+      final newCoverPath = info.localCoverPath != null
+          ? _remapIOSPath(info.localCoverPath!, currentPrefix)
+          : null;
+      if (newCoverPath != info.localCoverPath) needsUpdate = true;
+
+      final newDirPath = info.localDirPath != null
+          ? _remapIOSPath(info.localDirPath!, currentPrefix)
+          : null;
+      if (newDirPath != info.localDirPath) needsUpdate = true;
+
+      if (needsUpdate) {
+        _downloads[entry.key] = DownloadInfo(
+          itemId: info.itemId,
+          status: info.status,
+          localPaths: newPaths,
+          sessionData: info.sessionData,
+          title: info.title,
+          author: info.author,
+          coverUrl: info.coverUrl,
+          localCoverPath: newCoverPath,
+          localDirPath: newDirPath,
+        );
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      debugPrint('[Download] Migrated iOS paths to current container');
+      await _save();
+    }
+  }
+
+  /// Replace a stale iOS container prefix with the current one.
+  /// Paths contain `.../Documents/...` — we split on `/Documents/` and
+  /// rejoin with the current prefix.
+  String _remapIOSPath(String path, String currentPrefix) {
+    if (path.startsWith(currentPrefix)) return path;
+    final marker = '/Documents/';
+    final idx = path.indexOf(marker);
+    if (idx < 0) return path;
+    return '$currentPrefix/${path.substring(idx + marker.length)}';
   }
 
   /// Validate that downloaded files still exist on disk and clean up orphans.

@@ -355,31 +355,34 @@ class _HomeScreenState extends State<HomeScreen> {
                                     color:
                                         cs.onSurface.withValues(alpha: 0.08)),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                      lib.isPodcastLibrary
-                                          ? Icons.podcasts_rounded
-                                          : Icons.auto_stories_rounded,
-                                      size: 18,
-                                      color: cs.onSurfaceVariant),
-                                  const SizedBox(width: 6),
-                                  ConstrainedBox(
-                                    constraints:
-                                        const BoxConstraints(maxWidth: 140),
-                                    child: Text(libraryName,
-                                        style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: cs.onSurfaceVariant),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Icon(Icons.unfold_more_rounded,
-                                      size: 18, color: cs.onSurfaceVariant),
-                                ],
+                              child: SizedBox(
+                                height: 20,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                        lib.isPodcastLibrary
+                                            ? Icons.podcasts_rounded
+                                            : Icons.auto_stories_rounded,
+                                        size: 18,
+                                        color: cs.onSurfaceVariant),
+                                    const SizedBox(width: 6),
+                                    ConstrainedBox(
+                                      constraints:
+                                          const BoxConstraints(maxWidth: 140),
+                                      child: Text(libraryName,
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: cs.onSurfaceVariant),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(Icons.unfold_more_rounded,
+                                        size: 18, color: cs.onSurfaceVariant),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -394,7 +397,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
                             ),
-                            child: Icon(Icons.tune_rounded, size: 14, color: cs.onSurfaceVariant),
+                            child: SizedBox(height: 20, child: Icon(Icons.tune_rounded, size: 18, color: cs.onSurfaceVariant)),
                           ),
                         ),
                     ],

@@ -873,6 +873,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               });
                               PlayerSettings.setBookQueueMode(s.first);
                               PlayerSettings.setPodcastQueueMode(s.first);
+                              PlayerSettings.notifySettingsChanged();
                             } : null,
                             style: const ButtonStyle(visualDensity: VisualDensity.compact),
                           )),
@@ -891,6 +892,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             onSelectionChanged: _loaded ? (s) {
                               setState(() => _bookQueueMode = s.first);
                               PlayerSettings.setBookQueueMode(s.first);
+                              PlayerSettings.notifySettingsChanged();
                             } : null,
                             style: const ButtonStyle(visualDensity: VisualDensity.compact),
                           )),
@@ -909,6 +911,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onSelectionChanged: _loaded ? (s) {
                                 setState(() => _podcastQueueMode = s.first);
                                 PlayerSettings.setPodcastQueueMode(s.first);
+                                PlayerSettings.notifySettingsChanged();
                               } : null,
                               style: const ButtonStyle(visualDensity: VisualDensity.compact),
                             )),

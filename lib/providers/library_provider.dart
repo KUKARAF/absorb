@@ -621,6 +621,10 @@ class LibraryProvider extends ChangeNotifier {
         // and seed counts so socket updates can detect future new episodes.
         Future.microtask(() => checkSubscribedPodcasts());
 
+        // Always populate progress from cached auth data so offline
+        // sections show correct progress instead of 0%.
+        _buildProgressMap(auth);
+
         // If server was unreachable on startup, force offline mode and ping
         if (!auth.serverReachable) {
           debugPrint('[Library] Server not reachable — going offline');
@@ -628,11 +632,11 @@ class LibraryProvider extends ChangeNotifier {
           _buildOfflineSections();
           _isLoading = false;
           notifyListeners();
+          // Overlay local playback progress (fresher than server data)
+          refreshLocalProgress();
           if (_deviceHasConnectivity) _startServerPingTimer();
           return;
         }
-
-        _buildProgressMap(auth);
         if (_api != null && !isOffline) {
           ProgressSyncService().flushPendingSync(api: _api!);
           ProgressSyncService().flushOfflineListeningTime(api: _api!);

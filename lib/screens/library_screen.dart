@@ -384,8 +384,14 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     final auth = context.read<AuthProvider>();
     final lib = context.read<LibraryProvider>();
     final api = auth.apiService;
-    if (api == null || lib.selectedLibraryId == null) {
+    if (lib.selectedLibraryId == null) {
       setState(() => _isLoadingPage = false);
+      return;
+    }
+
+    // Offline fallback: show downloaded items instead of hitting the API
+    if (api == null || lib.isOffline) {
+      _loadOfflinePage(lib);
       return;
     }
 
@@ -496,6 +502,53 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         setState(() => _isLoadingPage = false);
       }
     }
+  }
+
+  /// Offline fallback: populate the grid from downloaded items.
+  void _loadOfflinePage(LibraryProvider lib) {
+    final isPodcast = lib.isPodcastLibrary;
+    final downloads = DownloadService().downloadedItems
+        .where((dl) => (dl.itemId.length > 36) == isPodcast)
+        .toList();
+
+    final items = <Map<String, dynamic>>[];
+    for (final dl in downloads) {
+      double duration = 0;
+      List<dynamic> chapters = [];
+      if (dl.sessionData != null) {
+        try {
+          final session = jsonDecode(dl.sessionData!) as Map<String, dynamic>;
+          duration = (session['duration'] as num?)?.toDouble() ?? 0;
+          chapters = session['chapters'] as List<dynamic>? ?? [];
+        } catch (_) {}
+      }
+      items.add({
+        'id': dl.itemId,
+        'media': {
+          'metadata': {
+            'title': dl.title ?? 'Unknown Title',
+            'authorName': dl.author ?? '',
+          },
+          'duration': duration,
+          'chapters': chapters,
+        },
+      });
+    }
+
+    // Sort alphabetically by title for a clean offline view
+    items.sort((a, b) {
+      final ta = ((a['media'] as Map)['metadata'] as Map)['title'] as String;
+      final tb = ((b['media'] as Map)['metadata'] as Map)['title'] as String;
+      return ta.toLowerCase().compareTo(tb.toLowerCase());
+    });
+
+    setState(() {
+      _items.clear();
+      _items.addAll(items);
+      _totalItems = items.length;
+      _hasMore = false;
+      _isLoadingPage = false;
+    });
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -1093,19 +1146,22 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(lib.isPodcastLibrary ? Icons.podcasts_rounded : Icons.auto_stories_rounded, size: 18, color: cs.onSurfaceVariant),
-                        const SizedBox(width: 6),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 140),
-                          child: Text(libraryName, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant),
-                            overflow: TextOverflow.ellipsis, maxLines: 1),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.unfold_more_rounded, size: 18, color: cs.onSurfaceVariant),
-                      ],
+                    child: SizedBox(
+                      height: 20,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(lib.isPodcastLibrary ? Icons.podcasts_rounded : Icons.auto_stories_rounded, size: 18, color: cs.onSurfaceVariant),
+                          const SizedBox(width: 6),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 140),
+                            child: Text(libraryName, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant),
+                              overflow: TextOverflow.ellipsis, maxLines: 1),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.unfold_more_rounded, size: 18, color: cs.onSurfaceVariant),
+                        ],
+                      ),
                     ),
                   ),
                 ),

@@ -75,9 +75,21 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
 
   Future<void> _loadQueueMode() async {
     final lib = context.read<LibraryProvider>();
-    final mode = lib.isPodcastLibrary
-        ? await PlayerSettings.getPodcastQueueMode()
-        : await PlayerSettings.getBookQueueMode();
+    String mode;
+    if (_mergeLibraries) {
+      // When merged, use the more restrictive of the two modes
+      // (matches Settings screen's _mergedQueueMode logic)
+      final bm = await PlayerSettings.getBookQueueMode();
+      final pm = await PlayerSettings.getPodcastQueueMode();
+      const order = ['off', 'manual', 'auto_next'];
+      final bi = order.indexOf(bm);
+      final pi = order.indexOf(pm);
+      mode = order[(bi < pi ? bi : pi).clamp(0, 2)];
+    } else {
+      mode = lib.isPodcastLibrary
+          ? await PlayerSettings.getPodcastQueueMode()
+          : await PlayerSettings.getBookQueueMode();
+    }
     if (mounted && mode != _queueMode) setState(() => _queueMode = mode);
   }
 
@@ -532,16 +544,19 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: subtleBorder),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_isSyncing)
-                            SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 1.5, color: muted))
-                          else
-                            Icon(Icons.stop_rounded, size: 18, color: muted),
-                          const SizedBox(width: 4),
-                          Text('Stop', style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500)),
-                        ],
+                      child: SizedBox(
+                        height: 20,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isSyncing)
+                              SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 1.5, color: muted))
+                            else
+                              Icon(Icons.stop_rounded, size: 18, color: muted),
+                            const SizedBox(width: 4),
+                            Text('Stop', style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
                       ),
                     ),
                   )
@@ -570,22 +585,25 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                 GestureDetector(
                   onTap: () => _showReorderSheet(context, lib, books),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                     decoration: BoxDecoration(
                       color: subtleBg,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: subtleBorder),
                     ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.reorder_rounded, size: 18, color: muted),
-                      if (_queueMode != 'off') ...[
-                        const SizedBox(width: 4),
-                        Text(
-                          _queueMode == 'auto_next' ? 'Auto' : 'Manual',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cs.primary),
-                        ),
-                      ],
-                    ]),
+                    child: SizedBox(
+                      height: 20,
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.reorder_rounded, size: 18, color: muted),
+                        if (_queueMode != 'off') ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            _queueMode == 'auto_next' ? 'Auto' : 'Manual',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cs.primary),
+                          ),
+                        ],
+                      ]),
+                    ),
                   ),
                 ),
               ],
@@ -715,13 +733,19 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
           lib: lib,
           absorbingKeyFn: _absorbingKey,
           queueMode: _queueMode,
-          onQueueModeChanged: (mode) {
+          onQueueModeChanged: (mode) async {
             setState(() => _queueMode = mode);
-            final isPod = lib.isPodcastLibrary;
-            if (isPod) {
-              PlayerSettings.setPodcastQueueMode(mode);
+            if (_mergeLibraries) {
+              // Merged view: keep both types in sync
+              await PlayerSettings.setBookQueueMode(mode);
+              await PlayerSettings.setPodcastQueueMode(mode);
             } else {
-              PlayerSettings.setBookQueueMode(mode);
+              final isPod = lib.isPodcastLibrary;
+              if (isPod) {
+                await PlayerSettings.setPodcastQueueMode(mode);
+              } else {
+                await PlayerSettings.setBookQueueMode(mode);
+              }
             }
             PlayerSettings.notifySettingsChanged();
           },
