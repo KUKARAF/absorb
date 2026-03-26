@@ -19,6 +19,8 @@ import 'library_screen.dart';
 import 'stats_screen.dart';
 import 'settings_screen.dart';
 import '../widgets/welcome_sheet.dart';
+import '../services/update_checker_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -150,6 +152,38 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     _deriveCoverScheme();
     context.read<LibraryProvider>().addListener(_onLibraryChanged);
     WelcomeSheet.showIfNeeded(context);
+    _checkForUpdate();
+  }
+
+  static const _isGithubBuild = bool.fromEnvironment('GITHUB_BUILD');
+
+  void _checkForUpdate() async {
+    if (!_isGithubBuild) return;
+    final info = await UpdateCheckerService.check();
+    if (info == null || !mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Update available'),
+        content: Text('A new version of Absorb is available: ${info.latestVersion}\n\nYou are on ${info.currentVersion}.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              UpdateCheckerService.dismiss(info.latestVersion);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              launchUrl(Uri.parse(info.downloadUrl), mode: LaunchMode.externalApplication);
+            },
+            child: const Text('Download'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
