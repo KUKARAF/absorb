@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'overlay_toast.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
@@ -497,13 +499,9 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
         confirmDismiss: (_) async {
           await lib.addToAbsorbingQueue(bookId);
           lib.absorbingItemCache[bookId] = Map<String, dynamic>.from(book);
+          HapticFeedback.mediumImpact();
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Added "$bookTitle" to Absorbing'),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ));
+            showOverlayToast(context, 'Added "$bookTitle" to Absorbing', icon: Icons.add_circle_outline_rounded);
           }
           return false;
         },

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'overlay_toast.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
@@ -574,13 +575,9 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
               if (isOnAbsorbing) return false;
               await lib.addToAbsorbingQueue(progressKey);
               lib.absorbingItemCache[progressKey] = Map<String, dynamic>.from(libraryItem);
+              HapticFeedback.mediumImpact();
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('Added "${episodeTitle ?? title}" to Absorbing'),
-                  behavior: SnackBarBehavior.floating,
-                  duration: const Duration(seconds: 2),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ));
+                showOverlayToast(context, 'Added "${episodeTitle ?? title}" to Absorbing', icon: Icons.add_circle_outline_rounded);
               }
               return false;
             }

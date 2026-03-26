@@ -1,5 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'overlay_toast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -753,13 +755,9 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                                 cached['recentEpisode'] = Map<String, dynamic>.from(ep);
                                 cached['_absorbingKey'] = absorbKey;
                                 lib.absorbingItemCache[absorbKey] = cached;
+                                HapticFeedback.mediumImpact();
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                    content: Text('Added "$epTitle" to Absorbing'),
-                                    behavior: SnackBarBehavior.floating,
-                                    duration: const Duration(seconds: 2),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ));
+                                  showOverlayToast(context, 'Added "$epTitle" to Absorbing', icon: Icons.add_circle_outline_rounded);
                                 }
                                 return false;
                               },

@@ -4,7 +4,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'overlay_toast.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -550,12 +552,9 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                   Navigator.pop(ctx);
                   if (lib.isOnAbsorbingList(widget.itemId)) {
                     await lib.removeFromAbsorbing(widget.itemId);
+                    HapticFeedback.mediumImpact();
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        duration: const Duration(seconds: 3),
-                        content: const Text('Removed from Absorbing'),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+                      showOverlayToast(context, 'Removed from Absorbing', icon: Icons.remove_circle_outline_rounded);
                     }
                   } else {
                     await lib.addToAbsorbingQueue(widget.itemId);
@@ -564,12 +563,9 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                       cached['_absorbingKey'] = widget.itemId;
                       lib.absorbingItemCache[widget.itemId] = cached;
                     }
+                    HapticFeedback.mediumImpact();
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        duration: const Duration(seconds: 3),
-                        content: const Text('Added to Absorbing'),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+                      showOverlayToast(context, 'Added to Absorbing', icon: Icons.add_circle_outline_rounded);
                     }
                   }
                 }),
@@ -1048,15 +1044,13 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         await lib.removeFromAbsorbing(widget.itemId);
         if (mounted) setState(() {});
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            duration: const Duration(seconds: 3), content: const Text('Marked as finished — nice work!'),
-            behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+          showOverlayToast(context, 'Marked as finished - nice work!', icon: Icons.check_circle_rounded);
         }
       }
     } catch (_) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        duration: const Duration(seconds: 3), content: const Text('Failed to update — check your connection'),
-        behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      if (context.mounted) {
+        showOverlayToast(context, 'Failed to update - check your connection', icon: Icons.error_outline_rounded);
+      }
     }
   }
 
@@ -1085,14 +1079,12 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         await _loadItem();
         await lib.refresh();
         if (mounted) setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          duration: const Duration(seconds: 3), content: const Text('Marked as not finished — back at it!'),
-          behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+        showOverlayToast(context, 'Marked as not finished - back at it!', icon: Icons.replay_rounded);
       }
     } catch (_) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        duration: const Duration(seconds: 3), content: const Text('Failed to update — check your connection'),
-        behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      if (context.mounted) {
+        showOverlayToast(context, 'Failed to update - check your connection', icon: Icons.error_outline_rounded);
+      }
     }
   }
 
@@ -1131,10 +1123,11 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     if (context.mounted) {
       await _loadItem();
       await context.read<LibraryProvider>().refresh();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        duration: const Duration(seconds: 3),
-        content: Text(serverSuccess ? 'Progress reset — fresh start!' : 'Reset may not have synced — check your server'),
-        behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      showOverlayToast(
+        context,
+        serverSuccess ? 'Progress reset - fresh start!' : 'Reset may not have synced - check your server',
+        icon: serverSuccess ? Icons.restart_alt_rounded : Icons.warning_amber_rounded,
+      );
     }
   }
 
