@@ -41,6 +41,7 @@ class PlaylistDetailSheet extends StatefulWidget {
 
 class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
   bool _reordering = false;
+  bool _gridView = false;
   List<Map<String, dynamic>>? _reorderItems;
   bool _selectMode = false;
   final Set<String> _selectedKeys = {}; // "libraryItemId" or "libraryItemId-episodeId"
@@ -294,6 +295,13 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
             Text('${items.length} item${items.length == 1 ? '' : 's'}',
               style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
             ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => setState(() => _gridView = !_gridView),
+              child: Icon(
+                _gridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                size: 20, color: cs.onSurfaceVariant),
+            ),
             if (items.length > 1) ...[
               const SizedBox(width: 8),
               GestureDetector(
@@ -320,7 +328,9 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
             ? _buildReorderList(cs, tt, lib)
             : _selectMode
                 ? _buildSelectList(cs, tt, lib, items)
-                : _buildItemList(cs, tt, lib, items),
+                : _gridView
+                    ? _buildGrid(cs, tt, lib, items)
+                    : _buildItemList(cs, tt, lib, items),
       ),
       // Batch action bar
       if (_selectMode && _selectedKeys.isNotEmpty)
@@ -706,6 +716,151 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                 ),
               ),
             ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> items) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final doneColor = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
+
+    return GridView.builder(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4)
+          .copyWith(bottom: 40),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.62,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index] as Map<String, dynamic>;
+        final libraryItemId = item['libraryItemId'] as String? ?? '';
+        final episodeId = item['episodeId'] as String?;
+        final libraryItem = item['libraryItem'] as Map<String, dynamic>?;
+        if (libraryItem == null) return const SizedBox.shrink();
+
+        final media = libraryItem['media'] as Map<String, dynamic>? ?? {};
+        final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+        final title = metadata['title'] as String? ?? 'Unknown';
+        final author = metadata['authorName'] as String? ?? '';
+        final coverUrl = lib.getCoverUrl(libraryItemId);
+        final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
+        final progressKey = episodeId != null ? '$libraryItemId-$episodeId' : libraryItemId;
+        final progress = lib.getProgress(progressKey);
+        final isFinished = lib.getProgressData(progressKey)?['isFinished'] == true;
+        final isDownloaded = DownloadService().isDownloaded(libraryItemId);
+
+        String? episodeTitle;
+        if (episodeId != null) {
+          final episodes = media['episodes'] as List<dynamic>? ?? [];
+          episodeTitle = episodes.cast<Map<String, dynamic>>().where(
+            (e) => e['id'] == episodeId,
+          ).firstOrNull?['title'] as String?;
+        }
+
+        return GestureDetector(
+          onTap: () {
+            if (episodeId != null) {
+              final episodes = media['episodes'] as List<dynamic>? ?? [];
+              final ep = episodes.cast<Map<String, dynamic>>().where(
+                (e) => e['id'] == episodeId,
+              ).firstOrNull;
+              if (ep != null) {
+                EpisodeDetailSheet.show(context, libraryItem, ep);
+              }
+            } else {
+              showBookDetailSheet(context, libraryItemId);
+            }
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AspectRatio(
+                aspectRatio: 1,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Stack(children: [
+                    Positioned.fill(
+                      child: coverUrl != null
+                          ? (coverUrl.startsWith('/')
+                              ? Image.file(File(coverUrl), fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => _placeholder(cs))
+                              : CachedNetworkImage(
+                                  imageUrl: coverUrl, fit: BoxFit.cover,
+                                  httpHeaders: lib.mediaHeaders,
+                                  placeholder: (_, __) => _placeholder(cs),
+                                  errorWidget: (_, __, ___) => _placeholder(cs),
+                                ))
+                          : _placeholder(cs),
+                    ),
+                    if (isExplicit)
+                      Positioned(
+                        top: 4, right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                    if (progress > 0 && !isFinished)
+                      Positioned(
+                        left: 0, right: 0, bottom: 0,
+                        child: LinearProgressIndicator(
+                          value: progress.clamp(0.0, 1.0),
+                          minHeight: 3,
+                          backgroundColor: Colors.black38,
+                          valueColor: AlwaysStoppedAnimation(cs.primary),
+                        ),
+                      ),
+                    if (isFinished || isDownloaded)
+                      Positioned(
+                        left: 0, right: 0, bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.85),
+                                Colors.black.withValues(alpha: 0.0),
+                              ],
+                            ),
+                          ),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            if (isFinished)
+                              Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.check_circle_rounded, size: 10, color: doneColor),
+                                const SizedBox(width: 3),
+                                Text('Done', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
+                              ]),
+                            if (isDownloaded)
+                              Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.download_done_rounded, size: 10, color: cs.primary),
+                                const SizedBox(width: 3),
+                                Text('Saved', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
+                              ]),
+                          ]),
+                        ),
+                      ),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(episodeTitle ?? title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+              if ((episodeTitle != null ? title : author).isNotEmpty)
+                Text(episodeTitle != null ? title : author, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: tt.labelSmall?.copyWith(fontSize: 10, color: cs.onSurfaceVariant)),
+            ],
           ),
         );
       },

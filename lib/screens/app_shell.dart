@@ -9,6 +9,7 @@ import '../services/chromecast_service.dart';
 import '../services/sleep_timer_service.dart';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:palette_generator/palette_generator.dart';
 import '../main.dart' show snappyTransitionsNotifier, coverSchemeNotifier;
 import '../l10n/app_localizations.dart';
 import '../services/android_auto_service.dart';
@@ -199,10 +200,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
 
   void _onLibraryChanged() {
     if (!mounted) return;
-    // Once absorbing list loads, derive cover scheme if we haven't yet
-    if (coverSchemeNotifier.value == null) {
-      _deriveCoverScheme();
-    }
+    // Re-derive cover scheme whenever absorbing list changes so the app
+    // theme always reflects the current [0] book.
+    _deriveCoverScheme();
   }
 
   /// Attempt to derive cover scheme. Returns true if successful.
@@ -222,7 +222,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     if (itemId == null) {
       return false;
     }
-    if (itemId == _lastCoverItemId && coverSchemeNotifier.value != null) return true;
+    if (itemId == _lastCoverItemId) return true;
 
     final lib = context.read<LibraryProvider>();
     final coverUrl = lib.getCoverUrl(itemId, width: 400);
@@ -239,12 +239,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     }
 
     final brightness = Theme.of(context).brightness;
-    ColorScheme.fromImageProvider(provider: provider, brightness: brightness)
-        .then((scheme) {
+    debugPrint('[CoverScheme] Extracting from $coverUrl for item $itemId');
+    PaletteGenerator.fromImageProvider(provider, maximumColorCount: 16)
+        .then((palette) {
+      final seedColor = palette.vibrantColor?.color
+          ?? palette.dominantColor?.color
+          ?? palette.colors.firstOrNull;
+      if (seedColor == null) {
+        debugPrint('[CoverScheme] No colors extracted');
+        _lastCoverItemId = null;
+        return;
+      }
+      debugPrint('[CoverScheme] Extracted seed: $seedColor (vibrant=${palette.vibrantColor?.color}, dominant=${palette.dominantColor?.color})');
+      final scheme = ColorScheme.fromSeed(seedColor: seedColor, brightness: brightness);
       coverSchemeNotifier.value = scheme;
-      PlayerSettings.setCoverSeedColor(scheme.primary.toARGB32());
-    }).catchError((_) {
-      // Image load failed - allow retry
+      PlayerSettings.setCoverSeedColor(seedColor.toARGB32());
+    }).catchError((e) {
+      debugPrint('[CoverScheme] Extraction failed: $e');
       _lastCoverItemId = null;
     });
     return true; // cover URL found, image load in progress

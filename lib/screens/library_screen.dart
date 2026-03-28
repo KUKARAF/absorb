@@ -139,6 +139,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     final newTab = _tabController!.index;
     if (newTab == _currentTab) return;
     setState(() => _currentTab = newTab);
+    PlayerSettings.setLibraryTab(newTab);
     // Lazy load data for the tab
     if (newTab == 1 && _seriesItems.isEmpty && !_isLoadingSeriesPage) {
       _loadSeriesPage();
@@ -233,6 +234,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
       PlayerSettings.getAuthorSortAsc(),
       PlayerSettings.getPodcastSort(),
       PlayerSettings.getPodcastSortAsc(),
+      PlayerSettings.getLibraryTab(),
     ]);
     if (!mounted) return;
     final sortName = results[0] as String;
@@ -245,6 +247,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     final authorSortAsc = results[7] as bool;
     final podcastSortName = results[8] as String;
     final podcastSortAsc = results[9] as bool;
+    final savedTab = results[10] as int;
     final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
     setState(() {
       // Book library sort/filter
@@ -282,7 +285,18 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         _filter = LibraryFilter.none;
         _genreFilter = null;
       }
+      // Restore last active tab (only for book libraries with tabs)
+      if (!isPodcast && savedTab > 0 && savedTab < 3) {
+        _currentTab = savedTab;
+        _tabController?.animateTo(savedTab);
+      }
     });
+    // Lazy load data for the restored tab
+    if (!isPodcast && savedTab == 1 && _seriesItems.isEmpty && !_isLoadingSeriesPage) {
+      _loadSeriesPage();
+    } else if (!isPodcast && savedTab == 2 && !_authorsLoaded && !_isLoadingAuthors) {
+      _loadAuthors();
+    }
   }
 
   void _onSettingsChanged() {

@@ -40,6 +40,7 @@ class CollectionDetailSheet extends StatefulWidget {
 
 class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
   bool _reordering = false;
+  bool _gridView = false;
   List<Map<String, dynamic>>? _reorderItems;
 
   Future<void> _removeItem(LibraryProvider lib, String libraryItemId) async {
@@ -158,6 +159,13 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
             Text('${books.length} book${books.length == 1 ? '' : 's'}',
               style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
             ),
+            const SizedBox(width: 12),
+            GestureDetector(
+              onTap: () => setState(() => _gridView = !_gridView),
+              child: Icon(
+                _gridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                size: 20, color: cs.onSurfaceVariant),
+            ),
             if (isRoot && books.length > 1) ...[
               const SizedBox(width: 12),
               GestureDetector(
@@ -186,7 +194,9 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
       Expanded(
         child: _reordering
             ? _buildReorderList(cs, tt, lib)
-            : _buildItemList(cs, tt, lib, books, isRoot: isRoot),
+            : _gridView
+                ? _buildGrid(cs, tt, lib, books)
+                : _buildItemList(cs, tt, lib, books, isRoot: isRoot),
       ),
     ]);
   }
@@ -445,6 +455,126 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
             child: Icon(Icons.delete_rounded, color: cs.error),
           ),
           child: card,
+        );
+      },
+    );
+  }
+
+  Widget _buildGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> books) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final doneColor = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
+
+    return GridView.builder(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4)
+          .copyWith(bottom: 40),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.62,
+      ),
+      itemCount: books.length,
+      itemBuilder: (context, index) {
+        final book = books[index] as Map<String, dynamic>;
+        final itemId = book['id'] as String? ?? '';
+        final media = book['media'] as Map<String, dynamic>? ?? {};
+        final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+        final title = metadata['title'] as String? ?? 'Unknown';
+        final author = metadata['authorName'] as String? ?? '';
+        final coverUrl = lib.getCoverUrl(itemId);
+        final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
+        final progress = lib.getProgress(itemId);
+        final isFinished = lib.getProgressData(itemId)?['isFinished'] == true;
+        final isDownloaded = DownloadService().isDownloaded(itemId);
+
+        return GestureDetector(
+          onTap: () => showBookDetailSheet(context, itemId),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AspectRatio(
+                aspectRatio: 1,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Stack(children: [
+                    Positioned.fill(
+                      child: coverUrl != null
+                          ? (coverUrl.startsWith('/')
+                              ? Image.file(File(coverUrl), fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => _placeholder(cs))
+                              : CachedNetworkImage(
+                                  imageUrl: coverUrl, fit: BoxFit.cover,
+                                  httpHeaders: lib.mediaHeaders,
+                                  placeholder: (_, __) => _placeholder(cs),
+                                  errorWidget: (_, __, ___) => _placeholder(cs),
+                                ))
+                          : _placeholder(cs),
+                    ),
+                    if (isExplicit)
+                      Positioned(
+                        top: 4, right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                    if (progress > 0 && !isFinished)
+                      Positioned(
+                        left: 0, right: 0, bottom: 0,
+                        child: LinearProgressIndicator(
+                          value: progress.clamp(0.0, 1.0),
+                          minHeight: 3,
+                          backgroundColor: Colors.black38,
+                          valueColor: AlwaysStoppedAnimation(cs.primary),
+                        ),
+                      ),
+                    if (isFinished || isDownloaded)
+                      Positioned(
+                        left: 0, right: 0, bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.85),
+                                Colors.black.withValues(alpha: 0.0),
+                              ],
+                            ),
+                          ),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            if (isFinished)
+                              Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.check_circle_rounded, size: 10, color: doneColor),
+                                const SizedBox(width: 3),
+                                Text('Done', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
+                              ]),
+                            if (isDownloaded)
+                              Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.download_done_rounded, size: 10, color: cs.primary),
+                                const SizedBox(width: 3),
+                                Text('Saved', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
+                              ]),
+                          ]),
+                        ),
+                      ),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: tt.labelSmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+              if (author.isNotEmpty)
+                Text(author, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: tt.labelSmall?.copyWith(fontSize: 10, color: cs.onSurfaceVariant)),
+            ],
+          ),
         );
       },
     );

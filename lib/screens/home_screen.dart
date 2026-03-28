@@ -16,6 +16,7 @@ import '../main.dart' show oledNotifier;
 import '../widgets/home_customize_sheet.dart';
 import '../widgets/playlist_detail_sheet.dart';
 import '../widgets/collection_detail_sheet.dart';
+import '../widgets/section_detail_sheet.dart';
 import 'app_shell.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -496,22 +497,35 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (clItems.isEmpty) return <Widget>[];
                       return <Widget>[
                         SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                            child: Row(children: [
-                              Icon(Icons.play_circle_outline_rounded,
-                                  size: 16, color: cs.primary.withValues(alpha: 0.7)),
-                              const SizedBox(width: 8),
-                              Text('Continue Listening',
-                                  style: tt.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w500,
-                                    color: cs.onSurface.withValues(alpha: 0.8),
-                                    letterSpacing: 0.3,
-                                  )),
-                              const SizedBox(width: 12),
-                              Expanded(child: Container(height: 0.5,
-                                  color: cs.outlineVariant.withValues(alpha: 0.2))),
-                            ]),
+                          child: GestureDetector(
+                            onTap: () => SectionDetailSheet.show(
+                              context,
+                              title: 'Continue Listening',
+                              icon: Icons.play_circle_outline_rounded,
+                              entities: clItems,
+                              coverAspectRatio: _rectangleCovers ? 2 / 3 : 1.0,
+                            ),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                              child: Row(children: [
+                                Icon(Icons.play_circle_outline_rounded,
+                                    size: 16, color: cs.primary.withValues(alpha: 0.7)),
+                                const SizedBox(width: 8),
+                                Text('Continue Listening',
+                                    style: tt.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w500,
+                                      color: cs.onSurface.withValues(alpha: 0.8),
+                                      letterSpacing: 0.3,
+                                    )),
+                                const SizedBox(width: 4),
+                                Icon(Icons.chevron_right_rounded, size: 16,
+                                    color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
+                                const SizedBox(width: 12),
+                                Expanded(child: Container(height: 0.5,
+                                    color: cs.outlineVariant.withValues(alpha: 0.2))),
+                              ]),
+                            ),
                           ),
                         ),
                         SliverToBoxAdapter(
@@ -560,6 +574,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       sectionIcon = Icons.collections_bookmark_rounded;
                     } else {
                       sectionIcon = _sectionIcons[id] ?? Icons.album_outlined;
+                      final sectionLabel = label as String;
+                      titleTap = () => SectionDetailSheet.show(
+                        context,
+                        title: sectionLabel,
+                        icon: sectionIcon,
+                        entities: entities,
+                        coverAspectRatio: _rectangleCovers ? 2 / 3 : 1.0,
+                      );
                     }
 
                     return <Widget>[

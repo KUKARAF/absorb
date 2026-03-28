@@ -265,6 +265,9 @@ class PlayerSettings {
   static Future<String> getLibraryGenreFilter() => _get('libraryGenreFilter', '');
   static Future<void> setLibraryGenreFilter(String? value) => _set('libraryGenreFilter', value ?? '');
 
+  static Future<int> getLibraryTab() => _get('libraryTab', 0);
+  static Future<void> setLibraryTab(int value) => _set('libraryTab', value);
+
   // ── Podcast library sort persistence ──
 
   static Future<String> getPodcastSort() => _get('podcastSort', 'recentlyAdded');
@@ -641,6 +644,12 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   }
 
   /// Called when the user swipes the app away from recents.
+  ///
+  /// Only pause instead of stopping - the 10-minute pause timeout already
+  /// handles cleanup (server session + audio focus). Calling stop() here
+  /// deactivates the MediaSession, and on some devices (Android 16+) the
+  /// system never re-routes BT media buttons to a reactivated session,
+  /// leaving earbud controls permanently broken until reboot.
   @override
   Future<void> onTaskRemoved() async {
     debugPrint('[Handler] onTaskRemoved - app swiped away');
@@ -648,11 +657,11 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     if (ChromecastService().isCasting) return;
     if (_service != null) {
       await _service!.pause();
-      await _service!.stop();
     } else {
-      await _player.stop();
+      await _player.pause();
     }
-    await super.onTaskRemoved();
+    // Don't call super.onTaskRemoved() - it calls stop() which deactivates
+    // the MediaSession and breaks BT media button routing on restart.
   }
 
   @override

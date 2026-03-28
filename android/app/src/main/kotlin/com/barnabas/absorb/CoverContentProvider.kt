@@ -95,39 +95,28 @@ class CoverContentProvider : ContentProvider() {
                 "FlutterSharedPreferences", android.content.Context.MODE_PRIVATE
             )
             val serverUrl = prefs.getString("flutter.server_url", null)
-            val token = prefs.getString("flutter.token", null)
+            var token = prefs.getString("flutter.token", null)
             if (serverUrl.isNullOrEmpty() || token.isNullOrEmpty()) {
-                Log.w(TAG, "No server_url or token in prefs — cannot fetch cover")
+                Log.w(TAG, "No server_url or token in prefs - cannot fetch cover")
                 return null
             }
 
             val cleanUrl = serverUrl.trimEnd('/')
-            val fetchUrl = "$cleanUrl/api/items/$itemId/cover?width=400&token=$token"
-
             val cacheDir = File(context.cacheDir, "aa_covers")
             if (!cacheDir.exists()) cacheDir.mkdirs()
             val cacheFile = File(cacheDir, "$itemId.jpg")
 
-            val connection = URL(fetchUrl).openConnection() as HttpURLConnection
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-            connection.instanceFollowRedirects = true
-
-            try {
-                if (connection.responseCode != 200) {
-                    Log.w(TAG, "Cover fetch failed: HTTP ${connection.responseCode} for $itemId")
-                    return null
+            var result = fetchCover(cleanUrl, itemId, token, cacheFile)
+            if (result == 401) {
+                // Access token expired - try refreshing via the refresh token
+                val newToken = refreshAccessToken(cleanUrl, prefs)
+                if (newToken != null) {
+                    token = newToken
+                    result = fetchCover(cleanUrl, itemId, token, cacheFile)
                 }
-                connection.inputStream.use { input ->
-                    cacheFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            } finally {
-                connection.disconnect()
             }
 
-            if (cacheFile.exists() && cacheFile.length() > 0) {
+            if (result == 200 && cacheFile.exists() && cacheFile.length() > 0) {
                 Log.d(TAG, "Cached cover for $itemId (${cacheFile.length()} bytes)")
                 return cacheFile
             }
@@ -137,6 +126,81 @@ class CoverContentProvider : ContentProvider() {
             Log.e(TAG, "Error fetching cover for $itemId", e)
             return null
         }
+    }
+
+    private fun fetchCover(serverUrl: String, itemId: String, token: String, outFile: File): Int {
+        val fetchUrl = "$serverUrl/api/items/$itemId/cover?width=400&token=$token"
+        val connection = URL(fetchUrl).openConnection() as HttpURLConnection
+        connection.connectTimeout = 5000
+        connection.readTimeout = 5000
+        connection.instanceFollowRedirects = true
+        try {
+            val code = connection.responseCode
+            if (code != 200) {
+                Log.w(TAG, "Cover fetch failed: HTTP $code for $itemId")
+                return code
+            }
+            connection.inputStream.use { input ->
+                outFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            return 200
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun refreshAccessToken(
+        serverUrl: String,
+        prefs: android.content.SharedPreferences
+    ): String? {
+        val refreshToken = prefs.getString("flutter.refresh_token", null)
+        if (refreshToken.isNullOrEmpty()) {
+            Log.w(TAG, "No refresh token available")
+            return null
+        }
+        try {
+            val connection = URL("$serverUrl/api/authorize").openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.setRequestProperty("Authorization", "Bearer $refreshToken")
+            connection.setRequestProperty("x-return-tokens", "true")
+            try {
+                if (connection.responseCode != 200) {
+                    Log.w(TAG, "Token refresh failed: HTTP ${connection.responseCode}")
+                    return null
+                }
+                val body = connection.inputStream.bufferedReader().readText()
+                // Simple JSON parsing - extract accessToken and refreshToken
+                val newAccess = extractJsonString(body, "accessToken")
+                val newRefresh = extractJsonString(body, "refreshToken")
+                if (newAccess != null) {
+                    prefs.edit()
+                        .putString("flutter.token", newAccess)
+                        .apply()
+                    if (newRefresh != null) {
+                        prefs.edit()
+                            .putString("flutter.refresh_token", newRefresh)
+                            .apply()
+                    }
+                    Log.d(TAG, "Token refreshed successfully from CoverContentProvider")
+                    return newAccess
+                }
+            } finally {
+                connection.disconnect()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Token refresh error", e)
+        }
+        return null
+    }
+
+    private fun extractJsonString(json: String, key: String): String? {
+        val pattern = "\"$key\"\\s*:\\s*\"([^\"]+)\""
+        val match = Regex(pattern).find(json)
+        return match?.groupValues?.get(1)
     }
 
     // ── Helpers ──

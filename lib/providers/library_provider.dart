@@ -379,6 +379,84 @@ class LibraryProvider extends ChangeNotifier {
     _isLoading = false;
   }
 
+  /// Re-inject the downloaded-books section when downloads change.
+  void _onDownloadsChanged() {
+    if (isOffline || _personalizedSections.isEmpty) return;
+    // Remove existing downloaded-books section and re-inject
+    _personalizedSections.removeWhere(
+        (s) => (s as Map)['id'] == 'downloaded-books');
+    _injectDownloadedSection();
+    notifyListeners();
+  }
+
+  /// Inject a "Downloads" section into the online personalized view so users
+  /// can see their downloaded items alongside server sections.
+  void _injectDownloadedSection() {
+    final isPodcast = isPodcastLibrary;
+    final allDownloads = DownloadService().downloadedItems;
+    final downloads = allDownloads
+        .where((dl) => (dl.itemId.length > 36) == isPodcast)
+        .toList();
+    if (downloads.isEmpty) return;
+
+    final entities = <Map<String, dynamic>>[];
+    for (final dl in downloads) {
+      double duration = 0;
+      List<dynamic> chapters = [];
+      String? episodeTitle;
+      if (dl.sessionData != null) {
+        try {
+          final session = jsonDecode(dl.sessionData!) as Map<String, dynamic>;
+          duration = (session['duration'] as num?)?.toDouble() ?? 0;
+          chapters = session['chapters'] as List<dynamic>? ?? [];
+          episodeTitle = session['episodeTitle'] as String? ??
+              session['displayTitle'] as String?;
+        } catch (_) {}
+      }
+
+      final isCompound = dl.itemId.length > 36;
+      if (isCompound) {
+        final showId = dl.itemId.substring(0, 36);
+        final episodeId = dl.itemId.substring(37);
+        entities.add({
+          'id': showId,
+          '_absorbingKey': dl.itemId,
+          'recentEpisode': {
+            'id': episodeId,
+            'title': episodeTitle ?? dl.title ?? 'Episode',
+          },
+          'media': {
+            'metadata': {
+              'title': dl.title ?? 'Unknown Title',
+              'authorName': dl.author ?? '',
+            },
+            'duration': duration,
+            'chapters': chapters,
+          },
+        });
+      } else {
+        entities.add({
+          'id': dl.itemId,
+          'media': {
+            'metadata': {
+              'title': dl.title ?? 'Unknown Title',
+              'authorName': dl.author ?? '',
+            },
+            'duration': duration,
+            'chapters': chapters,
+          },
+        });
+      }
+    }
+
+    _personalizedSections.add({
+      'id': 'downloaded-books',
+      'label': isPodcast ? 'Downloaded Episodes' : 'Downloaded Books',
+      'type': isPodcast ? 'podcast' : 'book',
+      'entities': entities,
+    });
+  }
+
   // User's media progress, keyed by libraryItemId
   Map<String, Map<String, dynamic>> _progressMap = {};
 
@@ -530,11 +608,17 @@ class LibraryProvider extends ChangeNotifier {
   }
 
   StreamSubscription? _connectivitySub;
+  bool _listeningToDownloads = false;
 
   /// Called by ProxyProvider when auth changes.
   String? _lastAuthKey; // Guard against redundant updateAuth from ProxyProvider
 
   void updateAuth(AuthProvider auth) {
+    // Listen to download changes so the Downloads shelf appears/updates live.
+    if (!_listeningToDownloads) {
+      _listeningToDownloads = true;
+      DownloadService().addListener(_onDownloadsChanged);
+    }
     final wasAuthenticated = _auth?.isAuthenticated ?? false;
     _auth = auth;
 
@@ -1182,6 +1266,9 @@ class LibraryProvider extends ChangeNotifier {
         }
       }
       await _updateAbsorbingCache();
+
+      // Inject a "Downloads" section from locally downloaded items.
+      _injectDownloadedSection();
 
       // For podcast libraries, defer RSS-heavy fields until after first paint.
       if (isPodcastLibrary) {

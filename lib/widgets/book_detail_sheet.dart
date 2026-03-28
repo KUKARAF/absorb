@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'overlay_toast.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:palette_generator/palette_generator.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
@@ -195,9 +196,15 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       final lib = context.read<LibraryProvider>();
       provider = CachedNetworkImageProvider(url, headers: lib.mediaHeaders);
     }
-    ColorScheme.fromImageProvider(provider: provider, brightness: brightness)
-        .then((s) { if (mounted) setState(() => _coverScheme = s); })
-        .catchError((_) {});
+    PaletteGenerator.fromImageProvider(provider, maximumColorCount: 16)
+        .then((palette) {
+      final seedColor = palette.vibrantColor?.color
+          ?? palette.dominantColor?.color
+          ?? palette.colors.firstOrNull;
+      if (seedColor == null || !mounted) return;
+      setState(() => _coverScheme = ColorScheme.fromSeed(
+        seedColor: seedColor, brightness: brightness));
+    }).catchError((_) {});
   }
 
   String? get _coverUrl {
@@ -215,13 +222,6 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     return auth.apiService?.getCoverUrl(widget.itemId, width: 4000);
   }
 
-  /// Low-res cover for the blurred background - saves GPU work.
-  String? get _blurCoverUrl {
-    final localCover = _item?['_localCoverUrl'] as String?;
-    if (localCover != null && localCover.isNotEmpty) return localCover;
-    final auth = context.read<AuthProvider>();
-    return auth.apiService?.getCoverUrl(widget.itemId, width: 200);
-  }
 
   @override Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -230,28 +230,16 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(color: Theme.of(context).scaffoldBackgroundColor, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
       child: Stack(children: [
-        // Blurred cover + gradient scrim as a single cached layer to avoid
-        // expensive re-compositing of ImageFilter.blur during sheet drag.
-        RepaintBoundary(
-          child: Stack(children: [
-            if (_blurCoverUrl != null)
-              Positioned.fill(
-                child: CachedNetworkImage(
-                  imageUrl: _blurCoverUrl!, fit: BoxFit.cover,
-                  httpHeaders: context.read<LibraryProvider>().mediaHeaders,
-                  imageBuilder: (_, p) => ImageFiltered(
-                    imageFilter: ui.ImageFilter.blur(sigmaX: 25, sigmaY: 25, tileMode: TileMode.decal),
-                    child: Image(image: p, fit: BoxFit.cover)),
-                  placeholder: (_, __) => const SizedBox(),
-                  errorWidget: (_, __, ___) => const SizedBox(),
-                ),
-              ),
-            Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
-              begin: Alignment.topCenter, end: Alignment.bottomCenter,
-              colors: [Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.6), Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.85), Theme.of(context).scaffoldBackgroundColor],
-            )))),
-          ]),
-        ),
+        // Cover-derived color gradient background - lighter than blurred image.
+        Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          stops: const [0.0, 0.4, 1.0],
+          colors: [
+            (_coverScheme?.primaryContainer ?? Theme.of(context).scaffoldBackgroundColor).withValues(alpha: 0.5),
+            Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.85),
+            Theme.of(context).scaffoldBackgroundColor,
+          ],
+        )))),
         _isLoading || (_item != null && _coverUrl != null && _coverScheme == null)
             ? Center(child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurface.withValues(alpha: 0.24)))
             : _item == null
