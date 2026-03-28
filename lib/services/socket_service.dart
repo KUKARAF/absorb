@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:socket_io_client/socket_io_client.dart' as io;
 
 class SocketService {
   static final SocketService _instance = SocketService._();
   factory SocketService() => _instance;
   SocketService._();
 
-  IO.Socket? _socket;
+  io.Socket? _socket;
   String? _token;
   String? _serverUrl;
   DateTime? _connectedAt;
@@ -16,7 +16,7 @@ class SocketService {
 
   /// Build socket.io options with capped reconnection to avoid
   /// hammering an unreachable server (and draining battery).
-  Map<String, dynamic> _buildOptions() => IO.OptionBuilder()
+  Map<String, dynamic> _buildOptions() => io.OptionBuilder()
       .setTransports(['websocket'])
       .enableReconnection()
       .setReconnectionDelay(1000)
@@ -61,7 +61,7 @@ class SocketService {
     _serverUrl = serverUrl;
 
     try {
-      _socket = IO.io(serverUrl, _buildOptions());
+      _socket = io.io(serverUrl, _buildOptions());
 
       // onConnect fires on initial connect AND every reconnect
       _socket!.onConnect((_) {
@@ -209,7 +209,7 @@ class SocketService {
     debugPrint('[Socket] Soft reconnect');
 
     try {
-      _socket = IO.io(url, _buildOptions());
+      _socket = io.io(url, _buildOptions());
 
       _socket!.onConnect((_) {
         _connectedAt = DateTime.now();

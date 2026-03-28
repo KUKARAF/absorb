@@ -27,7 +27,7 @@ class ApiService {
   final String baseUrl;
   String _accessToken;
   String? _refreshToken;
-  bool _isLegacyToken;
+  final bool _isLegacyToken;
   final Map<String, String> customHeaders;
 
   /// Called after a successful token refresh so the auth layer can persist.
