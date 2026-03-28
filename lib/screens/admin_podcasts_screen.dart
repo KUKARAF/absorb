@@ -221,7 +221,6 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
   }
 
   void _openPreview(Map<String, dynamic> pod) {
-    Navigator.pop(context); // close search sheet
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -229,7 +228,11 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
           podcast: pod,
           libraryId: widget.libraryId,
           folderId: widget.folderId,
-          onAdded: widget.onAdded,
+          onAdded: () {
+            widget.onAdded();
+            // Close the search sheet after adding
+            if (mounted) Navigator.pop(context);
+          },
         ),
       ),
     );
@@ -320,6 +323,36 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
         final title = pod['title'] as String? ?? pod['trackName'] as String? ?? pod['collectionName'] as String? ?? 'Unknown';
         final author = pod['artistName'] as String? ?? pod['author'] as String? ?? '';
         final imageUrl = _getImageUrl(pod);
+        final episodeCount = pod['trackCount'] as int?;
+        final releaseDate = pod['releaseDate'] as String?;
+        final genres = (pod['genres'] as List?)?.whereType<String>().where((g) => g != 'Podcasts').toList();
+
+        // Format release date
+        String? releaseDateStr;
+        if (releaseDate != null) {
+          try {
+            final dt = DateTime.parse(releaseDate);
+            final now = DateTime.now();
+            final diff = now.difference(dt);
+            if (diff.inDays < 1) {
+              releaseDateStr = 'Today';
+            } else if (diff.inDays < 7) {
+              releaseDateStr = '${diff.inDays}d ago';
+            } else if (diff.inDays < 30) {
+              releaseDateStr = '${(diff.inDays / 7).floor()}w ago';
+            } else if (diff.inDays < 365) {
+              releaseDateStr = '${(diff.inDays / 30).floor()}mo ago';
+            } else {
+              releaseDateStr = '${(diff.inDays / 365).floor()}y ago';
+            }
+          } catch (_) {}
+        }
+
+        // Build metadata chips
+        final metaParts = <String>[
+          if (episodeCount != null) '$episodeCount episodes',
+          if (releaseDateStr != null) 'Updated $releaseDateStr',
+        ];
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -338,8 +371,8 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
                     child: imageUrl.isNotEmpty
                         ? Image.network(
                             imageUrl,
-                            width: 50,
-                            height: 50,
+                            width: 56,
+                            height: 56,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) => _ph(cs),
                           )
@@ -354,6 +387,14 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
                         if (author.isNotEmpty) ...[
                           const SizedBox(height: 2),
                           Text(author, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
+                        if (metaParts.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(metaParts.join(' · '), style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.45), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
+                        if (genres != null && genres.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(genres.take(3).join(', '), style: tt.labelSmall?.copyWith(color: cs.primary.withValues(alpha: 0.5), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
                         ],
                       ],
                     ),

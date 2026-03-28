@@ -588,7 +588,19 @@ class AuthProvider extends ChangeNotifier {
 
     await _loadLocalServerSettings();
     _useLocalServer = false;
-    _fetchServerVersion(_serverUrl!);
+    // Check if local server should be active (same logic as tryRestoreSession)
+    if (_localServerEnabled && _localServerUrl.isNotEmpty) {
+      final connectivity = await Connectivity().checkConnectivity();
+      if (connectivity.contains(ConnectivityResult.wifi)) {
+        final localReachable = await ApiService.pingServer(_localServerUrl, customHeaders: _customHeaders)
+            .timeout(const Duration(seconds: 2), onTimeout: () => false);
+        if (localReachable) {
+          debugPrint('[Auth] switchToAccount: local server reachable - using local');
+          _useLocalServer = true;
+        }
+      }
+    }
+    _fetchServerVersion(activeServerUrl!);
     notifyListeners();
     return true;
   }
