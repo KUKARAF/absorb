@@ -382,9 +382,10 @@ class LibraryProvider extends ChangeNotifier {
   /// Re-inject the downloaded-books section when downloads change.
   void _onDownloadsChanged() {
     if (isOffline || _personalizedSections.isEmpty) return;
-    // Remove existing downloaded-books section and re-inject
-    _personalizedSections.removeWhere(
-        (s) => (s as Map)['id'] == 'downloaded-books');
+    // Create a new list so the home screen's identity-based cache detects the change
+    _personalizedSections = _personalizedSections
+        .where((s) => (s as Map)['id'] != 'downloaded-books')
+        .toList();
     _injectDownloadedSection();
     notifyListeners();
   }
