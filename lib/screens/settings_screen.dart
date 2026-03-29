@@ -382,7 +382,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // ── User Profile ──
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                  child: Column(
+                  child: GestureDetector(
+                    onTap: () => _showAccountSheet(context),
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
@@ -399,6 +401,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               child: Text(auth.isRoot ? 'Root Admin' : 'Admin', style: tt.labelSmall?.copyWith(
                                 color: auth.isRoot ? Colors.amber : cs.primary, fontWeight: FontWeight.w600, fontSize: 10)),
                             ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.unfold_more_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.3)),
                         ],
                       ),
                       const SizedBox(height: 2),
@@ -408,10 +412,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                     ],
                   ),
+                  ),
                 ),
 
                 // ── Admin Controls ──
-                if (auth.isAdmin)
+                if (auth.isRoot)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                     child: Material(
@@ -1850,70 +1855,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               mode: LaunchMode.externalApplication),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Absorb v$_appVersion',
-                            style: tt.bodySmall?.copyWith(
-                                color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            _isGithubBuild ? Icons.code_rounded : Icons.store_rounded,
-                            size: 14,
-                            color: cs.onSurfaceVariant.withValues(alpha: 0.3),
-                          ),
-                          if (auth.serverVersion != null)
-                            Text(
-                              '  ·  Server ${auth.serverVersion}',
-                              style: tt.bodySmall?.copyWith(
-                                  color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
-                            ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
-
-                if (_isGithubBuild) ...[
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: () async {
-                      final info = await UpdateCheckerService.check(force: true);
-                      if (!mounted) return;
-                      if (info == null || !info.hasUpdate) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('You\'re on the latest version')),
-                        );
-                        return;
-                      }
-                      showDialog(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('Update available'),
-                          content: Text('A new version of Absorb is available: ${info.latestVersion}\n\nYou are on ${info.currentVersion}.'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx),
-                              child: const Text('Later'),
-                            ),
-                            FilledButton(
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                launchUrl(Uri.parse(info.downloadUrl), mode: LaunchMode.externalApplication);
-                              },
-                              child: const Text('Download'),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.system_update_rounded, size: 16),
-                    label: const Text('Check for update'),
-                  ),
-                ],
 
                 const SizedBox(height: 16),
 
@@ -1979,136 +1923,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 24),
-
-                // ── Accounts ──
-                Builder(builder: (ctx) {
-                  final accounts = UserAccountService().accounts;
-                  final auth = ctx.read<AuthProvider>();
-                  final otherAccounts = accounts.where((a) =>
-                    !(a.serverUrl == auth.serverUrl && a.username == auth.username)
-                  ).toList();
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (otherAccounts.isNotEmpty) ...[
-                          Text('Switch Account',
-                            style: tt.titleSmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                            )),
-                          const SizedBox(height: 8),
-                          ...otherAccounts.map((account) {
-                            final shortUrl = account.serverUrl
-                                .replaceAll(RegExp(r'^https?://'), '')
-                                .replaceAll(RegExp(r'/+$'), '');
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Material(
-                                color: cs.surfaceContainerHigh,
-                                borderRadius: BorderRadius.circular(14),
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(14),
-                                  onTap: () => _switchAccount(ctx, account),
-                                  onLongPress: () => _removeAccount(ctx, account),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                    child: Row(
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 18,
-                                          backgroundColor: cs.primary.withValues(alpha: 0.15),
-                                          child: Text(
-                                            account.username.isNotEmpty
-                                                ? account.username[0].toUpperCase()
-                                                : '?',
-                                            style: TextStyle(
-                                              color: cs.primary,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(account.username,
-                                                style: tt.bodyMedium?.copyWith(
-                                                  fontWeight: FontWeight.w600)),
-                                              Text(shortUrl,
-                                                style: tt.labelSmall?.copyWith(
-                                                  color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis),
-                                            ],
-                                          ),
-                                        ),
-                                        Icon(Icons.swap_horiz_rounded,
-                                          size: 20, color: cs.primary),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                          const SizedBox(height: 6),
-                        ],
-                        // Add Account button - always visible
-                        Material(
-                          color: cs.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(14),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(14),
-                            onTap: () => _addAccount(ctx),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 18,
-                                    backgroundColor: cs.primary.withValues(alpha: 0.08),
-                                    child: Icon(Icons.person_add_rounded,
-                                      size: 18, color: cs.primary),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text('Add Account',
-                                    style: tt.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color: cs.primary)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
+                // ── Version Info ──
+                Center(child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Absorb v$_appVersion',
+                      style: tt.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
                     ),
-                  );
-                }),
-
-                // ── Sign out ──
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _confirmLogout(context),
-                      icon: const Icon(Icons.logout_rounded),
-                      label: const Text('Log out'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: cs.error,
-                        side: BorderSide(color: cs.error.withValues(alpha: 0.5)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                    const SizedBox(width: 4),
+                    Icon(
+                      _isGithubBuild ? Icons.code_rounded : Icons.store_rounded,
+                      size: 14,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.3),
+                    ),
+                    if (auth.serverVersion != null)
+                      Text(
+                        '  ·  Server ${auth.serverVersion}',
+                        style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
                       ),
-                    ),
-                  ),
-                ),
+                  ],
+                )),
+
+                if (_isGithubBuild) ...[
+                  const SizedBox(height: 4),
+                  Center(child: TextButton.icon(
+                    onPressed: () async {
+                      final info = await UpdateCheckerService.check(force: true);
+                      if (!mounted) return;
+                      if (info == null || !info.hasUpdate) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('You\'re on the latest version')),
+                        );
+                        return;
+                      }
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Update available'),
+                          content: Text('A new version of Absorb is available: ${info.latestVersion}\n\nYou are on ${info.currentVersion}.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('Later'),
+                            ),
+                            FilledButton(
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                launchUrl(Uri.parse(info.downloadUrl), mode: LaunchMode.externalApplication);
+                              },
+                              child: const Text('Download'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.system_update_rounded, size: 16),
+                    label: const Text('Check for update'),
+                  )),
+                ],
+
                 const SizedBox(height: 100),
               ],
             ),
@@ -2589,6 +2465,116 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(width: 8),
         Text(label, style: TextStyle(fontSize: 12, color: cs.primary)),
       ]),
+    );
+  }
+
+  void _showAccountSheet(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final auth = context.read<AuthProvider>();
+    final accounts = UserAccountService().accounts;
+    final otherAccounts = accounts.where((a) =>
+      !(a.serverUrl == auth.serverUrl && a.username == auth.username)
+    ).toList();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHigh,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Center(child: Container(margin: const EdgeInsets.only(top: 12), width: 36, height: 4,
+            decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 16),
+          // Current user
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: cs.primary.withValues(alpha: 0.15),
+                child: Text(
+                  (auth.username ?? 'U')[0].toUpperCase(),
+                  style: TextStyle(color: cs.primary, fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(auth.username ?? 'User', style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  auth.serverUrl?.replaceAll(RegExp(r'^https?://'), '').replaceAll(RegExp(r'/+$'), '') ?? '',
+                  style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              ])),
+              Icon(Icons.check_circle_rounded, size: 20, color: cs.primary),
+            ]),
+          ),
+          if (otherAccounts.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Divider(height: 1, indent: 20, endIndent: 20, color: cs.onSurface.withValues(alpha: 0.06)),
+            const SizedBox(height: 8),
+            ...otherAccounts.map((account) {
+              final shortUrl = account.serverUrl
+                  .replaceAll(RegExp(r'^https?://'), '')
+                  .replaceAll(RegExp(r'/+$'), '');
+              return InkWell(
+                onTap: () { Navigator.pop(ctx); _switchAccount(context, account); },
+                onLongPress: () { Navigator.pop(ctx); _removeAccount(context, account); },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Row(children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: cs.onSurface.withValues(alpha: 0.06),
+                      child: Text(
+                        account.username.isNotEmpty ? account.username[0].toUpperCase() : '?',
+                        style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(account.username, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(shortUrl, style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ])),
+                    Icon(Icons.swap_horiz_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.2)),
+                  ]),
+                ),
+              );
+            }),
+          ],
+          const SizedBox(height: 8),
+          Divider(height: 1, indent: 20, endIndent: 20, color: cs.onSurface.withValues(alpha: 0.06)),
+          // Add account
+          InkWell(
+            onTap: () { Navigator.pop(ctx); _addAccount(context); },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(children: [
+                Icon(Icons.person_add_rounded, size: 20, color: cs.primary),
+                const SizedBox(width: 14),
+                Text('Add Account', style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.primary)),
+              ]),
+            ),
+          ),
+          // Sign out
+          InkWell(
+            onTap: () { Navigator.pop(ctx); _confirmLogout(context); },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(children: [
+                Icon(Icons.logout_rounded, size: 20, color: cs.error),
+                const SizedBox(width: 14),
+                Text('Sign Out', style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.error)),
+              ]),
+            ),
+          ),
+          SizedBox(height: MediaQuery.of(ctx).padding.bottom + 12),
+        ]),
+      ),
     );
   }
 

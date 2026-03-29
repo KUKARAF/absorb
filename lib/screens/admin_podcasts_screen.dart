@@ -908,12 +908,21 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
   @override
   void initState() {
     super.initState();
-    _item = Map<String, dynamic>.from(widget.item);
-    _tabCtrl = TabController(length: 3, vsync: this);
+    _item = jsonDecode(jsonEncode(widget.item)) as Map<String, dynamic>;
+    _tabCtrl = TabController(length: 3, vsync: this)
+      ..addListener(_onTabChanged);
     _initCheckDate();
     _reloadItem(); // Load full item with episodes
     _loadFeed(); // Pre-load feed so it's ready when user switches tabs
     _pollDownloadQueue(); // Check for any in-progress downloads
+  }
+
+  int _lastTabIndex = 0;
+  void _onTabChanged() {
+    if (_tabCtrl.index != _lastTabIndex && !_tabCtrl.indexIsChanging) {
+      _lastTabIndex = _tabCtrl.index;
+      setState(() {});
+    }
   }
 
   void _initCheckDate() {
@@ -926,7 +935,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
   }
 
   @override
-  void dispose() { _pollingQueue = false; _tabCtrl.dispose(); super.dispose(); }
+  void dispose() { _pollingQueue = false; _tabCtrl.removeListener(_onTabChanged); _tabCtrl.dispose(); super.dispose(); }
 
   Future<void> _removeShow() async {
     final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
@@ -948,7 +957,11 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     try {
       final found = await api.getLibraryItem(_podcastId);
-      if (found != null && mounted) setState(() => _item = Map<String, dynamic>.from(found));
+      if (found != null && mounted) {
+        // Deep copy to ensure nested maps are mutable
+        final copy = jsonDecode(jsonEncode(found)) as Map<String, dynamic>;
+        setState(() => _item = copy);
+      }
     } catch (_) {}
   }
 
@@ -1039,10 +1052,10 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
           child: Row(children: [
             IconButton(icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface.withValues(alpha: 0.54)), onPressed: () => Navigator.pop(context)),
             const Spacer(),
-            if (_tabCtrl.index == 0 && _episodes.isNotEmpty || _tabCtrl.index == 1 && _feedEpisodes.isNotEmpty)
+            if ((_tabCtrl.index == 0 && _episodes.isNotEmpty) || (_tabCtrl.index == 1 && _feedEpisodes.isNotEmpty))
               IconButton(
                 icon: Icon(
-                  (_isSelectingDownloaded || _isSelecting) ? Icons.checklist_rounded : Icons.checklist_rounded,
+                  Icons.checklist_rounded,
                   color: (_isSelectingDownloaded || _isSelecting) ? cs.primary : cs.onSurface.withValues(alpha: 0.3),
                   size: 22,
                 ),
@@ -1089,7 +1102,6 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
           tabs: const [Tab(text: 'Downloaded'), Tab(text: 'Feed'), Tab(text: 'Settings')],
           onTap: (i) {
             if (i == 1 && _feedEpisodes.isEmpty && !_loadingFeed) _loadFeed();
-            setState(() {}); // Rebuild header button for active tab
           },
         ),
 
@@ -1625,12 +1637,20 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
                   if (api == null) return;
                   final ok = await api.updatePodcastMedia(_podcastId, {
                     'autoDownloadEpisodes': v,
-                    if (!isOn) 'autoDownloadSchedule': '0 * * * *',
+                    if (v && !isOn) 'autoDownloadSchedule': '0 * * * *',
                   });
-                  if (ok && mounted) {
-                    _media['autoDownloadEpisodes'] = v;
-                    if (!v) _media.remove('autoDownloadSchedule');
-                    setState(() {}); // rebuild entire settings tab
+                  if (mounted) {
+                    if (ok) {
+                      final media = _item['media'];
+                      if (media is Map<String, dynamic>) {
+                        media['autoDownloadEpisodes'] = v;
+                        if (!v) media.remove('autoDownloadSchedule');
+                      }
+                    } else {
+                      _msg('Failed to update auto-download setting');
+                    }
+                    setLocalState(() {});
+                    setState(() {});
                     widget.onChanged();
                   }
                 },

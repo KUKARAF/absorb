@@ -1244,7 +1244,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           _buildFloatingSortButton(cs, tt),
-                          if (context.read<AuthProvider>().isAdmin) ...[
+                          if (context.read<AuthProvider>().isRoot) ...[
                             const SizedBox(width: 8),
                             _buildFloatingManageButton(cs),
                           ],
