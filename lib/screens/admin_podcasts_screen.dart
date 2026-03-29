@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/absorb_page_header.dart';
@@ -40,6 +42,17 @@ class _AdminPodcastsScreenState extends State<AdminPodcastsScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
+  void _confirmCheckNewEpisodes(ColorScheme cs, TextTheme tt) {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Check for New Episodes'),
+      content: const Text('This will check RSS feeds for all podcasts and download any new episodes found (if auto-download is enabled).'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        TextButton(onPressed: () { Navigator.pop(ctx); _checkNewEpisodes(); }, child: const Text('Check')),
+      ],
+    ));
+  }
+
   Future<void> _checkNewEpisodes() async {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     setState(() => _checkingEpisodes = true);
@@ -75,9 +88,9 @@ class _AdminPodcastsScreenState extends State<AdminPodcastsScreen> {
                 ? Padding(padding: const EdgeInsets.all(12),
                     child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.onSurfaceVariant.withValues(alpha: 0.6))))
                 : IconButton(
-                    icon: Icon(Icons.refresh_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.6), size: 22),
-                    tooltip: 'Check for new episodes',
-                    onPressed: _checkNewEpisodes),
+                    icon: Icon(Icons.cloud_download_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.6), size: 22),
+                    tooltip: 'Check feeds for new episodes',
+                    onPressed: () => _confirmCheckNewEpisodes(cs, tt)),
             IconButton(icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.6)), onPressed: () => Navigator.pop(context)),
           ]),
         ),
@@ -191,8 +204,84 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
   bool _searching = false;
   List<dynamic> _results = [];
 
+  // Discover state
+  static const _genres = <int, String>{
+    0: 'All',
+    1301: 'Arts',
+    1303: 'Comedy',
+    1304: 'Education',
+    1309: 'TV & Film',
+    1310: 'Music',
+    1311: 'News',
+    1314: 'Religion',
+    1315: 'Science',
+    1316: 'Sports',
+    1318: 'Technology',
+    1321: 'Business',
+    1323: 'Fiction',
+    1324: 'Society & Culture',
+    1325: 'Health & Fitness',
+    1326: 'True Crime',
+    1487: 'History',
+    1488: 'Kids & Family',
+  };
+  int _selectedGenre = 0;
+  bool _loadingChart = true;
+  List<dynamic> _chartResults = [];
+  final Set<String> _lookingUp = {};
+
+  @override
+  void initState() { super.initState(); _loadChart(); }
+
   @override
   void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  Future<void> _loadChart() async {
+    setState(() => _loadingChart = true);
+    try {
+      final genrePart = _selectedGenre > 0 ? 'genre=$_selectedGenre/' : '';
+      final url = 'https://itunes.apple.com/us/rss/toppodcasts/${genrePart}limit=25/json';
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200 && mounted) {
+        final data = jsonDecode(response.body);
+        final entries = data['feed']?['entry'] as List? ?? [];
+        setState(() { _chartResults = entries; _loadingChart = false; });
+      } else if (mounted) {
+        setState(() => _loadingChart = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingChart = false);
+    }
+  }
+
+  Future<void> _openChartPodcast(Map<String, dynamic> entry) async {
+    // Extract iTunes ID and look up feed URL
+    final idObj = entry['id'];
+    final String? itunesId = idObj is Map ? (idObj['attributes']?['im:id'] as String?) : null;
+    if (itunesId == null) return;
+
+    setState(() => _lookingUp.add(itunesId));
+    try {
+      final response = await http.get(Uri.parse('https://itunes.apple.com/lookup?id=$itunesId&entity=podcast'));
+      if (!mounted) return;
+      setState(() => _lookingUp.remove(itunesId));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final results = data['results'] as List?;
+        if (results != null && results.isNotEmpty) {
+          final pod = results[0] as Map<String, dynamic>;
+          _openPreview(pod);
+          return;
+        }
+      }
+      ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(SnackBar(
+        content: const Text('Could not find podcast feed'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+    } catch (_) {
+      if (mounted) setState(() => _lookingUp.remove(itunesId));
+    }
+  }
 
   Future<void> _search() async {
     final q = _ctrl.text.trim(); if (q.isEmpty) return;
@@ -275,15 +364,114 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
               Expanded(
                 child: _searching
                     ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                    : _results.isEmpty
-                        ? Center(child: Text('Search iTunes to find podcasts', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24))))
-                        : _buildResultsList(cs, tt, sc),
+                    : _results.isNotEmpty
+                        ? _buildResultsList(cs, tt, sc)
+                        : _buildDiscover(cs, tt, sc),
               ),
             ],
           );
         },
       ),
     );
+  }
+
+  Widget _buildDiscover(ColorScheme cs, TextTheme tt, ScrollController sc) {
+    return Column(children: [
+      // Genre chips
+      SizedBox(
+        height: 38,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          children: _genres.entries.map((e) {
+            final selected = _selectedGenre == e.key;
+            return Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: GestureDetector(
+                onTap: () { setState(() => _selectedGenre = e.key); _loadChart(); },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: selected ? cs.primary.withValues(alpha: 0.15) : cs.onSurface.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: selected ? cs.primary.withValues(alpha: 0.4) : cs.onSurface.withValues(alpha: 0.06)),
+                  ),
+                  child: Text(e.value, style: tt.labelSmall?.copyWith(
+                    color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.5),
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500, fontSize: 12)),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+      const SizedBox(height: 4),
+      // Chart list
+      Expanded(
+        child: _loadingChart
+            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            : _chartResults.isEmpty
+                ? Center(child: Text('No podcasts found', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24))))
+                : ListView.builder(
+                    controller: sc,
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                    itemCount: _chartResults.length,
+                    itemBuilder: (_, i) {
+                      final entry = _chartResults[i] as Map<String, dynamic>? ?? {};
+                      final name = entry['im:name']?['label'] as String? ?? '';
+                      final artist = entry['im:artist']?['label'] as String? ?? '';
+                      final images = entry['im:image'] as List? ?? [];
+                      final imageUrl = images.isNotEmpty ? (images.last['label'] as String? ?? '') : '';
+                      final category = entry['category']?['attributes']?['label'] as String? ?? '';
+                      final idObj = entry['id'];
+                      final String? itunesId = idObj is Map ? (idObj['attributes']?['im:id'] as String?) : null;
+                      final isLoading = itunesId != null && _lookingUp.contains(itunesId);
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: GestureDetector(
+                          onTap: isLoading ? null : () => _openChartPodcast(entry),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: cs.onSurface.withValues(alpha: 0.04),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(children: [
+                              // Rank number
+                              SizedBox(width: 24, child: Text('${i + 1}', textAlign: TextAlign.center,
+                                style: tt.labelMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.25), fontWeight: FontWeight.w700))),
+                              const SizedBox(width: 10),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: imageUrl.isNotEmpty
+                                    ? Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => _ph(cs))
+                                    : _ph(cs),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(name, style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface),
+                                  maxLines: 2, overflow: TextOverflow.ellipsis),
+                                if (artist.isNotEmpty) ...[const SizedBox(height: 2),
+                                  Text(artist, style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 11),
+                                    maxLines: 1, overflow: TextOverflow.ellipsis)],
+                                if (category.isNotEmpty) ...[const SizedBox(height: 2),
+                                  Text(category, style: tt.labelSmall?.copyWith(color: cs.primary.withValues(alpha: 0.5), fontSize: 10))],
+                              ])),
+                              const SizedBox(width: 8),
+                              if (isLoading)
+                                SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.primary))
+                              else
+                                Icon(Icons.chevron_right_rounded, color: cs.onSurface.withValues(alpha: 0.15)),
+                            ]),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+      ),
+    ]);
   }
 
   Widget _buildSearchBar(ColorScheme cs, TextTheme tt) {
@@ -699,6 +887,10 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
   List<dynamic> _feedEpisodes = [];
   final Set<String> _downloading = {};
   final Set<String> _deleting = {};
+  final Set<int> _selectedFeedIndices = {};
+  final Set<String> _selectedDownloadedIds = {};
+  int _checkLimit = 3;
+  DateTime? _checkAfterDate;
   late TabController _tabCtrl;
 
   // Download queue
@@ -718,9 +910,19 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
     super.initState();
     _item = Map<String, dynamic>.from(widget.item);
     _tabCtrl = TabController(length: 3, vsync: this);
+    _initCheckDate();
     _reloadItem(); // Load full item with episodes
     _loadFeed(); // Pre-load feed so it's ready when user switches tabs
     _pollDownloadQueue(); // Check for any in-progress downloads
+  }
+
+  void _initCheckDate() {
+    final lastCheck = _media['lastEpisodeCheck'] as num?;
+    if (lastCheck != null && lastCheck > 0) {
+      _checkAfterDate = DateTime.fromMillisecondsSinceEpoch(lastCheck.toInt());
+    } else {
+      _checkAfterDate = DateTime.now().subtract(const Duration(days: 7));
+    }
   }
 
   @override
@@ -837,6 +1039,22 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
           child: Row(children: [
             IconButton(icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface.withValues(alpha: 0.54)), onPressed: () => Navigator.pop(context)),
             const Spacer(),
+            if (_tabCtrl.index == 0 && _episodes.isNotEmpty || _tabCtrl.index == 1 && _feedEpisodes.isNotEmpty)
+              IconButton(
+                icon: Icon(
+                  (_isSelectingDownloaded || _isSelecting) ? Icons.checklist_rounded : Icons.checklist_rounded,
+                  color: (_isSelectingDownloaded || _isSelecting) ? cs.primary : cs.onSurface.withValues(alpha: 0.3),
+                  size: 22,
+                ),
+                tooltip: 'Select multiple',
+                onPressed: () => setState(() {
+                  if (_tabCtrl.index == 0) {
+                    if (_isSelectingDownloaded) _selectedDownloadedIds.clear(); else _enterDownloadedSelectMode();
+                  } else if (_tabCtrl.index == 1) {
+                    if (_isSelecting) _selectedFeedIndices.clear(); else _enterFeedSelectMode();
+                  }
+                }),
+              ),
             if (auth.isRoot)
               IconButton(icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade300, size: 22), tooltip: 'Remove show', onPressed: _removeShow),
           ])),
@@ -869,7 +1087,10 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
           indicatorSize: TabBarIndicatorSize.label,
           dividerColor: cs.onSurface.withValues(alpha: 0.06),
           tabs: const [Tab(text: 'Downloaded'), Tab(text: 'Feed'), Tab(text: 'Settings')],
-          onTap: (i) { if (i == 1 && _feedEpisodes.isEmpty && !_loadingFeed) _loadFeed(); },
+          onTap: (i) {
+            if (i == 1 && _feedEpisodes.isEmpty && !_loadingFeed) _loadFeed();
+            setState(() {}); // Rebuild header button for active tab
+          },
         ),
 
         // Tab views
@@ -883,6 +1104,57 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
   }
 
   // ─── Downloaded Tab ─────────────────────────────────────────
+
+  bool get _isSelectingDownloaded => _selectedDownloadedIds.isNotEmpty;
+
+  void _enterDownloadedSelectMode() {
+    // Select the first episode to kick off select mode
+    final sorted = List.from(_episodes)..sort((a, b) {
+      final aT = a['publishedAt'] as num? ?? 0; final bT = b['publishedAt'] as num? ?? 0;
+      return bT.compareTo(aT);
+    });
+    if (sorted.isNotEmpty) {
+      final id = (sorted[0] as Map<String, dynamic>)['id'] as String? ?? '';
+      if (id.isNotEmpty) setState(() => _selectedDownloadedIds.add(id));
+    }
+  }
+
+  void _toggleDownloadedSelection(String episodeId) {
+    setState(() {
+      if (_selectedDownloadedIds.contains(episodeId)) {
+        _selectedDownloadedIds.remove(episodeId);
+      } else {
+        _selectedDownloadedIds.add(episodeId);
+      }
+    });
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selectedDownloadedIds.isEmpty) return;
+    final count = _selectedDownloadedIds.length;
+    final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Delete Episodes?'),
+      content: Text('Delete $count episode${count == 1 ? '' : 's'} from the server?'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: TextStyle(color: Colors.red.shade300))),
+      ],
+    ));
+    if (yes != true) return;
+    final api = context.read<AuthProvider>().apiService; if (api == null) return;
+    final ids = Set<String>.from(_selectedDownloadedIds);
+    setState(() => _selectedDownloadedIds.clear());
+    int deleted = 0;
+    for (final id in ids) {
+      final ok = await api.deletePodcastEpisode(_podcastId, id);
+      if (ok) deleted++;
+    }
+    if (mounted) {
+      _msg('Deleted $deleted episode${deleted == 1 ? '' : 's'}');
+      _reloadItem();
+      widget.onChanged();
+    }
+  }
 
   Widget _buildDownloadedTab(ColorScheme cs, TextTheme tt) {
     // Build list: active downloads first, then downloaded episodes
@@ -909,75 +1181,174 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
       return bT.compareTo(aT);
     });
 
-    return RefreshIndicator(
-      onRefresh: _reloadItem,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-        itemCount: queueItems.length + sorted.length,
-        itemBuilder: (_, i) {
-          // Queue items first
-          if (i < queueItems.length) {
-            final q = queueItems[i];
-            final isActive = i == 0 && _currentDownload != null;
-            final title = q['episodeDisplayTitle'] as String? ?? 'Downloading...';
-            return Padding(padding: const EdgeInsets.only(bottom: 6), child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: cs.primary.withValues(alpha: 0.15)),
+    return Stack(children: [
+      RefreshIndicator(
+        onRefresh: _reloadItem,
+        child: ListView.builder(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, _isSelectingDownloaded ? 80 : 16),
+          itemCount: queueItems.length + sorted.length,
+          itemBuilder: (_, i) {
+            // Queue items first
+            if (i < queueItems.length) {
+              final q = queueItems[i];
+              final isActive = i == 0 && _currentDownload != null;
+              final title = q['episodeDisplayTitle'] as String? ?? 'Downloading...';
+              return Padding(padding: const EdgeInsets.only(bottom: 6), child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cs.primary.withValues(alpha: 0.15)),
+                ),
+                child: Row(children: [
+                  SizedBox(width: 18, height: 18, child: isActive
+                    ? CircularProgressIndicator(strokeWidth: 1.5, color: cs.primary)
+                    : Icon(Icons.hourglass_top_rounded, size: 16, color: cs.primary.withValues(alpha: 0.5))),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(title, style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface),
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2),
+                    Text(isActive ? 'Downloading...' : 'Queued',
+                      style: tt.labelSmall?.copyWith(color: cs.primary.withValues(alpha: 0.7), fontSize: 10)),
+                  ])),
+                ]),
+              ));
+            }
+
+            // Downloaded episodes
+            final idx = i - queueItems.length;
+            final ep = sorted[idx] as Map<String, dynamic>;
+            final epId = ep['id'] as String? ?? '';
+            final epTitle = ep['title']?.toString() ?? 'Episode';
+            final pubAt = ep['publishedAt'] as num?;
+            final duration = ep['duration'];
+            final durStr = duration is num ? _fmtDur(duration.toDouble())
+                : (duration is String ? _fmtDurFromStr(duration) : '');
+            final selected = _selectedDownloadedIds.contains(epId);
+
+            return Padding(padding: const EdgeInsets.only(bottom: 6), child: GestureDetector(
+              onTap: _isSelectingDownloaded
+                  ? () => _toggleDownloadedSelection(epId)
+                  : () => _showDownloadedEpisodeDetail(ep),
+              onLongPress: () => _toggleDownloadedSelection(epId),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: selected ? Colors.red.withValues(alpha: 0.08) : cs.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(12),
+                  border: selected ? Border.all(color: Colors.red.withValues(alpha: 0.2)) : null,
+                ),
+                child: Row(children: [
+                  if (_isSelectingDownloaded) ...[
+                    Icon(
+                      selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                      size: 20,
+                      color: selected ? Colors.red.shade300 : cs.onSurface.withValues(alpha: 0.2),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(epTitle, style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 3),
+                    Row(children: [
+                      if (pubAt != null) Text(_fmtDate(pubAt.toInt()), style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24), fontSize: 10)),
+                      if (pubAt != null && durStr.isNotEmpty) Text(' · ', style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.15))),
+                      if (durStr.isNotEmpty) Text(durStr, style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24), fontSize: 10)),
+                    ]),
+                  ])),
+                  if (!_isSelectingDownloaded) ...[
+                    const SizedBox(width: 8),
+                    Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.15)),
+                  ],
+                ]),
               ),
-              child: Row(children: [
-                SizedBox(width: 18, height: 18, child: isActive
-                  ? CircularProgressIndicator(strokeWidth: 1.5, color: cs.primary)
-                  : Icon(Icons.hourglass_top_rounded, size: 16, color: cs.primary.withValues(alpha: 0.5))),
-                const SizedBox(width: 12),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface),
-                    maxLines: 2, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 2),
-                  Text(isActive ? 'Downloading...' : 'Queued',
-                    style: tt.labelSmall?.copyWith(color: cs.primary.withValues(alpha: 0.7), fontSize: 10)),
-                ])),
-              ]),
             ));
-          }
-
-          // Downloaded episodes
-          final idx = i - queueItems.length;
-          final ep = sorted[idx] as Map<String, dynamic>;
-          final epTitle = ep['title']?.toString() ?? 'Episode';
-          final pubAt = ep['publishedAt'] as num?;
-          final duration = ep['duration'];
-          final durStr = duration is num ? _fmtDur(duration.toDouble())
-              : (duration is String ? _fmtDurFromStr(duration) : '');
-
-          return Padding(padding: const EdgeInsets.only(bottom: 6), child: GestureDetector(
-            onTap: () => _showDownloadedEpisodeDetail(ep),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(12)),
-              child: Row(children: [
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(epTitle, style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 3),
-                  Row(children: [
-                    if (pubAt != null) Text(_fmtDate(pubAt.toInt()), style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24), fontSize: 10)),
-                    if (pubAt != null && durStr.isNotEmpty) Text(' · ', style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.15))),
-                    if (durStr.isNotEmpty) Text(durStr, style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24), fontSize: 10)),
-                  ]),
-                ])),
-                const SizedBox(width: 8),
-                Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.15)),
-              ]),
-            ),
-          ));
-        },
+          },
+        ),
       ),
-    );
+      // Delete selected bar
+      if (_isSelectingDownloaded)
+        Positioned(left: 16, right: 16, bottom: 16,
+          child: Row(children: [
+            GestureDetector(
+              onTap: () => setState(() => _selectedDownloadedIds.clear()),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 12, offset: const Offset(0, 4))],
+                ),
+                child: Icon(Icons.close_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.6)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: GestureDetector(
+              onTap: _deleteSelected,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade400,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: Colors.red.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.delete_outline_rounded, size: 18, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text('Delete ${_selectedDownloadedIds.length} episode${_selectedDownloadedIds.length == 1 ? '' : 's'}',
+                    style: tt.bodySmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+            )),
+          ]),
+        ),
+    ]);
   }
 
   // ─── Feed Tab ───────────────────────────────────────────────
+
+  bool get _isSelecting => _selectedFeedIndices.isNotEmpty;
+
+  void _enterFeedSelectMode() {
+    // Select the first non-downloaded episode to kick off select mode
+    final dlTitles = _episodes.map((e) => (e['title'] as String? ?? '').toLowerCase()).toSet();
+    for (var i = 0; i < _feedEpisodes.length; i++) {
+      final ep = _feedEpisodes[i] as Map<String, dynamic>;
+      final title = (ep['title'] as String? ?? '').toLowerCase();
+      if (!dlTitles.contains(title)) {
+        setState(() => _selectedFeedIndices.add(i));
+        return;
+      }
+    }
+  }
+
+  void _toggleFeedSelection(int index) {
+    setState(() {
+      if (_selectedFeedIndices.contains(index)) {
+        _selectedFeedIndices.remove(index);
+      } else {
+        _selectedFeedIndices.add(index);
+      }
+    });
+  }
+
+  Future<void> _downloadSelected() async {
+    if (_selectedFeedIndices.isEmpty) return;
+    final eps = _selectedFeedIndices
+        .where((i) => i < _feedEpisodes.length)
+        .map((i) => _feedEpisodes[i] as Map<String, dynamic>)
+        .toList();
+    final count = eps.length;
+    setState(() => _selectedFeedIndices.clear());
+    final api = context.read<AuthProvider>().apiService; if (api == null) return;
+    final ok = await api.downloadPodcastEpisodes(_podcastId, eps);
+    if (mounted) {
+      _msg(ok ? 'Downloading $count episode${count == 1 ? '' : 's'}' : 'Failed to download');
+      if (ok) _pollDownloadQueue();
+    }
+    widget.onChanged();
+  }
 
   Widget _buildFeedTab(ColorScheme cs, TextTheme tt) {
     if (_loadingFeed) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
@@ -993,38 +1364,94 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
 
     final dlTitles = _episodes.map((e) => (e['title'] as String? ?? '').toLowerCase()).toSet();
 
-    return RefreshIndicator(
-      onRefresh: _loadFeed,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-        itemCount: _feedEpisodes.length,
-        itemBuilder: (_, i) {
-          final ep = _feedEpisodes[i] as Map<String, dynamic>;
-          final epTitle = ep['title'] as String? ?? 'Episode';
-          final pubDate = ep['publishedAt'] as num? ?? ep['pubDate'] as num?;
-          final already = dlTitles.contains(epTitle.toLowerCase());
+    return Stack(children: [
+      RefreshIndicator(
+        onRefresh: _loadFeed,
+        child: ListView.builder(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, _isSelecting ? 80 : 16),
+          itemCount: _feedEpisodes.length,
+          itemBuilder: (_, i) {
+            final ep = _feedEpisodes[i] as Map<String, dynamic>;
+            final epTitle = ep['title'] as String? ?? 'Episode';
+            final pubDate = ep['publishedAt'] as num? ?? ep['pubDate'] as num?;
+            final already = dlTitles.contains(epTitle.toLowerCase());
+            final selected = _selectedFeedIndices.contains(i);
 
-          return Padding(padding: const EdgeInsets.only(bottom: 6), child: GestureDetector(
-            onTap: () => _showEpisodeDetail(ep, already),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(12)),
-              child: Row(children: [
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(epTitle, style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w600,
-                    color: already ? cs.onSurfaceVariant.withValues(alpha: 0.6) : cs.onSurface), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  if (pubDate != null) ...[const SizedBox(height: 3),
-                    Text(_fmtDate(pubDate.toInt()), style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24), fontSize: 10))],
-                ])),
-                const SizedBox(width: 8),
-                if (already) Icon(Icons.check_circle_rounded, size: 18, color: Colors.green.withValues(alpha: 0.5))
-                else Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.15)),
-              ]),
-            ),
-          ));
-        },
+            return Padding(padding: const EdgeInsets.only(bottom: 6), child: GestureDetector(
+              onTap: _isSelecting
+                  ? () => _toggleFeedSelection(i)
+                  : () => _showEpisodeDetail(ep, already),
+              onLongPress: already ? null : () => _toggleFeedSelection(i),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: selected ? cs.primary.withValues(alpha: 0.12) : cs.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(12),
+                  border: selected ? Border.all(color: cs.primary.withValues(alpha: 0.3)) : null,
+                ),
+                child: Row(children: [
+                  if (_isSelecting) ...[
+                    Icon(
+                      selected ? Icons.check_circle_rounded : (already ? Icons.check_circle_rounded : Icons.circle_outlined),
+                      size: 20,
+                      color: selected ? cs.primary : (already ? Colors.green.withValues(alpha: 0.5) : cs.onSurface.withValues(alpha: 0.2)),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(epTitle, style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w600,
+                      color: already ? cs.onSurfaceVariant.withValues(alpha: 0.6) : cs.onSurface), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    if (pubDate != null) ...[const SizedBox(height: 3),
+                      Text(_fmtDate(pubDate.toInt()), style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24), fontSize: 10))],
+                  ])),
+                  const SizedBox(width: 8),
+                  if (!_isSelecting) ...[
+                    if (already) Icon(Icons.check_circle_rounded, size: 18, color: Colors.green.withValues(alpha: 0.5))
+                    else Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.15)),
+                  ],
+                ]),
+              ),
+            ));
+          },
+        ),
       ),
-    );
+      // Download selected bar
+      if (_isSelecting)
+        Positioned(left: 16, right: 16, bottom: 16,
+          child: Row(children: [
+            GestureDetector(
+              onTap: () => setState(() => _selectedFeedIndices.clear()),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 12, offset: const Offset(0, 4))],
+                ),
+                child: Icon(Icons.close_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.6)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: GestureDetector(
+              onTap: _downloadSelected,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: cs.primary,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: cs.primary.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.download_rounded, size: 18, color: cs.onPrimary),
+                  const SizedBox(width: 8),
+                  Text('Download ${_selectedFeedIndices.length} episode${_selectedFeedIndices.length == 1 ? '' : 's'}',
+                    style: tt.bodySmall?.copyWith(color: cs.onPrimary, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+            )),
+          ]),
+        ),
+    ]);
   }
 
   // ─── Settings Tab ───────────────────────────────────────────
@@ -1033,33 +1460,138 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
     final autoDownload = _media['autoDownloadEpisodes'] == true;
 
     return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 32), children: [
-      // Check for new episodes
+      // Check for new episodes with limit
+      StatefulBuilder(builder: (ctx, setCheckState) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(14)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.cloud_download_rounded, size: 20, color: cs.onSurfaceVariant),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Check for New Episodes', style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+                const SizedBox(height: 2),
+                Text('Scan RSS feed and download new episodes', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+              ])),
+            ]),
+            const SizedBox(height: 12),
+            // Date picker
+            Text('Look for episodes after', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _checkAfterDate ?? DateTime.now(),
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime.now(),
+                );
+                if (picked != null) {
+                  // Also pick time
+                  final time = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.fromDateTime(_checkAfterDate ?? DateTime.now()),
+                  );
+                  final dt = time != null
+                      ? DateTime(picked.year, picked.month, picked.day, time.hour, time.minute)
+                      : DateTime(picked.year, picked.month, picked.day);
+                  setCheckState(() => _checkAfterDate = dt);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: cs.onSurface.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+                ),
+                child: Row(children: [
+                  Icon(Icons.calendar_today_rounded, size: 14, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                  Text(
+                    _checkAfterDate != null ? _fmtDateTime(_checkAfterDate!) : 'Select date',
+                    style: tt.bodySmall?.copyWith(color: cs.onSurface, fontWeight: FontWeight.w500),
+                  ),
+                  const Spacer(),
+                  Icon(Icons.edit_rounded, size: 14, color: cs.onSurface.withValues(alpha: 0.2)),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Limit chips
+            Text('Max episodes to download', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final n in [1, 3, 5, 10, 25])
+                GestureDetector(
+                  onTap: () => setCheckState(() => _checkLimit = n),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _checkLimit == n ? cs.primary.withValues(alpha: 0.15) : cs.onSurface.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _checkLimit == n ? cs.primary.withValues(alpha: 0.4) : cs.onSurface.withValues(alpha: 0.06)),
+                    ),
+                    child: Text('$n', style: tt.labelSmall?.copyWith(
+                      color: _checkLimit == n ? cs.primary : cs.onSurface.withValues(alpha: 0.5),
+                      fontWeight: _checkLimit == n ? FontWeight.w700 : FontWeight.w500, fontSize: 12)),
+                  ),
+                ),
+            ]),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () async {
+                final api = context.read<AuthProvider>().apiService;
+                if (api == null) return;
+                // Set lastEpisodeCheck to the selected date before checking
+                if (_checkAfterDate != null) {
+                  await api.updatePodcastMedia(_podcastId, {
+                    'lastEpisodeCheck': _checkAfterDate!.millisecondsSinceEpoch,
+                  });
+                }
+                _msg('Checking for new episodes...');
+                final episodes = await api.checkNewPodcastEpisodes(_podcastId, limit: _checkLimit);
+                if (!mounted) return;
+                if (episodes != null) {
+                  _reloadItem();
+                  _loadFeed();
+                  if (episodes.isEmpty) {
+                    _msg('No new episodes found after ${_fmtDate(_checkAfterDate!.millisecondsSinceEpoch)}');
+                  } else {
+                    _msg('Found ${episodes.length} new episode${episodes.length == 1 ? '' : 's'} - downloading');
+                    _pollDownloadQueue();
+                  }
+                } else {
+                  _msg('Failed to check for new episodes');
+                }
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                child: Center(child: Text('Check & Download', style: tt.bodySmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w700))),
+              ),
+            ),
+          ]),
+        );
+      }),
+
+      // Match podcast metadata
       GestureDetector(
-        onTap: () async {
-          final api = context.read<AuthProvider>().apiService;
-          if (api == null) return;
-          _msg('Checking for new episodes...');
-          final ok = await api.checkNewPodcastEpisodes(_podcastId);
-          if (!mounted) return;
-          if (ok) {
-            _reloadItem();
-            _loadFeed();
-            _msg('Episode check complete');
-          } else {
-            _msg('Failed to check for new episodes');
-          }
-        },
+        onTap: () => _showMatchSheet(cs, tt),
         child: Container(
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(14)),
           child: Row(children: [
-            Icon(Icons.refresh_rounded, size: 20, color: cs.onSurfaceVariant),
+            Icon(Icons.auto_fix_high_rounded, size: 20, color: cs.onSurfaceVariant),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Check for New Episodes', style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+              Text('Match Podcast', style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
               const SizedBox(height: 2),
-              Text('Scan RSS feed for new episodes', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+              Text('Search iTunes to update cover and metadata', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
             ])),
             Icon(Icons.chevron_right_rounded, size: 20, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
           ]),
@@ -1230,6 +1762,23 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
     ]);
   }
 
+  void _showMatchSheet(ColorScheme cs, TextTheme tt) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PodcastMatchSheet(
+        podcastId: _podcastId,
+        initialQuery: _title,
+        onMatched: () {
+          _reloadItem();
+          widget.onChanged();
+        },
+      ),
+    );
+  }
+
   void _showEpisodeDetail(Map<String, dynamic> ep, bool alreadyDownloaded) {
     final isRoot = context.read<AuthProvider>().isRoot;
     showModalBottomSheet(
@@ -1320,6 +1869,14 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
     final secs = double.tryParse(s) ?? 0;
     if (secs <= 0) return '';
     return _fmtDur(secs);
+  }
+
+  String _fmtDateTime(DateTime dt) {
+    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    final period = dt.hour < 12 ? 'AM' : 'PM';
+    final h = dt.hour == 0 ? 12 : dt.hour > 12 ? dt.hour - 12 : dt.hour;
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '${m[dt.month - 1]} ${dt.day}, ${dt.year} $h:$min $period';
   }
 
   void _msg(String s) => ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(
@@ -1606,4 +2163,197 @@ class _DownloadedEpisodeDetailSheet extends StatelessWidget {
     if (secs <= 0) return s;
     return _fmtDur(secs);
   }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  Podcast Match Sheet
+// ═══════════════════════════════════════════════════════════════
+
+class _PodcastMatchSheet extends StatefulWidget {
+  final String podcastId;
+  final String initialQuery;
+  final VoidCallback onMatched;
+  const _PodcastMatchSheet({required this.podcastId, required this.initialQuery, required this.onMatched});
+  @override State<_PodcastMatchSheet> createState() => _PodcastMatchSheetState();
+}
+
+class _PodcastMatchSheetState extends State<_PodcastMatchSheet> {
+  late final TextEditingController _ctrl;
+  bool _searching = false;
+  bool _applying = false;
+  List<dynamic> _results = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialQuery);
+    _search();
+  }
+
+  @override
+  void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  Future<void> _search() async {
+    final q = _ctrl.text.trim(); if (q.isEmpty) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _searching = true);
+    final api = context.read<AuthProvider>().apiService;
+    if (api != null) _results = await api.searchPodcasts(q);
+    if (mounted) setState(() => _searching = false);
+  }
+
+  Future<void> _applyMatch(Map<String, dynamic> pod) async {
+    final api = context.read<AuthProvider>().apiService;
+    if (api == null) return;
+    setState(() => _applying = true);
+    final title = pod['title'] as String? ?? pod['trackName'] as String? ?? pod['collectionName'] as String?;
+    final author = pod['artistName'] as String? ?? pod['author'] as String?;
+    final result = await api.matchLibraryItem(widget.podcastId, title: title, author: author);
+    if (mounted) {
+      setState(() => _applying = false);
+      if (result != null) {
+        widget.onMatched();
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(SnackBar(
+          content: const Text('Podcast matched and updated'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      } else {
+        ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(SnackBar(
+          content: const Text('Failed to match podcast'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+      }
+    }
+  }
+
+  Map<String, dynamic> _extractPod(dynamic item) {
+    if (item is Map<String, dynamic>) {
+      if (item.containsKey('podcast')) return item['podcast'] as Map<String, dynamic>;
+      return item;
+    }
+    return {};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHigh,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.05,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (ctx, sc) => Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 8, 0),
+            child: Row(children: [
+              Expanded(child: Text('Match Podcast', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface))),
+              IconButton(
+                icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.6), size: 20),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ]),
+          ),
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: TextField(
+              controller: _ctrl,
+              style: TextStyle(color: cs.onSurface),
+              onSubmitted: (_) => _search(),
+              decoration: InputDecoration(
+                hintText: 'Search iTunes...',
+                hintStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.25)),
+                prefixIcon: Icon(Icons.search_rounded, color: cs.onSurface.withValues(alpha: 0.3)),
+                suffixIcon: _searching
+                    ? Padding(padding: const EdgeInsets.all(12),
+                        child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.onSurfaceVariant.withValues(alpha: 0.6))))
+                    : IconButton(icon: Icon(Icons.arrow_forward_rounded, color: cs.primary), onPressed: _search),
+                filled: true,
+                fillColor: cs.onSurface.withValues(alpha: 0.05),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+            ),
+          ),
+          Divider(height: 1, color: cs.onSurface.withValues(alpha: 0.1)),
+          // Results
+          Expanded(
+            child: _applying
+                ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const CircularProgressIndicator(strokeWidth: 2),
+                    const SizedBox(height: 12),
+                    Text('Applying match...', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4))),
+                  ]))
+                : _searching
+                    ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                    : _results.isEmpty
+                        ? Center(child: Text('No results', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24))))
+                        : ListView.builder(
+                            controller: sc,
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                            itemCount: _results.length,
+                            itemBuilder: (_, i) {
+                              final pod = _extractPod(_results[i]);
+                              final title = pod['title'] as String? ?? pod['trackName'] as String? ?? pod['collectionName'] as String? ?? 'Unknown';
+                              final author = pod['artistName'] as String? ?? pod['author'] as String? ?? '';
+                              final imageUrl = pod['cover'] as String? ?? pod['imageUrl'] as String? ?? pod['artworkUrl600'] as String? ?? pod['artworkUrl100'] as String? ?? '';
+                              final genres = (pod['genres'] as List?)?.whereType<String>().where((g) => g != 'Podcasts').toList();
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: GestureDetector(
+                                  onTap: () => _applyMatch(pod),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: cs.onSurface.withValues(alpha: 0.04),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Row(children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: imageUrl.isNotEmpty
+                                            ? Image.network(imageUrl, width: 56, height: 56, fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) => _ph(cs))
+                                            : _ph(cs),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                        Text(title, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface),
+                                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                                        if (author.isNotEmpty) ...[const SizedBox(height: 2),
+                                          Text(author, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+                                            maxLines: 1, overflow: TextOverflow.ellipsis)],
+                                        if (genres != null && genres.isNotEmpty) ...[const SizedBox(height: 3),
+                                          Text(genres.take(3).join(', '), style: tt.labelSmall?.copyWith(
+                                            color: cs.primary.withValues(alpha: 0.5), fontSize: 10))],
+                                      ])),
+                                      const SizedBox(width: 8),
+                                      Icon(Icons.check_circle_outline_rounded, color: cs.primary.withValues(alpha: 0.4)),
+                                    ]),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _ph(ColorScheme cs) => Container(
+    width: 56, height: 56,
+    decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+    child: Icon(Icons.podcasts_rounded, color: cs.primary.withValues(alpha: 0.4), size: 22),
+  );
 }

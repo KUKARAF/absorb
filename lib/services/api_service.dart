@@ -397,6 +397,19 @@ class ApiService {
     return null;
   }
 
+  /// Get a specific user's listening sessions (admin, paginated).
+  Future<Map<String, dynamic>?> getUserListeningSessions(String userId, {int page = 0, int itemsPerPage = 10}) async {
+    try {
+      final response = await _authGet(
+        Uri.parse('$_cleanBaseUrl/api/users/$userId/listening-sessions?itemsPerPage=$itemsPerPage&page=$page'),
+        timeout: const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// Get a library's series (paginated).
   Future<Map<String, dynamic>?> getLibrarySeries(
     String libraryId, {
@@ -1465,15 +1478,41 @@ class ApiService {
   }
 
   /// Check a single podcast for new episodes from its RSS feed
-  /// GET /api/podcasts/:id/checknew
-  Future<bool> checkNewPodcastEpisodes(String podcastId) async {
+  /// GET /api/podcasts/:id/checknew?limit=N
+  /// Returns the list of new episodes found, or null on failure.
+  Future<List<dynamic>?> checkNewPodcastEpisodes(String podcastId, {int? limit}) async {
     try {
+      final limitParam = limit != null ? '?limit=$limit' : '';
       final r = await _authGet(
-        Uri.parse('$_cleanBaseUrl/api/podcasts/$podcastId/checknew'),
+        Uri.parse('$_cleanBaseUrl/api/podcasts/$podcastId/checknew$limitParam'),
       );
-      return r.statusCode == 200;
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body);
+        return (data['episodes'] as List<dynamic>?) ?? [];
+      }
     } catch (e) { debugPrint('checkNewPodcastEpisodes error: $e'); }
-    return false;
+    return null;
+  }
+
+  /// Match a library item with external metadata
+  /// POST /api/items/:id/match
+  Future<Map<String, dynamic>?> matchLibraryItem(String itemId, {String? title, String? author, String? provider}) async {
+    try {
+      final body = <String, dynamic>{};
+      if (title != null) body['title'] = title;
+      if (author != null) body['author'] = author;
+      if (provider != null) body['provider'] = provider;
+      body['overrideCover'] = true;
+      body['overrideDetails'] = true;
+      final r = await _authPost(
+        Uri.parse('$_cleanBaseUrl/api/items/$itemId/match'),
+        body: jsonEncode(body),
+      );
+      if (r.statusCode == 200) {
+        return jsonDecode(r.body) as Map<String, dynamic>;
+      }
+    } catch (e) { debugPrint('matchLibraryItem error: $e'); }
+    return null;
   }
 
   /// Update podcast media settings (auto-download, etc.)

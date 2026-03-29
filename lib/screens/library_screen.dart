@@ -16,6 +16,7 @@ import '../widgets/library_sort_filter_sheet.dart';
 import '../widgets/library_books_tab.dart';
 import '../widgets/library_series_tab.dart';
 import '../widgets/library_authors_tab.dart';
+import 'admin_podcasts_screen.dart';
 
 /// Responsive grid column count based on available width.
 /// Returns 3 on phones, scales up on tablets/iPads.
@@ -1239,7 +1240,16 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                     Positioned(
                       left: 0, right: 0,
                       bottom: 12,
-                      child: Center(child: _buildFloatingSortButton(cs, tt)),
+                      child: Center(child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildFloatingSortButton(cs, tt),
+                          if (context.read<AuthProvider>().isAdmin) ...[
+                            const SizedBox(width: 8),
+                            _buildFloatingManageButton(cs),
+                          ],
+                        ],
+                      )),
                     ),
                 ],
               ),
@@ -1342,6 +1352,33 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                 Icon(Icons.sort_rounded, size: 14, color: cs.primary),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingManageButton(ColorScheme cs) {
+    return GestureDetector(
+      onTap: () {
+        final lib = context.read<LibraryProvider>().selectedLibrary;
+        if (lib != null) {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => AdminPodcastsScreen(library: lib)));
+        }
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: cs.surface.withValues(alpha: 0.6),
+              shape: BoxShape.circle,
+              border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+            ),
+            child: Icon(Icons.settings_rounded, size: 16, color: cs.primary),
           ),
         ),
       ),

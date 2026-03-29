@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/absorb_page_header.dart';
+import '../widgets/absorb_wave_icon.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   final List<dynamic> users;
@@ -146,6 +147,9 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
   Map<String, dynamic>? _fullUser;
   List<Map<String, dynamic>> _progressItems = [];
   final Map<String, Map<String, dynamic>> _itemCache = {};
+  List<dynamic> _sessions = [];
+  bool _loadingSessions = false;
+  bool _sessionsExpanded = false;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -197,6 +201,18 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
     }
 
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _loadSessions() async {
+    final api = context.read<AuthProvider>().apiService; if (api == null) return;
+    final userId = widget.user['id'] as String? ?? '';
+    if (userId.isEmpty) return;
+    setState(() => _loadingSessions = true);
+    final data = await api.getUserListeningSessions(userId, itemsPerPage: 10);
+    if (mounted) setState(() {
+      _sessions = (data?['sessions'] as List<dynamic>?) ?? [];
+      _loadingSessions = false;
+    });
   }
 
   String get _username => widget.user['username'] as String? ?? 'User';
@@ -295,17 +311,71 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
                 ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
                 : RefreshIndicator(
                     onRefresh: _load,
-                    child: _progressItems.isEmpty
+                    child: _progressItems.isEmpty && _sessions.isEmpty
                         ? ListView(children: [
                             const SizedBox(height: 80),
                             Center(child: Icon(Icons.menu_book_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.08))),
                             const SizedBox(height: 12),
                             Center(child: Text('No reading activity', style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.24)))),
                           ])
-                        : ListView.builder(
+                        : ListView(
                             padding: const EdgeInsets.only(bottom: 40),
-                            itemCount: _progressItems.length,
-                            itemBuilder: (_, i) => _progressTile(cs, tt, _progressItems[i]),
+                            children: [
+                              // Recent Sessions
+                              if (!_sessionsExpanded)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                                  child: GestureDetector(
+                                    onTap: () async {
+                                      setState(() => _sessionsExpanded = true);
+                                      await _loadSessions();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      decoration: BoxDecoration(
+                                        color: cs.surfaceContainerHigh,
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                        Icon(Icons.history_rounded, size: 16, color: cs.onSurface.withValues(alpha: 0.4)),
+                                        const SizedBox(width: 8),
+                                        Text('Recent Sessions', style: tt.bodySmall?.copyWith(
+                                          color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600)),
+                                      ]),
+                                    ),
+                                  ),
+                                )
+                              else if (_loadingSessions)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 24),
+                                  child: Center(child: SizedBox(width: 16, height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurface.withValues(alpha: 0.2)))),
+                                )
+                              else if (_sessions.isNotEmpty) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                                  child: Text('Recent Sessions', style: tt.titleSmall?.copyWith(
+                                    color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+                                ),
+                                ..._sessions.take(10).map((s) => _sessionTile(cs, tt, s)),
+                                const SizedBox(height: 16),
+                              ] else ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                                  child: Text('No recent sessions', style: tt.bodySmall?.copyWith(
+                                    color: cs.onSurface.withValues(alpha: 0.24))),
+                                ),
+                              ],
+                              // Progress items
+                              if (_progressItems.isNotEmpty) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                                  child: Text('Library Progress', style: tt.titleSmall?.copyWith(
+                                    color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+                                ),
+                                ..._progressItems.map((p) => _progressTile(cs, tt, p)),
+                              ],
+                            ],
                           ),
                   ),
           ),
@@ -420,6 +490,86 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
         ]),
       ),
     );
+  }
+
+  Widget _sessionTile(ColorScheme cs, TextTheme tt, dynamic s) {
+    if (s is! Map<String, dynamic>) return const SizedBox.shrink();
+    final rawTitle = s['displayTitle'] as String?;
+    final rawAuthor = s['displayAuthor'] as String?;
+    final meta = s['mediaMetadata'] as Map<String, dynamic>?;
+    final title = (rawTitle != null && !_looksLikeId(rawTitle))
+        ? rawTitle : meta?['title'] as String? ?? 'Unknown';
+    final author = (rawAuthor != null && !_looksLikeId(rawAuthor))
+        ? rawAuthor : meta?['authorName'] as String? ?? '';
+    final duration = (s['timeListening'] as num?)?.toDouble() ?? 0;
+    final updatedAt = s['updatedAt'] is num
+        ? DateTime.fromMillisecondsSinceEpoch((s['updatedAt'] as num).toInt())
+        : null;
+
+    final deviceInfo = s['deviceInfo'] as Map<String, dynamic>? ?? {};
+    final clientName = deviceInfo['clientName'] as String? ?? deviceInfo['deviceName'] as String? ?? '';
+    final isAbsorb = clientName.toLowerCase().contains('absorb');
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(14)),
+        child: Row(children: [
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(
+              color: (isAbsorb ? Colors.tealAccent : cs.onSurfaceVariant).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: isAbsorb
+                  ? AbsorbWaveIcon(size: 16, color: Colors.tealAccent.withValues(alpha: 0.7))
+                  : Icon(_clientIcon(clientName), size: 15, color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: tt.bodySmall?.copyWith(color: cs.onSurface, fontWeight: FontWeight.w600, fontSize: 12)),
+            if (author.isNotEmpty)
+              Text(author, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 10)),
+          ])),
+          const SizedBox(width: 8),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(_fmtDur(duration), style: tt.labelSmall?.copyWith(
+              color: cs.onSurface.withValues(alpha: 0.4), fontWeight: FontWeight.w600, fontSize: 11)),
+            if (updatedAt != null)
+              Text(_relativeDate(updatedAt), style: TextStyle(color: cs.onSurface.withValues(alpha: 0.18), fontSize: 9)),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  static final _idPattern = RegExp(
+    r'^([a-z]{2,4}_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  );
+  static bool _looksLikeId(String v) => _idPattern.hasMatch(v);
+
+  IconData _clientIcon(String clientName) {
+    final lower = clientName.toLowerCase();
+    if (lower.contains('audiobookshelf') || lower.contains('abs')) return Icons.headphones_rounded;
+    if (lower.contains('web') || lower.contains('browser')) return Icons.language_rounded;
+    if (lower.contains('ios') || lower.contains('apple')) return Icons.phone_iphone_rounded;
+    if (lower.contains('android')) return Icons.phone_android_rounded;
+    if (lower.contains('sonos') || lower.contains('cast')) return Icons.speaker_rounded;
+    return Icons.devices_rounded;
+  }
+
+  String _relativeDate(DateTime date) {
+    final diff = DateTime.now().difference(date);
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${date.month}/${date.day}';
   }
 
   Widget _coverFallback(ColorScheme cs) => Container(
