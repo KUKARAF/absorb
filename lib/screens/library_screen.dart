@@ -10,10 +10,12 @@ import '../services/api_service.dart';
 import '../services/download_service.dart';
 import '../services/audio_player_service.dart';
 import '../widgets/absorb_page_header.dart';
-import '../widgets/library_grid_tiles.dart';
 import '../widgets/library_search_results.dart';
 import '../main.dart' show oledNotifier;
 import '../widgets/library_sort_filter_sheet.dart';
+import '../widgets/library_books_tab.dart';
+import '../widgets/library_series_tab.dart';
+import '../widgets/library_authors_tab.dart';
 
 /// Responsive grid column count based on available width.
 /// Returns 3 on phones, scales up on tablets/iPads.
@@ -1224,7 +1226,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                       ? _buildSearchResults(cs, tt)
                       : hasTabs
                           ? _buildTabbedContent(cs, tt)
-                          : _buildGrid(cs, tt),
+                          : _buildGrid(),
                   // Floating tab bar at bottom (book libraries only, hidden during search)
                   if (hasTabs)
                     Positioned(
@@ -1400,9 +1402,9 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     return IndexedStack(
       index: _currentTab,
       children: [
-        _buildGrid(cs, tt),
-        _buildSeriesGrid(cs, tt),
-        _buildAuthorsGrid(cs, tt),
+        _buildGrid(),
+        _buildSeriesGrid(),
+        _buildAuthorsGrid(),
       ],
     );
   }
@@ -1444,194 +1446,46 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   // ═══════════════════════════════════════════════════════════════
   // LIBRARY TAB - BROWSE GRID
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildGrid(ColorScheme cs, TextTheme tt) {
-    if (_items.isEmpty && _isLoadingPage) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_items.isEmpty && !_isLoadingPage) {
-      final filterMsg = switch (_filter) {
-        LibraryFilter.inProgress => 'No books in progress',
-        LibraryFilter.finished => 'No finished books',
-        LibraryFilter.notStarted => 'All books have been started',
-        LibraryFilter.downloaded => 'No downloaded books',
-        LibraryFilter.inASeries => 'No series found',
-        LibraryFilter.hasEbook => 'No books with eBooks',
-        LibraryFilter.genre => 'No books in "${_genreFilter ?? 'genre'}"',
-        LibraryFilter.none => 'No books found',
-      };
-      return RefreshIndicator(
-        onRefresh: _refreshAll,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverFillRemaining(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.library_books_outlined,
-                        size: 56, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
-                    const SizedBox(height: 12),
-                    Text(filterMsg,
-                        style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
-                    if (_filter != LibraryFilter.none) ...[
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: () => _changeFilter(LibraryFilter.none),
-                        child: Text('Clear filter',
-                            style: tt.bodySmall?.copyWith(color: cs.primary)),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
+  Widget _buildGrid() {
+    return LibraryBooksTab(
+      items: _items,
+      isLoadingPage: _isLoadingPage,
+      hasMore: _hasMore,
+      scrollController: _scrollController,
+      filter: _filter,
+      genreFilter: _genreFilter,
+      rectangleCovers: _rectangleCovers,
+      coverAspectRatio: _coverAspectRatio,
       onRefresh: _refreshAll,
-      child: GridView.builder(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: responsiveGridCount(context),
-          childAspectRatio: _rectangleCovers ? 0.48 : 0.68,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-        ),
-      itemCount: _items.length + (_hasMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index >= _items.length) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        }
-        final item = _items[index];
-        if (item.containsKey('collapsedSeries')) {
-          return GridSeriesTile(item: item, coverAspectRatio: _coverAspectRatio);
-        }
-        return GridBookTile(item: item, coverAspectRatio: _coverAspectRatio);
-      },
-    ),
+      onClearFilter: () => _changeFilter(LibraryFilter.none),
     );
   }
 
   // ═══════════════════════════════════════════════════════════════
   // SERIES TAB - GRID
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildSeriesGrid(ColorScheme cs, TextTheme tt) {
-    if (_seriesItems.isEmpty && _isLoadingSeriesPage) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_seriesItems.isEmpty && !_isLoadingSeriesPage) {
-      return RefreshIndicator(
-        onRefresh: _refreshSeries,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverFillRemaining(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.collections_bookmark_outlined,
-                        size: 56, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
-                    const SizedBox(height: 12),
-                    Text('No series found',
-                        style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
+  Widget _buildSeriesGrid() {
+    return LibrarySeriesTab(
+      seriesItems: _seriesItems,
+      isLoadingSeriesPage: _isLoadingSeriesPage,
+      hasMoreSeries: _hasMoreSeries,
+      scrollController: _seriesScrollController,
+      rectangleCovers: _rectangleCovers,
+      coverAspectRatio: _coverAspectRatio,
       onRefresh: _refreshSeries,
-      child: GridView.builder(
-        controller: _seriesScrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: responsiveGridCount(context),
-          childAspectRatio: _rectangleCovers ? 0.48 : 0.68,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-        ),
-        itemCount: _seriesItems.length + (_hasMoreSeries ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index >= _seriesItems.length) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            );
-          }
-          return GridSeriesTileDirect(series: _seriesItems[index], coverAspectRatio: _coverAspectRatio);
-        },
-      ),
     );
   }
 
   // ═══════════════════════════════════════════════════════════════
   // AUTHORS TAB - GRID
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildAuthorsGrid(ColorScheme cs, TextTheme tt) {
-    if (_isLoadingAuthors) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_authors.isEmpty && _authorsLoaded) {
-      return RefreshIndicator(
-        onRefresh: _refreshAuthors,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverFillRemaining(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.people_outline_rounded,
-                        size: 56, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
-                    const SizedBox(height: 12),
-                    Text('No authors found',
-                        style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
+  Widget _buildAuthorsGrid() {
+    return LibraryAuthorsTab(
+      authors: _authors,
+      isLoadingAuthors: _isLoadingAuthors,
+      authorsLoaded: _authorsLoaded,
+      scrollController: _authorsScrollController,
       onRefresh: _refreshAuthors,
-      child: GridView.builder(
-        controller: _authorsScrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: responsiveGridCount(context),
-          childAspectRatio: 0.68,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-        ),
-        itemCount: _authors.length,
-        itemBuilder: (context, index) {
-          return GridAuthorTile(author: _authors[index]);
-        },
-      ),
     );
   }
 
