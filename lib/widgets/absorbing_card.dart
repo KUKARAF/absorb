@@ -13,6 +13,8 @@ import '../services/playback_history_service.dart';
 import 'book_detail_sheet.dart';
 import 'episode_list_sheet.dart';
 import 'equalizer_sheet.dart';
+import 'absorbing_shared.dart';
+import 'card_chapters_sheet.dart';
 import 'card_edge_progress_bar.dart';
 import 'card_progress_bar.dart';
 import 'card_playback_controls.dart';
@@ -560,10 +562,10 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                           Row(
                             children: [
                               if (_effectiveDuration > 0 && showBookBar)
-                                Text(_fmtTime(elapsed), style: timeStyle),
+                                Text(fmtTime(elapsed), style: timeStyle),
                               const Spacer(),
                               if (_effectiveDuration > 0 && showBookBar)
-                                Text('-${_fmtTime(remaining)}', style: timeStyle),
+                                Text('-${fmtTime(remaining)}', style: timeStyle),
                             ],
                           ),
                           Text('${(bookProgress * 100).clamp(0, 100).toStringAsFixed(1)}%',
@@ -629,12 +631,12 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                                 _coverUrl != null
                                     ? _isLocalCover
                                         ? Image.file(File(_coverUrl!), fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => _coverPlaceholder())
+                                            errorBuilder: (_, __, ___) => const CoverPlaceholder())
                                         : CachedNetworkImage(imageUrl: _coverUrl!, fit: BoxFit.cover,
                                               httpHeaders: mediaHeaders,
-                                              placeholder: (_, __) => _coverPlaceholder(),
-                                              errorWidget: (_, __, ___) => _coverPlaceholder())
-                                    : _coverPlaceholder(),
+                                              placeholder: (_, __) => const CoverPlaceholder(),
+                                              errorWidget: (_, __, ___) => const CoverPlaceholder())
+                                    : const CoverPlaceholder(),
                                 // Downloaded badge (top-right)
                                 if (isDownloaded)
                                   Positioned(
@@ -886,21 +888,6 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
       return ch['title'] as String?;
     }
     return null;
-  }
-
-  String _fmtTime(double s) {
-    if (s < 0) s = 0;
-    final h = (s / 3600).floor(); final m = ((s % 3600) / 60).floor(); final sec = (s % 60).floor();
-    if (h > 0) return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
-    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
-  }
-
-  Widget _coverPlaceholder() {
-    final cs2 = Theme.of(context).colorScheme;
-    return Container(
-      color: cs2.onSurface.withValues(alpha: 0.05),
-      child: Center(child: Icon(Icons.headphones_rounded, size: 48, color: cs2.onSurface.withValues(alpha: 0.15))),
-    );
   }
 
   void expandCard(BuildContext context) {
@@ -1255,101 +1242,27 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
     final cast = ChromecastService();
     final chapters = _isCastingThis ? cast.castingChapters : (_isActive ? widget.player.chapters : _chapters);
     if (chapters.isEmpty) return;
-    final totalDur = _isCastingThis ? cast.castingDuration : (_isActive ? widget.player.totalDuration : _duration);
-
-    // Find current chapter index for auto-scroll
-    int currentIdx = -1;
-    {
-      double pos = 0;
-      if (_isCastingThis) {
-        pos = cast.castPosition.inMilliseconds / 1000.0;
-      } else if (_isActive) {
-        pos = widget.player.position.inMilliseconds / 1000.0;
-      } else {
-        // Use server progress currentTime when inactive
-        final lib = context.read<LibraryProvider>();
-        final pd = _episodeId != null
-            ? lib.getEpisodeProgressData(_itemId, _episodeId!)
-            : lib.getProgressData(_itemId);
-        pos = (pd?['currentTime'] as num?)?.toDouble() ?? 0;
-      }
-      for (int i = 0; i < chapters.length; i++) {
-        final ch = chapters[i] as Map<String, dynamic>;
-        final start = (ch['start'] as num?)?.toDouble() ?? 0;
-        final end = (ch['end'] as num?)?.toDouble() ?? 0;
-        if (pos >= start && pos < end) { currentIdx = i; break; }
-      }
+    double pos = 0;
+    if (_isCastingThis) {
+      pos = cast.castPosition.inMilliseconds / 1000.0;
+    } else if (_isActive) {
+      pos = widget.player.position.inMilliseconds / 1000.0;
+    } else {
+      final lib = context.read<LibraryProvider>();
+      final pd = _episodeId != null
+          ? lib.getEpisodeProgressData(_itemId, _episodeId!)
+          : lib.getProgressData(_itemId);
+      pos = (pd?['currentTime'] as num?)?.toDouble() ?? 0;
     }
-
-    showModalBottomSheet(
-      context: context, isScrollControlled: true, useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        expand: false, initialChildSize: 0.6, minChildSize: 0.05, snap: true, maxChildSize: 0.9,
-        builder: (_, sc) {
-          if (currentIdx > 0) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              final target = currentIdx * 48.0 - 48;
-              if (sc.hasClients) sc.jumpTo(target.clamp(0, sc.position.maxScrollExtent));
-            });
-          }
-          return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).bottomSheetTheme.backgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border(top: BorderSide(color: accent.withValues(alpha: 0.2), width: 1)),
-          ),
-          child: Column(children: [
-            Padding(padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
-            Text('Chapters (${chapters.length})', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Expanded(child: ListView.builder(
-              controller: sc, itemCount: chapters.length,
-              itemBuilder: (_, i) {
-                final ch = chapters[i] as Map<String, dynamic>;
-                final chTitle = ch['title'] as String? ?? 'Chapter ${i + 1}';
-                final start = (ch['start'] as num?)?.toDouble() ?? 0;
-                final end = (ch['end'] as num?)?.toDouble() ?? 0;
-                final pos = _isCastingThis
-                    ? cast.castPosition.inMilliseconds / 1000.0
-                    : (_isActive ? widget.player.position.inMilliseconds / 1000.0 : 0.0);
-                final isCurrent = _isPlaybackActive && pos >= start && pos < end;
-                final isFinished = _isPlaybackActive && pos >= end;
-                final pct = totalDur > 0 ? (end / totalDur * 100).round() : 0;
-                final cs = Theme.of(context).colorScheme;
-                return ListTile(
-                  dense: true, selected: isCurrent,
-                  selectedTileColor: accent.withValues(alpha: 0.1),
-                  leading: SizedBox(width: 28, child: isFinished
-                    ? Icon(Icons.check_rounded, size: 16, color: cs.onSurfaceVariant.withValues(alpha: 0.4))
-                    : Text('${i + 1}', textAlign: TextAlign.center,
-                        style: tt.labelMedium?.copyWith(fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w400, color: isCurrent ? accent : cs.onSurfaceVariant))),
-                  title: Text(chTitle,
-                    style: tt.bodyMedium?.copyWith(fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
-                      color: isCurrent ? cs.onSurface : isFinished ? cs.onSurface.withValues(alpha: 0.4) : cs.onSurface.withValues(alpha: 0.7))),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text('$pct%', style: tt.labelSmall?.copyWith(
-                      color: isCurrent ? accent.withValues(alpha: 0.7) : cs.onSurface.withValues(alpha: 0.24), fontSize: 10, fontWeight: FontWeight.w600)),
-                    const SizedBox(width: 8),
-                    Text(_fmtDur((end - start) / (_speedAdjustedTime ? (_isActive ? widget.player.speed : _savedSpeed) : 1.0)), style: tt.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                  ]),
-                  onTap: _isPlaybackActive ? () {
-                    final seekDur = Duration(seconds: start.round());
-                    if (_isCastingThis) {
-                      cast.seekTo(seekDur);
-                    } else {
-                      widget.player.seekTo(seekDur);
-                    }
-                    Navigator.pop(ctx);
-                  } : null,
-                );
-              },
-            )),
-          ]),
-        );
-        },
-      ),
+    showChaptersSheet(
+      context: context, accent: accent, tt: tt,
+      chapters: chapters,
+      totalDuration: _isCastingThis ? cast.castingDuration : (_isActive ? widget.player.totalDuration : _duration),
+      currentPosition: pos,
+      isPlaybackActive: _isPlaybackActive,
+      isCastingThis: _isCastingThis,
+      displaySpeed: _speedAdjustedTime ? (_isActive ? widget.player.speed : _savedSpeed) : 1.0,
+      player: widget.player,
     );
   }
 
@@ -1413,11 +1326,11 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                         color: accent.withValues(alpha: 0.6), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
                     ));
                   }
-                  final posLabel = _fmtTime(e.positionSeconds);
+                  final posLabel = fmtTime(e.positionSeconds);
                   final timeStr = _timeOfDay(e.timestamp);
                   items.add(ListTile(
                     dense: true, visualDensity: const VisualDensity(vertical: -2),
-                    leading: Icon(_historyIcon(e.type), size: 18, color: accent.withValues(alpha: 0.7)),
+                    leading: Icon(historyIcon(e.type), size: 18, color: accent.withValues(alpha: 0.7)),
                     title: Text(e.label, style: tt.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
                     subtitle: Text('at $posLabel', style: tt.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                     trailing: Text(timeStr, style: tt.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3))),
@@ -1459,20 +1372,6 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
     );
   }
 
-  IconData _historyIcon(PlaybackEventType type) {
-    switch (type) {
-      case PlaybackEventType.play: return Icons.play_arrow_rounded;
-      case PlaybackEventType.pause: return Icons.pause_rounded;
-      case PlaybackEventType.seek: return Icons.swap_horiz_rounded;
-      case PlaybackEventType.syncLocal: return Icons.save_rounded;
-      case PlaybackEventType.syncServer: return Icons.cloud_done_rounded;
-      case PlaybackEventType.autoRewind: return Icons.replay_rounded;
-      case PlaybackEventType.skipForward: return Icons.forward_30_rounded;
-      case PlaybackEventType.skipBackward: return Icons.replay_10_rounded;
-      case PlaybackEventType.speedChange: return Icons.speed_rounded;
-    }
-  }
-
   String _dateLabel(DateTime dt) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -1493,10 +1392,5 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
     return '$h:$m $ampm';
   }
 
-  String _fmtDur(double s) {
-    final h = (s / 3600).floor(); final m = ((s % 3600) / 60).floor(); final sec = (s % 60).floor();
-    if (h > 0) return '${h}h ${m}m';
-    return '${m}m ${sec}s';
-  }
 }
 

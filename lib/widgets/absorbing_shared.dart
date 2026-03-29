@@ -3,6 +3,47 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/download_service.dart';
+import '../services/playback_history_service.dart';
+
+String fmtTime(double s) {
+  if (s < 0) s = 0;
+  final h = (s / 3600).floor(); final m = ((s % 3600) / 60).floor(); final sec = (s % 60).floor();
+  if (h > 0) return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+}
+
+String fmtDur(double s) {
+  final h = (s / 3600).floor(); final m = ((s % 3600) / 60).floor(); final sec = (s % 60).floor();
+  if (h > 0) return '${h}h ${m}m';
+  return '${m}m ${sec}s';
+}
+
+IconData historyIcon(PlaybackEventType type) {
+  switch (type) {
+    case PlaybackEventType.play: return Icons.play_arrow_rounded;
+    case PlaybackEventType.pause: return Icons.pause_rounded;
+    case PlaybackEventType.seek: return Icons.swap_horiz_rounded;
+    case PlaybackEventType.syncLocal: return Icons.save_rounded;
+    case PlaybackEventType.syncServer: return Icons.cloud_done_rounded;
+    case PlaybackEventType.autoRewind: return Icons.replay_rounded;
+    case PlaybackEventType.skipForward: return Icons.forward_30_rounded;
+    case PlaybackEventType.skipBackward: return Icons.replay_10_rounded;
+    case PlaybackEventType.speedChange: return Icons.speed_rounded;
+  }
+}
+
+class CoverPlaceholder extends StatelessWidget {
+  const CoverPlaceholder({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      color: cs.onSurface.withValues(alpha: 0.05),
+      child: Center(child: Icon(Icons.headphones_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.15))),
+    );
+  }
+}
 
 // ─── DOWNLOAD BUTTON WITH FILL BAR (wide card style) ────────
 
