@@ -105,17 +105,11 @@ class HomeSection extends StatelessWidget {
                 if (isPlaylistSection && entity is Map<String, dynamic>) {
                   final inner = entity['libraryItem'] as Map<String, dynamic>?;
                   if (inner != null) {
-                    // Merge episodeId into the item for episode detection
                     final episodeId = entity['episodeId'] as String?;
+                    final episode = entity['episode'] as Map<String, dynamic>?;
                     entity = Map<String, dynamic>.from(inner);
-                    if (episodeId != null) {
-                      // Find the matching episode from the podcast's episodes
-                      final media = entity['media'] as Map<String, dynamic>? ?? {};
-                      final episodes = media['episodes'] as List<dynamic>? ?? [];
-                      final ep = episodes.cast<Map<String, dynamic>>().where(
-                        (e) => e['id'] == episodeId,
-                      ).firstOrNull;
-                      if (ep != null) entity['recentEpisode'] = ep;
+                    if (episodeId != null && episode != null) {
+                      entity['recentEpisode'] = episode;
                     }
                   }
                 }

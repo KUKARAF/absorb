@@ -47,6 +47,39 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
   final Set<String> _selectedKeys = {}; // "libraryItemId" or "libraryItemId-episodeId"
   bool _isBatchUpdating = false;
 
+  /// Find episode data from the playlist item's top-level 'episode' field,
+  /// or from the library item's media.episodes array as fallback.
+  Map<String, dynamic>? _findEpisode(Map<String, dynamic> playlistItem, Map<String, dynamic> libraryItem, String episodeId) {
+    // Server includes episode as top-level field on playlist items
+    final topEp = playlistItem['episode'] as Map<String, dynamic>?;
+    if (topEp != null) return topEp;
+    // Fallback: look in library item's episodes array
+    final media = libraryItem['media'] as Map<String, dynamic>? ?? {};
+    final episodes = media['episodes'] as List<dynamic>? ?? [];
+    return episodes.cast<Map<String, dynamic>>().where(
+      (e) => e['id'] == episodeId,
+    ).firstOrNull;
+  }
+
+  /// Get episode title from playlist item data.
+  String? _getEpisodeTitle(Map<String, dynamic> playlistItem, Map<String, dynamic> libraryItem, String episodeId) {
+    return _findEpisode(playlistItem, libraryItem, episodeId)?['title'] as String?;
+  }
+
+  /// Open the correct detail sheet for a playlist item.
+  void _openItem(Map<String, dynamic> playlistItem, Map<String, dynamic> libraryItem, String libraryItemId, String? episodeId) {
+    if (episodeId != null) {
+      final ep = _findEpisode(playlistItem, libraryItem, episodeId);
+      if (ep != null) {
+        EpisodeDetailSheet.show(context, libraryItem, ep);
+      } else {
+        EpisodeListSheet.show(context, libraryItem);
+      }
+    } else {
+      showBookDetailSheet(context, libraryItemId);
+    }
+  }
+
   String _itemKey(Map<String, dynamic> item) {
     final libraryItemId = item['libraryItemId'] as String? ?? '';
     final episodeId = item['episodeId'] as String?;
@@ -400,11 +433,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
 
         String? episodeTitle;
         if (episodeId != null) {
-          final episodes = media['episodes'] as List<dynamic>? ?? [];
-          final ep = episodes.cast<Map<String, dynamic>>().where(
-            (e) => e['id'] == episodeId,
-          ).firstOrNull;
-          episodeTitle = ep?['title'] as String?;
+          episodeTitle = _getEpisodeTitle(item, libraryItem, episodeId);
         }
 
         return Container(
@@ -487,11 +516,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
 
         String? episodeTitle;
         if (episodeId != null) {
-          final episodes = media['episodes'] as List<dynamic>? ?? [];
-          final ep = episodes.cast<Map<String, dynamic>>().where(
-            (e) => e['id'] == episodeId,
-          ).firstOrNull;
-          episodeTitle = ep?['title'] as String?;
+          episodeTitle = _getEpisodeTitle(item, libraryItem, episodeId);
         }
 
         return InkWell(
@@ -569,11 +594,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
 
         String? episodeTitle;
         if (episodeId != null) {
-          final episodes = media['episodes'] as List<dynamic>? ?? [];
-          final ep = episodes.cast<Map<String, dynamic>>().where(
-            (e) => e['id'] == episodeId,
-          ).firstOrNull;
-          episodeTitle = ep?['title'] as String?;
+          episodeTitle = _getEpisodeTitle(item, libraryItem, episodeId);
         }
 
         final isOnAbsorbing = lib.isOnAbsorbingList(progressKey);
@@ -618,19 +639,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
-                onTap: () {
-                  if (episodeId != null) {
-                    final episodes = media['episodes'] as List<dynamic>? ?? [];
-                    final ep = episodes.cast<Map<String, dynamic>>().where(
-                      (e) => e['id'] == episodeId,
-                    ).firstOrNull;
-                    if (ep != null) {
-                      EpisodeDetailSheet.show(context, libraryItem, ep);
-                    }
-                  } else {
-                    showBookDetailSheet(context, libraryItemId);
-                  }
-                },
+                onTap: () => _openItem(item, libraryItem, libraryItemId, episodeId),
                 borderRadius: BorderRadius.circular(14),
                 child: SizedBox(
                   height: 112,
@@ -757,26 +766,11 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
 
         String? episodeTitle;
         if (episodeId != null) {
-          final episodes = media['episodes'] as List<dynamic>? ?? [];
-          episodeTitle = episodes.cast<Map<String, dynamic>>().where(
-            (e) => e['id'] == episodeId,
-          ).firstOrNull?['title'] as String?;
+          episodeTitle = _getEpisodeTitle(item, libraryItem, episodeId);
         }
 
         return GestureDetector(
-          onTap: () {
-            if (episodeId != null) {
-              final episodes = media['episodes'] as List<dynamic>? ?? [];
-              final ep = episodes.cast<Map<String, dynamic>>().where(
-                (e) => e['id'] == episodeId,
-              ).firstOrNull;
-              if (ep != null) {
-                EpisodeDetailSheet.show(context, libraryItem, ep);
-              }
-            } else {
-              showBookDetailSheet(context, libraryItemId);
-            }
-          },
+          onTap: () => _openItem(item, libraryItem, libraryItemId, episodeId),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
