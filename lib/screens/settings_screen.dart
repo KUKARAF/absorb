@@ -1140,19 +1140,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: const Text('Auto sleep timer'),
                       subtitle: Text(
                         _autoSleepSettings.enabled
-                            ? '${_autoSleepSettings.startLabel} – ${_autoSleepSettings.endLabel} · ${_autoSleepSettings.durationMinutes} min'
+                            ? '${_autoSleepSettings.startLabel} – ${_autoSleepSettings.endLabel} · ${_autoSleepSettings.useEndOfChapter ? 'End of chapter' : '${_autoSleepSettings.durationMinutes} min'}'
                             : 'Automatically start a sleep timer during a time window',
                         style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                       value: _autoSleepSettings.enabled,
                       onChanged: _loaded ? (v) {
-                        final updated = AutoSleepSettings(
-                          enabled: v,
-                          startHour: _autoSleepSettings.startHour,
-                          startMinute: _autoSleepSettings.startMinute,
-                          endHour: _autoSleepSettings.endHour,
-                          endMinute: _autoSleepSettings.endMinute,
-                          durationMinutes: _autoSleepSettings.durationMinutes,
-                        );
+                        final updated = _autoSleepSettings.copyWith(enabled: v);
                         setState(() => _autoSleepSettings = updated);
                         updated.save();
                         SleepTimerService().updateAutoSleepSettings(updated);
@@ -1171,14 +1164,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             initialTime: TimeOfDay(hour: _autoSleepSettings.startHour, minute: _autoSleepSettings.startMinute),
                           );
                           if (picked != null) {
-                            final updated = AutoSleepSettings(
-                              enabled: true,
-                              startHour: picked.hour,
-                              startMinute: picked.minute,
-                              endHour: _autoSleepSettings.endHour,
-                              endMinute: _autoSleepSettings.endMinute,
-                              durationMinutes: _autoSleepSettings.durationMinutes,
-                            );
+                            final updated = _autoSleepSettings.copyWith(startHour: picked.hour, startMinute: picked.minute);
                             setState(() => _autoSleepSettings = updated);
                             updated.save();
                             SleepTimerService().updateAutoSleepSettings(updated);
@@ -1197,14 +1183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             initialTime: TimeOfDay(hour: _autoSleepSettings.endHour, minute: _autoSleepSettings.endMinute),
                           );
                           if (picked != null) {
-                            final updated = AutoSleepSettings(
-                              enabled: true,
-                              startHour: _autoSleepSettings.startHour,
-                              startMinute: _autoSleepSettings.startMinute,
-                              endHour: picked.hour,
-                              endMinute: picked.minute,
-                              durationMinutes: _autoSleepSettings.durationMinutes,
-                            );
+                            final updated = _autoSleepSettings.copyWith(endHour: picked.hour, endMinute: picked.minute);
                             setState(() => _autoSleepSettings = updated);
                             updated.save();
                             SleepTimerService().updateAutoSleepSettings(updated);
@@ -1212,35 +1191,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         },
                       ),
                       const Divider(height: 1, indent: 16, endIndent: 16),
-                      // Duration slider
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Timer duration', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
-                            Text('${_autoSleepSettings.durationMinutes} min',
-                              style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.primary)),
-                          ],
-                        ),
-                      ),
-                      AbsorbSlider(
-                        value: _autoSleepSettings.durationMinutes.toDouble(),
-                        min: 5, max: 120, divisions: 23,
+                      // End of chapter toggle
+                      SwitchListTile(
+                        title: const Text('End of chapter'),
+                        subtitle: Text(
+                          _autoSleepSettings.useEndOfChapter
+                              ? 'Stop at the end of the current chapter'
+                              : 'Use a timed sleep timer',
+                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        value: _autoSleepSettings.useEndOfChapter,
                         onChanged: _loaded ? (v) {
-                          final updated = AutoSleepSettings(
-                            enabled: true,
-                            startHour: _autoSleepSettings.startHour,
-                            startMinute: _autoSleepSettings.startMinute,
-                            endHour: _autoSleepSettings.endHour,
-                            endMinute: _autoSleepSettings.endMinute,
-                            durationMinutes: v.round(),
-                          );
+                          final updated = _autoSleepSettings.copyWith(useEndOfChapter: v);
                           setState(() => _autoSleepSettings = updated);
                           updated.save();
                           SleepTimerService().updateAutoSleepSettings(updated);
                         } : null,
                       ),
+                      // Duration slider (only for timed mode)
+                      if (!_autoSleepSettings.useEndOfChapter) ...[
+                        const Divider(height: 1, indent: 16, endIndent: 16),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Timer duration', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                              Text('${_autoSleepSettings.durationMinutes} min',
+                                style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.primary)),
+                            ],
+                          ),
+                        ),
+                        AbsorbSlider(
+                          value: _autoSleepSettings.durationMinutes.toDouble(),
+                          min: 5, max: 120, divisions: 23,
+                          onChanged: _loaded ? (v) {
+                            final updated = _autoSleepSettings.copyWith(durationMinutes: v.round());
+                            setState(() => _autoSleepSettings = updated);
+                            updated.save();
+                            SleepTimerService().updateAutoSleepSettings(updated);
+                          } : null,
+                        ),
+                      ],
                       const SizedBox(height: 4),
                     ],
                   ],

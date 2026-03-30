@@ -17,6 +17,7 @@ class AutoSleepSettings {
   final int endHour;     // 24h format, e.g. 6 for 6 AM
   final int endMinute;
   final int durationMinutes; // how many minutes the auto-started timer runs
+  final bool useEndOfChapter; // use end-of-chapter mode instead of timed
 
   const AutoSleepSettings({
     this.enabled = false,
@@ -25,7 +26,21 @@ class AutoSleepSettings {
     this.endHour = 6,
     this.endMinute = 0,
     this.durationMinutes = 30,
+    this.useEndOfChapter = false,
   });
+
+  AutoSleepSettings copyWith({
+    bool? enabled, int? startHour, int? startMinute,
+    int? endHour, int? endMinute, int? durationMinutes, bool? useEndOfChapter,
+  }) => AutoSleepSettings(
+    enabled: enabled ?? this.enabled,
+    startHour: startHour ?? this.startHour,
+    startMinute: startMinute ?? this.startMinute,
+    endHour: endHour ?? this.endHour,
+    endMinute: endMinute ?? this.endMinute,
+    durationMinutes: durationMinutes ?? this.durationMinutes,
+    useEndOfChapter: useEndOfChapter ?? this.useEndOfChapter,
+  );
 
   /// Check if the current time is within the auto sleep window.
   bool isInWindow() {
@@ -60,6 +75,7 @@ class AutoSleepSettings {
       endHour: await ScopedPrefs.getInt('autoSleep_endHour') ?? 6,
       endMinute: await ScopedPrefs.getInt('autoSleep_endMinute') ?? 0,
       durationMinutes: await ScopedPrefs.getInt('autoSleep_duration') ?? 30,
+      useEndOfChapter: await ScopedPrefs.getBool('autoSleep_endOfChapter') ?? false,
     );
   }
 
@@ -70,6 +86,7 @@ class AutoSleepSettings {
     await ScopedPrefs.setInt('autoSleep_endHour', endHour);
     await ScopedPrefs.setInt('autoSleep_endMinute', endMinute);
     await ScopedPrefs.setInt('autoSleep_duration', durationMinutes);
+    await ScopedPrefs.setBool('autoSleep_endOfChapter', useEndOfChapter);
   }
 }
 
@@ -441,10 +458,17 @@ class SleepTimerService extends ChangeNotifier {
       _windowBoundaryTimer?.cancel();
       _windowBoundaryTimer = null;
       if (!isActive && !_autoSleepDismissed) {
-        debugPrint('[SleepTimer] Auto sleep: in window ${settings.startLabel}–${settings.endLabel}, '
-            'starting ${settings.durationMinutes}m timer');
-        setTimeSleep(Duration(minutes: settings.durationMinutes));
-        onToast?.call('Auto sleep: ${settings.durationMinutes}m timer started');
+        if (settings.useEndOfChapter) {
+          debugPrint('[SleepTimer] Auto sleep: in window ${settings.startLabel}–${settings.endLabel}, '
+              'starting end-of-chapter timer');
+          setChapterSleep(1);
+          onToast?.call('Auto sleep: end of chapter timer started');
+        } else {
+          debugPrint('[SleepTimer] Auto sleep: in window ${settings.startLabel}–${settings.endLabel}, '
+              'starting ${settings.durationMinutes}m timer');
+          setTimeSleep(Duration(minutes: settings.durationMinutes));
+          onToast?.call('Auto sleep: ${settings.durationMinutes}m timer started');
+        }
       }
     } else {
       // Not in window yet — schedule a one-shot timer for when it opens
@@ -467,9 +491,15 @@ class SleepTimerService extends ChangeNotifier {
       _windowBoundaryTimer = null;
       if (_isPlaybackActive && !isActive && !_autoSleepDismissed) {
         _wasInWindow = true;
-        debugPrint('[SleepTimer] Window boundary hit — starting ${settings.durationMinutes}m timer');
-        setTimeSleep(Duration(minutes: settings.durationMinutes));
-        onToast?.call('Auto sleep: ${settings.durationMinutes}m timer started');
+        if (settings.useEndOfChapter) {
+          debugPrint('[SleepTimer] Window boundary hit — starting end-of-chapter timer');
+          setChapterSleep(1);
+          onToast?.call('Auto sleep: end of chapter timer started');
+        } else {
+          debugPrint('[SleepTimer] Window boundary hit — starting ${settings.durationMinutes}m timer');
+          setTimeSleep(Duration(minutes: settings.durationMinutes));
+          onToast?.call('Auto sleep: ${settings.durationMinutes}m timer started');
+        }
       }
     });
   }

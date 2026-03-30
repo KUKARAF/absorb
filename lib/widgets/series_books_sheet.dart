@@ -68,6 +68,10 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
   bool _isDownloadingAll = false;
   bool _isMarkingAll = false;
   bool _autoDownloadEnabled = false;
+  bool _collapseSeries = false;
+  final Set<String> _expandedSubSeries = {};
+  // Full series data from the series metadata endpoint (has complete series arrays per book)
+  List<dynamic> _seriesMetaBooks = [];
 
   bool _didAutoScroll = false;
   LibraryProvider? _lib;
@@ -220,6 +224,277 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
     return raw.trim();
   }
 
+  /// Detect sub-series within the current series by looking at each book's
+  /// series array for series other than the current one.
+  /// Returns a map of sub-series name -> list of books in that sub-series.
+  Widget _buildGroupedGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
+    final groups = _getSubSeriesGroups();
+    final seriesLookup = _buildSeriesLookup();
+    final currentId = widget.seriesId;
+
+    // Build sub-series tiles for named groups, flat books for ungrouped
+    final tiles = <Map<String, dynamic>>[];
+    final ungrouped = <Map<String, dynamic>>[];
+
+    for (final entry in groups.entries) {
+      if (entry.key.isEmpty) {
+        ungrouped.addAll(entry.value);
+        continue;
+      }
+      // Find the sub-series ID from any book's series data
+      String? subSeriesId;
+      for (final book in entry.value) {
+        final bookId = book['id'] as String? ?? '';
+        final bookSeries = seriesLookup[bookId] ?? [];
+        for (final s in bookSeries) {
+          if (s['name'] == entry.key && s['id'] != currentId) {
+            subSeriesId = s['id'] as String?;
+            break;
+          }
+        }
+        if (subSeriesId != null) break;
+      }
+      tiles.add({
+        'type': 'series',
+        'name': entry.key,
+        'id': subSeriesId ?? '',
+        'books': entry.value,
+      });
+    }
+
+    // Sort: sub-series alphabetically, then ungrouped books at end
+    tiles.sort((a, b) => (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase()));
+
+    final crossAxisCount = (MediaQuery.of(context).size.width / 130).floor().clamp(3, 10);
+
+    return GridView.builder(
+      controller: widget.scrollController,
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).viewPadding.bottom),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 0.55,
+      ),
+      itemCount: tiles.length + ungrouped.length,
+      itemBuilder: (context, index) {
+        if (index < tiles.length) {
+          final tile = tiles[index];
+          return GridSeriesTileDirect(series: tile);
+        }
+        final book = ungrouped[index - tiles.length];
+        return GridBookTile(item: book, sequenceBadge: _getSequenceString(book));
+      },
+    );
+  }
+
+  Future<void> _fetchSubSeriesData() async {
+    final api = context.read<AuthProvider>().apiService;
+    if (api == null) return;
+    final futures = <Future>[];
+    for (final book in _books) {
+      final bookId = book['id'] as String? ?? '';
+      if (bookId.isEmpty) continue;
+      futures.add(
+        api.getLibraryItem(bookId).then((item) {
+          if (item != null) {
+            _seriesMetaBooks.add(item);
+          }
+        }),
+      );
+    }
+    // Fetch in batches of 10
+    for (var i = 0; i < futures.length; i += 10) {
+      await Future.wait(futures.skip(i).take(10));
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Build a lookup from book ID to full series array using seriesMetaBooks
+  /// (which has the complete series list per book, unlike the filtered items endpoint).
+  Map<String, List<Map<String, dynamic>>> _buildSeriesLookup() {
+    final lookup = <String, List<Map<String, dynamic>>>{};
+    for (final entry in _seriesMetaBooks) {
+      if (entry is! Map<String, dynamic>) continue;
+      final bookId = entry['id'] as String? ?? '';
+      final media = entry['media'] as Map<String, dynamic>? ?? {};
+      final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+      final seriesRaw = metadata['series'];
+      final seriesList = seriesRaw is List
+          ? seriesRaw.whereType<Map<String, dynamic>>().toList()
+          : seriesRaw is Map<String, dynamic>
+              ? [seriesRaw]
+              : <Map<String, dynamic>>[];
+      if (bookId.isNotEmpty && seriesList.isNotEmpty) {
+        lookup[bookId] = seriesList;
+      }
+    }
+    return lookup;
+  }
+
+  Map<String, List<Map<String, dynamic>>> _getSubSeriesGroups() {
+    final groups = <String, List<Map<String, dynamic>>>{};
+    final currentName = widget.seriesName.toLowerCase();
+    final currentId = widget.seriesId;
+    final seriesLookup = _buildSeriesLookup();
+
+    for (final book in _books) {
+      final bookId = book['id'] as String? ?? '';
+      // Prefer full series data from metadata endpoint, fall back to item data
+      final seriesList = seriesLookup[bookId] ?? () {
+        final media = book['media'] as Map<String, dynamic>? ?? {};
+        final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+        final seriesRaw = metadata['series'];
+        return seriesRaw is List
+            ? seriesRaw.whereType<Map<String, dynamic>>().toList()
+            : seriesRaw is Map<String, dynamic>
+                ? [seriesRaw]
+                : <Map<String, dynamic>>[];
+      }();
+
+      String? subSeriesName;
+      for (final s in seriesList) {
+        final sId = s['id'] as String?;
+        final sName = s['name'] as String? ?? '';
+        if (sId != currentId && sName.toLowerCase() != currentName && sName.isNotEmpty) {
+          subSeriesName = sName;
+          break;
+        }
+      }
+
+      final key = subSeriesName ?? '';
+      groups.putIfAbsent(key, () => []).add(book);
+    }
+    return groups;
+  }
+
+  bool get _hasSubSeries {
+    if (_books.length < 3) return false;
+    final groups = _getSubSeriesGroups();
+    // Need at least 2 named sub-series to be worth grouping
+    return groups.keys.where((k) => k.isNotEmpty).length >= 2;
+  }
+
+  Widget _buildGroupedList(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
+    final groups = _getSubSeriesGroups();
+    // Sort sub-series: named groups first (alphabetically), ungrouped last
+    final sortedKeys = groups.keys.toList()
+      ..sort((a, b) {
+        if (a.isEmpty && b.isEmpty) return 0;
+        if (a.isEmpty) return 1;
+        if (b.isEmpty) return -1;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
+
+    return ListView(
+      controller: widget.scrollController,
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).viewPadding.bottom),
+      children: [
+        for (final key in sortedKeys) ...[
+          () {
+            final books = groups[key]!;
+            final isExpanded = _expandedSubSeries.contains(key.isEmpty ? '_ungrouped' : key);
+            final groupKey = key.isEmpty ? '_ungrouped' : key;
+            final displayName = key.isEmpty ? 'Other Books' : key;
+
+            // Calculate sub-series progress
+            double groupDur = 0, groupListened = 0;
+            for (final book in books) {
+              final bookId = book['id'] as String? ?? '';
+              final media = book['media'] as Map<String, dynamic>? ?? {};
+              final dur = (media['duration'] is num) ? (media['duration'] as num).toDouble() : 0.0;
+              groupDur += dur;
+              groupListened += dur * lib.getProgress(bookId);
+            }
+            final groupProgress = groupDur > 0 ? (groupListened / groupDur).clamp(0.0, 1.0) : 0.0;
+            final allFinished = groupProgress >= 0.99;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: () => setState(() {
+                    if (isExpanded) {
+                      _expandedSubSeries.remove(groupKey);
+                    } else {
+                      _expandedSubSeries.add(groupKey);
+                    }
+                  }),
+                  // Tap sub-series name to open that series sheet
+                  onLongPress: key.isNotEmpty ? () {
+                    // Find the series ID for this sub-series from any book's series array
+                    String? subSeriesId;
+                    for (final book in books) {
+                      final media = book['media'] as Map<String, dynamic>? ?? {};
+                      final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+                      final seriesRaw = metadata['series'];
+                      if (seriesRaw is List) {
+                        for (final s in seriesRaw) {
+                          if (s is Map<String, dynamic> && s['name'] == key) {
+                            subSeriesId = s['id'] as String?;
+                            break;
+                          }
+                        }
+                      }
+                      if (subSeriesId != null) break;
+                    }
+                    if (subSeriesId != null) {
+                      showSeriesBooksSheet(context,
+                        seriesName: key,
+                        seriesId: subSeriesId,
+                        serverUrl: widget.serverUrl,
+                        token: widget.token,
+                        libraryId: widget.libraryId,
+                      );
+                    }
+                  } : null,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8, top: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(children: [
+                      Icon(
+                        isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                        size: 20, color: cs.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(displayName, style: tt.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600, color: cs.onSurface)),
+                        const SizedBox(height: 2),
+                        Text('${books.length} book${books.length != 1 ? 's' : ''}'
+                          '${allFinished ? ' · Finished' : groupProgress > 0 ? ' · ${(groupProgress * 100).round()}%' : ''}',
+                          style: tt.labelSmall?.copyWith(
+                            color: allFinished ? Colors.green.withValues(alpha: 0.7) : cs.onSurfaceVariant.withValues(alpha: 0.5),
+                            fontSize: 11)),
+                      ])),
+                      if (groupProgress > 0 && !allFinished)
+                        SizedBox(
+                          width: 40,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: LinearProgressIndicator(
+                              value: groupProgress,
+                              minHeight: 3,
+                              backgroundColor: cs.onSurface.withValues(alpha: 0.06),
+                              valueColor: AlwaysStoppedAnimation(cs.primary),
+                            ),
+                          ),
+                        ),
+                    ]),
+                  ),
+                ),
+                if (isExpanded)
+                  ...books.map((book) => _buildBookCard(cs, tt, lib, book)),
+              ],
+            );
+          }(),
+        ],
+      ],
+    );
+  }
+
   Future<void> _fetchFromApi() async {
     final seriesId = widget.seriesId;
     if (seriesId == null || seriesId.isEmpty) {
@@ -274,6 +549,8 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
       },
     );
     if (data == null && mounted) setState(() => _isLoading = false);
+    // Fetch full item data in background to detect sub-series
+    if (_books.length >= 3) _fetchSubSeriesData();
   }
 
 
@@ -598,10 +875,23 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
           ),
         if (_books.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                if (_hasSubSeries)
+                  IconButton(
+                    icon: Icon(
+                      _collapseSeries ? Icons.unfold_less_rounded : Icons.unfold_more_rounded,
+                      size: 20,
+                      color: _collapseSeries ? cs.primary : cs.onSurfaceVariant),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: _collapseSeries ? 'Show all books' : 'Group by sub-series',
+                    onPressed: () => setState(() {
+                      _collapseSeries = !_collapseSeries;
+                      if (_collapseSeries) _expandedSubSeries.clear();
+                    }),
+                  ),
+                const Spacer(),
                 IconButton(
                   icon: Icon(Icons.view_list_rounded, size: 20,
                     color: !_gridView ? cs.primary : cs.onSurfaceVariant),
@@ -628,6 +918,20 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                       ?.copyWith(color: cs.onSurfaceVariant)),
             ),
           )
+        else if (_collapseSeries && _gridView)
+          Expanded(
+            child: ListenableBuilder(
+              listenable: DownloadService(),
+              builder: (context, _) => _buildGroupedGrid(cs, tt, lib),
+            ),
+          )
+        else if (_collapseSeries)
+          Expanded(
+            child: ListenableBuilder(
+              listenable: DownloadService(),
+              builder: (context, _) => _buildGroupedList(cs, tt, lib),
+            ),
+          )
         else if (_gridView)
           Expanded(
             child: ListenableBuilder(
@@ -651,291 +955,184 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
               controller: widget.scrollController,
               padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).viewPadding.bottom),
               itemCount: _books.length,
-              itemBuilder: (context, index) {
-                final book = _books[index];
-                final bookId = book['id'] as String? ?? '';
-                final media = book['media'] as Map<String, dynamic>? ?? {};
-                final metadata =
-                    media['metadata'] as Map<String, dynamic>? ?? {};
-                final bookTitle = metadata['title'] as String? ?? 'Unknown';
-                final authorName = metadata['authorName'] as String? ?? '';
-                final sequence = _getSequenceString(book);
-                final duration = (media['duration'] is num)
-                    ? (media['duration'] as num).toDouble()
-                    : 0.0;
-
-                final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
-                final progress = lib.getProgress(bookId);
-                final isFinished = lib.getProgressData(bookId)?['isFinished'] == true;
-                final isDownloaded = DownloadService().isDownloaded(bookId);
-                final isDownloading = DownloadService().isDownloading(bookId);
-                final downloadPct = (DownloadService().downloadProgress(bookId) * 100)
-                    .clamp(0, 100)
-                    .round();
-
-                final coverUrl = lib.getCoverUrl(bookId);
-
-                final isOnAbsorbing = lib.isOnAbsorbingList(bookId);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Dismissible(
-                    key: ValueKey('absorb-$bookId'),
-                    direction: isOnAbsorbing ? DismissDirection.none : DismissDirection.startToEnd,
-                    confirmDismiss: (_) async {
-                      await lib.addToAbsorbingQueue(bookId);
-                      lib.absorbingItemCache[bookId] = Map<String, dynamic>.from(book);
-                      if (context.mounted) {
-                        HapticFeedback.mediumImpact();
-                        showOverlayToast(context, 'Added "$bookTitle" to Absorbing', icon: Icons.add_circle_outline_rounded);
-                      }
-                      return false; // keep item in list
-                    },
-                    background: Container(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.only(left: 20),
-                      decoration: BoxDecoration(
-                        color: cs.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(Icons.add_circle_outline_rounded, color: cs.primary),
-                    ),
-                    child: Card(
-                    elevation: 0,
-                    color: cs.surfaceContainerHigh,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: () {
-                        if (bookId.isNotEmpty) {
-                          if (lib.isPodcastLibrary) {
-                            EpisodeListSheet.show(context, book);
-                          } else {
-                            showBookDetailSheet(context, bookId);
-                          }
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(14),
-                      child: SizedBox(
-                        height: 112,
-                        child: Row(
-                        children: [
-                          // Square cover with sequence badge + status badges
-                          AspectRatio(
-                            aspectRatio: 1,
-                            child: Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: coverUrl != null
-                                      ? (coverUrl.startsWith('/')
-                                          ? Image.file(File(coverUrl), fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) => _placeholder(cs))
-                                          : CachedNetworkImage(
-                                              imageUrl: coverUrl,
-                                              fit: BoxFit.cover,
-                                              httpHeaders: lib.mediaHeaders,
-                                              placeholder: (_, __) =>
-                                                  _placeholder(cs),
-                                              errorWidget: (_, __, ___) =>
-                                                  _placeholder(cs),
-                                            ))
-                                      : _placeholder(cs),
-                                ),
-                                if (sequence != null && sequence.isNotEmpty)
-                                  Positioned(
-                                    top: 4,
-                                    left: 4,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 5, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.7),
-                                        borderRadius:
-                                            BorderRadius.circular(6),
-                                      ),
-                                      child: Text('#$sequence',
-                                          style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w600)),
-                                    ),
-                                  ),
-                                if (isExplicit)
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red.withValues(alpha: 0.85),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
-                                    ),
-                                  ),
-                                if (!isDownloaded && isDownloading)
-                                  Positioned(
-                                    top: isExplicit ? 22 : 4,
-                                    right: 4,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black54,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        '$downloadPct%',
-                                        style: TextStyle(
-                                          color: cs.primary,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                // Progress bar at bottom
-                                if (progress > 0 && !isFinished)
-                                  Positioned(
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 0,
-                                    child: LinearProgressIndicator(
-                                      value: progress.clamp(0.0, 1.0),
-                                      minHeight: 3,
-                                      backgroundColor: Colors.black38,
-                                      valueColor: AlwaysStoppedAnimation(cs.primary),
-                                    ),
-                                  ),
-                                // Done / Downloaded banners
-                                if (isFinished || isDownloaded)
-                                  Positioned(
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 0,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.bottomCenter,
-                                          end: Alignment.topCenter,
-                                          colors: [
-                                            Colors.black.withValues(alpha: 0.85),
-                                            Colors.black.withValues(alpha: 0.0),
-                                          ],
-                                        ),
-                                      ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (isFinished)
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(Icons.check_circle_rounded,
-                                                    size: 10, color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700),
-                                                const SizedBox(width: 3),
-                                                Text('Done',
-                                                    style: TextStyle(
-                                                        fontSize: 9,
-                                                        fontWeight: FontWeight.w600,
-                                                        color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700)),
-                                              ],
-                                            ),
-                                          if (isDownloaded)
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(Icons.download_done_rounded,
-                                                    size: 10, color: cs.primary),
-                                                const SizedBox(width: 3),
-                                                Text('Saved',
-                                                    style: TextStyle(
-                                                        fontSize: 9,
-                                                        fontWeight: FontWeight.w600,
-                                                        color: cs.primary)),
-                                              ],
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          // Info
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 10),
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
-                                children: [
-                                  if (sequence != null &&
-                                      sequence.isNotEmpty)
-                                    Text('Book $sequence',
-                                        style: tt.labelSmall?.copyWith(
-                                            color: cs.primary,
-                                            fontWeight: FontWeight.w600)),
-                                  Text(bookTitle,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: tt.titleSmall?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          color: cs.onSurface)),
-                                  if (authorName.isNotEmpty) ...[
-                                    const SizedBox(height: 2),
-                                    Text(authorName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: tt.bodySmall?.copyWith(
-                                            color: cs.onSurfaceVariant)),
-                                  ],
-                                  if (duration > 0) ...[
-                                    const SizedBox(height: 2),
-                                    Row(
-                                      children: [
-                                        Text(_formatDuration(duration),
-                                            style: tt.labelSmall?.copyWith(
-                                                color: cs.onSurfaceVariant)),
-                                        if (progress > 0 && !isFinished) ...[
-                                          const SizedBox(width: 8),
-                                          Text('${(progress * 100).round()}%',
-                                              style: tt.labelSmall?.copyWith(
-                                                  color: cs.primary,
-                                                  fontWeight: FontWeight.w600)),
-                                        ],
-                                      ],
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: Icon(Icons.chevron_right_rounded,
-                                color: cs.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
-                    ),
-                    ),
-                  ),
-                  ),
-                );
-              },
+              itemBuilder: (context, index) => _buildBookCard(cs, tt, lib, _books[index]),
             ),
           ),
           ),
       ],
     ));
+  }
+
+  Widget _buildBookCard(ColorScheme cs, TextTheme tt, LibraryProvider lib, Map<String, dynamic> book) {
+    final bookId = book['id'] as String? ?? '';
+    final media = book['media'] as Map<String, dynamic>? ?? {};
+    final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+    final bookTitle = metadata['title'] as String? ?? 'Unknown';
+    final authorName = metadata['authorName'] as String? ?? '';
+    final sequence = _getSequenceString(book);
+    final duration = (media['duration'] is num) ? (media['duration'] as num).toDouble() : 0.0;
+
+    final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
+    final progress = lib.getProgress(bookId);
+    final isFinished = lib.getProgressData(bookId)?['isFinished'] == true;
+    final isDownloaded = DownloadService().isDownloaded(bookId);
+    final isDownloading = DownloadService().isDownloading(bookId);
+    final downloadPct = (DownloadService().downloadProgress(bookId) * 100).clamp(0, 100).round();
+    final coverUrl = lib.getCoverUrl(bookId);
+    final isOnAbsorbing = lib.isOnAbsorbingList(bookId);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Dismissible(
+        key: ValueKey('absorb-$bookId'),
+        direction: isOnAbsorbing ? DismissDirection.none : DismissDirection.startToEnd,
+        confirmDismiss: (_) async {
+          await lib.addToAbsorbingQueue(bookId);
+          lib.absorbingItemCache[bookId] = Map<String, dynamic>.from(book);
+          if (context.mounted) {
+            HapticFeedback.mediumImpact();
+            showOverlayToast(context, 'Added "$bookTitle" to Absorbing', icon: Icons.add_circle_outline_rounded);
+          }
+          return false;
+        },
+        background: Container(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 20),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(Icons.add_circle_outline_rounded, color: cs.primary),
+        ),
+        child: Card(
+          elevation: 0,
+          color: cs.surfaceContainerHigh,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              if (bookId.isNotEmpty) {
+                if (lib.isPodcastLibrary) {
+                  EpisodeListSheet.show(context, book);
+                } else {
+                  showBookDetailSheet(context, bookId);
+                }
+              }
+            },
+            borderRadius: BorderRadius.circular(14),
+            child: SizedBox(
+              height: 112,
+              child: Row(children: [
+                AspectRatio(
+                  aspectRatio: 1,
+                  child: Stack(children: [
+                    Positioned.fill(
+                      child: coverUrl != null
+                          ? (coverUrl.startsWith('/')
+                              ? Image.file(File(coverUrl), fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => _placeholder(cs))
+                              : CachedNetworkImage(
+                                  imageUrl: coverUrl, fit: BoxFit.cover,
+                                  httpHeaders: lib.mediaHeaders,
+                                  placeholder: (_, __) => _placeholder(cs),
+                                  errorWidget: (_, __, ___) => _placeholder(cs)))
+                          : _placeholder(cs),
+                    ),
+                    if (sequence != null && sequence.isNotEmpty)
+                      Positioned(top: 4, left: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(6)),
+                          child: Text('#$sequence', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                    if (isExplicit)
+                      Positioned(top: 4, right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(4)),
+                          child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                    if (!isDownloaded && isDownloading)
+                      Positioned(top: isExplicit ? 22 : 4, right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
+                          child: Text('$downloadPct%', style: TextStyle(color: cs.primary, fontSize: 10, fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    if (progress > 0 && !isFinished)
+                      Positioned(left: 0, right: 0, bottom: 0,
+                        child: LinearProgressIndicator(
+                          value: progress.clamp(0.0, 1.0), minHeight: 3,
+                          backgroundColor: Colors.black38, valueColor: AlwaysStoppedAnimation(cs.primary)),
+                      ),
+                    if (isFinished || isDownloaded)
+                      Positioned(left: 0, right: 0, bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                              colors: [Colors.black.withValues(alpha: 0.85), Colors.black.withValues(alpha: 0.0)]),
+                          ),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            if (isFinished)
+                              Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.check_circle_rounded, size: 10,
+                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700),
+                                const SizedBox(width: 3),
+                                Text('Done', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700)),
+                              ]),
+                            if (isDownloaded)
+                              Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.download_done_rounded, size: 10, color: cs.primary),
+                                const SizedBox(width: 3),
+                                Text('Saved', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
+                              ]),
+                          ]),
+                        ),
+                      ),
+                  ]),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                      if (sequence != null && sequence.isNotEmpty)
+                        Text('Book $sequence', style: tt.labelSmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
+                      Text(bookTitle, maxLines: 2, overflow: TextOverflow.ellipsis,
+                        style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+                      if (authorName.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(authorName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      ],
+                      if (duration > 0) ...[
+                        const SizedBox(height: 2),
+                        Row(children: [
+                          Text(_formatDuration(duration), style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+                          if (progress > 0 && !isFinished) ...[
+                            const SizedBox(width: 8),
+                            Text('${(progress * 100).round()}%',
+                              style: tt.labelSmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
+                          ],
+                        ]),
+                      ],
+                    ]),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _placeholder(ColorScheme cs) {
