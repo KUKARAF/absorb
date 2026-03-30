@@ -1035,6 +1035,22 @@ class ApiService {
     return null;
   }
 
+  /// Get books in a series with collapseseries=1 to detect sub-series.
+  /// Returns items where books sharing another series are collapsed into
+  /// a single entry with a 'collapsedSeries' object.
+  Future<List<dynamic>> getSeriesCollapsed(String seriesId, {required String libraryId}) async {
+    try {
+      final filterValue = base64Encode(utf8.encode(seriesId));
+      final url = '$_cleanBaseUrl/api/libraries/$libraryId/items?filter=series.$filterValue&sort=media.metadata.series.sequence&limit=100&collapseseries=1';
+      final resp = await _authGet(Uri.parse(url), timeout: const Duration(seconds: 30));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        return data['results'] as List<dynamic>? ?? [];
+      }
+    } catch (_) {}
+    return [];
+  }
+
   /// Search a library. Returns { book: [...], series: [...], authors: [...] }
   Future<Map<String, dynamic>?> searchLibrary(
     String libraryId,

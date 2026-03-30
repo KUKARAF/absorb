@@ -542,7 +542,8 @@ class GridSeriesTile extends StatelessWidget {
 class GridSeriesTileDirect extends StatelessWidget {
   final Map<String, dynamic> series;
   final double coverAspectRatio;
-  const GridSeriesTileDirect({super.key, required this.series, this.coverAspectRatio = 1.0});
+  final String? parentSeriesId;
+  const GridSeriesTileDirect({super.key, required this.series, this.coverAspectRatio = 1.0, this.parentSeriesId});
 
   @override
   Widget build(BuildContext context) {
@@ -600,6 +601,7 @@ class GridSeriesTileDirect extends StatelessWidget {
             books: const [],
             serverUrl: auth.serverUrl,
             token: auth.token,
+            parentSeriesId: parentSeriesId,
           );
         }
       },

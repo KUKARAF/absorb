@@ -47,6 +47,7 @@ mixin _StateMixin on ChangeNotifier {
 
   final Map<String, Map<String, dynamic>> _seriesBooksCache = {};
   final Map<String, Map<String, dynamic>> _seriesTabCache = {};
+  final Map<String, Map<String, dynamic>> _subSeriesCache = {};
 
   Set<String> _rollingDownloadSeries = {};
   Set<String> _subscribedPodcasts = {};
@@ -132,6 +133,13 @@ mixin _StateMixin on ChangeNotifier {
 
   void setSeriesBooksCache(String seriesId, List<dynamic> books, int total) {
     _seriesBooksCache[seriesId] = {'books': books, 'total': total};
+  }
+
+  Map<String, dynamic>? getSubSeriesCache(String seriesId) =>
+      _subSeriesCache[seriesId];
+
+  void setSubSeriesCache(String seriesId, List<Map<String, dynamic>> subSeries, Set<String> assignedIds) {
+    _subSeriesCache[seriesId] = {'subSeries': subSeries, 'assignedIds': assignedIds};
   }
 
   Map<String, dynamic>? getSeriesTabCache(String key) =>

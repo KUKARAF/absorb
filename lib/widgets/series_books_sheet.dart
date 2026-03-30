@@ -22,6 +22,7 @@ void showSeriesBooksSheet(BuildContext context, {
   String? serverUrl,
   String? token,
   String? libraryId,
+  String? parentSeriesId,
 }) {
   showStackableSheet(
     context: context,
@@ -34,6 +35,7 @@ void showSeriesBooksSheet(BuildContext context, {
       token: token,
       libraryId: libraryId,
       scrollController: scrollController,
+      parentSeriesId: parentSeriesId,
     ),
   );
 }
@@ -46,6 +48,7 @@ class SeriesBooksSheet extends StatefulWidget {
   final String? token;
   final String? libraryId;
   final ScrollController scrollController;
+  final String? parentSeriesId;
 
   const SeriesBooksSheet({
     super.key,
@@ -56,6 +59,7 @@ class SeriesBooksSheet extends StatefulWidget {
     required this.token,
     this.libraryId,
     required this.scrollController,
+    this.parentSeriesId,
   });
 
   @override
@@ -70,8 +74,6 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
   bool _autoDownloadEnabled = false;
   bool _collapseSeries = false;
   final Set<String> _expandedSubSeries = {};
-  // Full series data from the series metadata endpoint (has complete series arrays per book)
-  List<dynamic> _seriesMetaBooks = [];
 
   bool _didAutoScroll = false;
   LibraryProvider? _lib;
@@ -95,6 +97,12 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
     _loadAutoDownloadState();
     PlayerSettings.getSheetGridView().then((v) {
       if (mounted && v != _gridView) setState(() => _gridView = v);
+    });
+    PlayerSettings.getCollapseBookSeries().then((v) {
+      if (mounted && v != _collapseSeries) {
+        setState(() => _collapseSeries = v);
+        // Don't load sub-series yet - _books may be empty. It triggers after books load.
+      }
     });
     _lib = context.read<LibraryProvider>();
     _lib!.addListener(_onLibraryChanged);
@@ -224,47 +232,138 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
     return raw.trim();
   }
 
-  /// Detect sub-series within the current series by looking at each book's
-  /// series array for series other than the current one.
-  /// Returns a map of sub-series name -> list of books in that sub-series.
-  Widget _buildGroupedGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
-    final groups = _getSubSeriesGroups();
-    final seriesLookup = _buildSeriesLookup();
-    final currentId = widget.seriesId;
+  // Cached sub-series grouping
+  List<Map<String, dynamic>> _subSeriesList = [];
+  Set<String> _assignedBookIds = {};
+  bool _subSeriesLoaded = false;
 
-    // Build sub-series tiles for named groups, flat books for ungrouped
-    final tiles = <Map<String, dynamic>>[];
-    final ungrouped = <Map<String, dynamic>>[];
-
-    for (final entry in groups.entries) {
-      if (entry.key.isEmpty) {
-        ungrouped.addAll(entry.value);
-        continue;
+  /// Load sub-series data. Uses per-item fetch for small series,
+  /// collapsed API for large ones.
+  Future<void> _loadSubSeriesData() async {
+    if (_subSeriesLoaded) return;
+    // Check cache first
+    final seriesId = widget.seriesId;
+    if (seriesId != null) {
+      final cached = context.read<LibraryProvider>().getSubSeriesCache(seriesId);
+      if (cached != null) {
+        _subSeriesList = (cached['subSeries'] as List<Map<String, dynamic>>?) ?? [];
+        _assignedBookIds = (cached['assignedIds'] as Set<String>?) ?? {};
+        _subSeriesLoaded = true;
+        if (mounted) setState(() {});
+        return;
       }
-      // Find the sub-series ID from any book's series data
-      String? subSeriesId;
-      for (final book in entry.value) {
+    }
+    if (_books.length <= 100) {
+      await _loadSubSeriesFromItems();
+    } else {
+      await _loadSubSeriesFromCollapsed();
+    }
+    _subSeriesLoaded = true;
+    // Cache the results
+    if (seriesId != null) {
+      try { context.read<LibraryProvider>().setSubSeriesCache(seriesId, _subSeriesList, _assignedBookIds); } catch (_) {}
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Small series: fetch each book's full data to get complete series arrays.
+  Future<void> _loadSubSeriesFromItems() async {
+    final api = context.read<AuthProvider>().apiService;
+    if (api == null) return;
+    final currentId = widget.seriesId;
+    final currentName = widget.seriesName.toLowerCase();
+    final subSeriesMap = <String, Map<String, dynamic>>{};
+
+    for (var i = 0; i < _books.length; i += 10) {
+      final batch = _books.skip(i).take(10);
+      await Future.wait(batch.map((book) async {
         final bookId = book['id'] as String? ?? '';
-        final bookSeries = seriesLookup[bookId] ?? [];
-        for (final s in bookSeries) {
-          if (s['name'] == entry.key && s['id'] != currentId) {
-            subSeriesId = s['id'] as String?;
-            break;
+        if (bookId.isEmpty) return;
+        final fullItem = await api.getLibraryItem(bookId);
+        if (fullItem == null) return;
+        final media = fullItem['media'] as Map<String, dynamic>? ?? {};
+        final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+        final seriesRaw = metadata['series'];
+        final seriesList = seriesRaw is List
+            ? seriesRaw.whereType<Map<String, dynamic>>().toList()
+            : seriesRaw is Map<String, dynamic> ? [seriesRaw] : <Map<String, dynamic>>[];
+
+        for (final s in seriesList) {
+          final sId = s['id'] as String? ?? '';
+          final sName = s['name'] as String? ?? '';
+          if (sId == currentId || sId == widget.parentSeriesId || sName.toLowerCase() == currentName || sId.isEmpty) continue;
+          subSeriesMap.putIfAbsent(sId, () => {
+            'name': sName, 'id': sId, 'books': <Map<String, dynamic>>[], 'numBooks': 0,
+          });
+          final books = subSeriesMap[sId]!['books'] as List<Map<String, dynamic>>;
+          if (!books.any((b) => b['id'] == bookId)) {
+            // Store the sub-series sequence on the book for sorting
+            final subSeq = s['sequence']?.toString();
+            final bookCopy = Map<String, dynamic>.from(book);
+            if (subSeq != null) bookCopy['_subSequence'] = subSeq;
+            books.add(bookCopy);
+            subSeriesMap[sId]!['numBooks'] = books.length;
           }
         }
-        if (subSeriesId != null) break;
-      }
-      tiles.add({
-        'type': 'series',
-        'name': entry.key,
-        'id': subSeriesId ?? '',
-        'books': entry.value,
-      });
+      }));
     }
 
-    // Sort: sub-series alphabetically, then ungrouped books at end
-    tiles.sort((a, b) => (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase()));
+    subSeriesMap.removeWhere((_, v) => (v['numBooks'] as int) < 2);
+    // Sort books within each sub-series by their sub-series sequence
+    for (final s in subSeriesMap.values) {
+      final books = s['books'] as List<Map<String, dynamic>>;
+      books.sort((a, b) {
+        final seqA = double.tryParse(RegExp(r'^[\d.]+').firstMatch(a['_subSequence']?.toString().trim() ?? '')?.group(0) ?? '') ?? double.maxFinite;
+        final seqB = double.tryParse(RegExp(r'^[\d.]+').firstMatch(b['_subSequence']?.toString().trim() ?? '')?.group(0) ?? '') ?? double.maxFinite;
+        return seqA.compareTo(seqB);
+      });
+    }
+    _subSeriesList = subSeriesMap.values.toList();
+    _assignedBookIds = _subSeriesList
+        .expand((s) => (s['books'] as List<Map<String, dynamic>>).map((b) => b['id'] as String? ?? ''))
+        .toSet();
+  }
 
+  /// Large series: use collapseseries=1 API (one request, server groups them).
+  Future<void> _loadSubSeriesFromCollapsed() async {
+    final seriesId = widget.seriesId;
+    final libraryId = widget.libraryId ?? context.read<LibraryProvider>().selectedLibraryId;
+    if (seriesId == null || libraryId == null) return;
+    final api = context.read<AuthProvider>().apiService;
+    if (api == null) return;
+    final results = await api.getSeriesCollapsed(seriesId, libraryId: libraryId);
+
+    for (final raw in results) {
+      if (raw is! Map<String, dynamic>) continue;
+      final collapsed = raw['collapsedSeries'] as Map<String, dynamic>?;
+      if (collapsed != null) {
+        final itemIds = (collapsed['libraryItemIds'] as List<dynamic>?)?.cast<String>() ?? [];
+        final matchingBooks = _books.where((b) => itemIds.contains(b['id'] as String? ?? '')).toList();
+        // For books not yet loaded (pagination), create minimal placeholders
+        final loadedIds = matchingBooks.map((b) => b['id'] as String? ?? '').toSet();
+        for (final id in itemIds) {
+          if (!loadedIds.contains(id)) matchingBooks.add({'id': id});
+        }
+        _subSeriesList.add({
+          'name': collapsed['name'] as String? ?? '',
+          'id': collapsed['id'] as String? ?? '',
+          'books': matchingBooks,
+          'numBooks': collapsed['numBooks'] as int? ?? itemIds.length,
+        });
+        _assignedBookIds.addAll(itemIds);
+      }
+    }
+  }
+
+  ({List<Map<String, dynamic>> subSeries, List<Map<String, dynamic>> standalone}) _buildSubSeriesGroups() {
+    final subSeries = List<Map<String, dynamic>>.from(_subSeriesList)
+      ..sort((a, b) => (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase()));
+    final standalone = _books.where((b) => !_assignedBookIds.contains(b['id'] as String? ?? '')).toList();
+    return (subSeries: subSeries, standalone: standalone);
+  }
+
+  Widget _buildGroupedGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
+    final parsed = _buildSubSeriesGroups();
     final crossAxisCount = (MediaQuery.of(context).size.width / 130).floor().clamp(3, 10);
 
     return GridView.builder(
@@ -272,225 +371,73 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
       padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).viewPadding.bottom),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
-        mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 0.55,
+        mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 0.65,
       ),
-      itemCount: tiles.length + ungrouped.length,
+      itemCount: parsed.subSeries.length + parsed.standalone.length,
       itemBuilder: (context, index) {
-        if (index < tiles.length) {
-          final tile = tiles[index];
-          return GridSeriesTileDirect(series: tile);
+        if (index < parsed.subSeries.length) {
+          return GridSeriesTileDirect(series: parsed.subSeries[index], parentSeriesId: widget.seriesId);
         }
-        final book = ungrouped[index - tiles.length];
+        final book = parsed.standalone[index - parsed.subSeries.length];
         return GridBookTile(item: book, sequenceBadge: _getSequenceString(book));
       },
     );
   }
 
-  Future<void> _fetchSubSeriesData() async {
-    final api = context.read<AuthProvider>().apiService;
-    if (api == null) return;
-    final futures = <Future>[];
-    for (final book in _books) {
-      final bookId = book['id'] as String? ?? '';
-      if (bookId.isEmpty) continue;
-      futures.add(
-        api.getLibraryItem(bookId).then((item) {
-          if (item != null) {
-            _seriesMetaBooks.add(item);
-          }
-        }),
-      );
-    }
-    // Fetch in batches of 10
-    for (var i = 0; i < futures.length; i += 10) {
-      await Future.wait(futures.skip(i).take(10));
-    }
-    if (mounted) setState(() {});
-  }
-
-  /// Build a lookup from book ID to full series array using seriesMetaBooks
-  /// (which has the complete series list per book, unlike the filtered items endpoint).
-  Map<String, List<Map<String, dynamic>>> _buildSeriesLookup() {
-    final lookup = <String, List<Map<String, dynamic>>>{};
-    for (final entry in _seriesMetaBooks) {
-      if (entry is! Map<String, dynamic>) continue;
-      final bookId = entry['id'] as String? ?? '';
-      final media = entry['media'] as Map<String, dynamic>? ?? {};
-      final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-      final seriesRaw = metadata['series'];
-      final seriesList = seriesRaw is List
-          ? seriesRaw.whereType<Map<String, dynamic>>().toList()
-          : seriesRaw is Map<String, dynamic>
-              ? [seriesRaw]
-              : <Map<String, dynamic>>[];
-      if (bookId.isNotEmpty && seriesList.isNotEmpty) {
-        lookup[bookId] = seriesList;
-      }
-    }
-    return lookup;
-  }
-
-  Map<String, List<Map<String, dynamic>>> _getSubSeriesGroups() {
-    final groups = <String, List<Map<String, dynamic>>>{};
-    final currentName = widget.seriesName.toLowerCase();
-    final currentId = widget.seriesId;
-    final seriesLookup = _buildSeriesLookup();
-
-    for (final book in _books) {
-      final bookId = book['id'] as String? ?? '';
-      // Prefer full series data from metadata endpoint, fall back to item data
-      final seriesList = seriesLookup[bookId] ?? () {
-        final media = book['media'] as Map<String, dynamic>? ?? {};
-        final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final seriesRaw = metadata['series'];
-        return seriesRaw is List
-            ? seriesRaw.whereType<Map<String, dynamic>>().toList()
-            : seriesRaw is Map<String, dynamic>
-                ? [seriesRaw]
-                : <Map<String, dynamic>>[];
-      }();
-
-      String? subSeriesName;
-      for (final s in seriesList) {
-        final sId = s['id'] as String?;
-        final sName = s['name'] as String? ?? '';
-        if (sId != currentId && sName.toLowerCase() != currentName && sName.isNotEmpty) {
-          subSeriesName = sName;
-          break;
-        }
-      }
-
-      final key = subSeriesName ?? '';
-      groups.putIfAbsent(key, () => []).add(book);
-    }
-    return groups;
-  }
-
-  bool get _hasSubSeries {
-    if (_books.length < 3) return false;
-    final groups = _getSubSeriesGroups();
-    // Need at least 2 named sub-series to be worth grouping
-    return groups.keys.where((k) => k.isNotEmpty).length >= 2;
-  }
-
   Widget _buildGroupedList(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
-    final groups = _getSubSeriesGroups();
-    // Sort sub-series: named groups first (alphabetically), ungrouped last
-    final sortedKeys = groups.keys.toList()
-      ..sort((a, b) {
-        if (a.isEmpty && b.isEmpty) return 0;
-        if (a.isEmpty) return 1;
-        if (b.isEmpty) return -1;
-        return a.toLowerCase().compareTo(b.toLowerCase());
-      });
+    final parsed = _buildSubSeriesGroups();
 
     return ListView(
       controller: widget.scrollController,
       padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).viewPadding.bottom),
       children: [
-        for (final key in sortedKeys) ...[
+        // Sub-series headers
+        for (final series in parsed.subSeries) ...[
           () {
-            final books = groups[key]!;
-            final isExpanded = _expandedSubSeries.contains(key.isEmpty ? '_ungrouped' : key);
-            final groupKey = key.isEmpty ? '_ungrouped' : key;
-            final displayName = key.isEmpty ? 'Other Books' : key;
-
-            // Calculate sub-series progress
-            double groupDur = 0, groupListened = 0;
-            for (final book in books) {
-              final bookId = book['id'] as String? ?? '';
-              final media = book['media'] as Map<String, dynamic>? ?? {};
-              final dur = (media['duration'] is num) ? (media['duration'] as num).toDouble() : 0.0;
-              groupDur += dur;
-              groupListened += dur * lib.getProgress(bookId);
-            }
-            final groupProgress = groupDur > 0 ? (groupListened / groupDur).clamp(0.0, 1.0) : 0.0;
-            final allFinished = groupProgress >= 0.99;
+            final seriesName = series['name'] as String? ?? '';
+            final seriesId = series['id'] as String? ?? '';
+            final subBooks = series['books'] as List<Map<String, dynamic>>;
+            final numBooks = series['numBooks'] as int? ?? subBooks.length;
+            final isExpanded = _expandedSubSeries.contains(seriesId);
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 GestureDetector(
                   onTap: () => setState(() {
-                    if (isExpanded) {
-                      _expandedSubSeries.remove(groupKey);
-                    } else {
-                      _expandedSubSeries.add(groupKey);
-                    }
+                    if (isExpanded) _expandedSubSeries.remove(seriesId);
+                    else _expandedSubSeries.add(seriesId);
                   }),
-                  // Tap sub-series name to open that series sheet
-                  onLongPress: key.isNotEmpty ? () {
-                    // Find the series ID for this sub-series from any book's series array
-                    String? subSeriesId;
-                    for (final book in books) {
-                      final media = book['media'] as Map<String, dynamic>? ?? {};
-                      final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-                      final seriesRaw = metadata['series'];
-                      if (seriesRaw is List) {
-                        for (final s in seriesRaw) {
-                          if (s is Map<String, dynamic> && s['name'] == key) {
-                            subSeriesId = s['id'] as String?;
-                            break;
-                          }
-                        }
-                      }
-                      if (subSeriesId != null) break;
-                    }
-                    if (subSeriesId != null) {
-                      showSeriesBooksSheet(context,
-                        seriesName: key,
-                        seriesId: subSeriesId,
-                        serverUrl: widget.serverUrl,
-                        token: widget.token,
-                        libraryId: widget.libraryId,
-                      );
-                    }
+                  onLongPress: seriesId.isNotEmpty ? () {
+                    showSeriesBooksSheet(context,
+                      seriesName: seriesName, seriesId: seriesId,
+                      serverUrl: widget.serverUrl, token: widget.token, libraryId: widget.libraryId,
+                      parentSeriesId: widget.seriesId);
                   } : null,
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 8, top: 4),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(12)),
                     child: Row(children: [
-                      Icon(
-                        isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                        size: 20, color: cs.onSurfaceVariant,
-                      ),
+                      Icon(isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 20, color: cs.onSurfaceVariant),
                       const SizedBox(width: 8),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(displayName, style: tt.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600, color: cs.onSurface)),
+                        Text(seriesName, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
                         const SizedBox(height: 2),
-                        Text('${books.length} book${books.length != 1 ? 's' : ''}'
-                          '${allFinished ? ' · Finished' : groupProgress > 0 ? ' · ${(groupProgress * 100).round()}%' : ''}',
-                          style: tt.labelSmall?.copyWith(
-                            color: allFinished ? Colors.green.withValues(alpha: 0.7) : cs.onSurfaceVariant.withValues(alpha: 0.5),
-                            fontSize: 11)),
+                        Text('$numBooks book${numBooks != 1 ? 's' : ''}',
+                          style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 11)),
                       ])),
-                      if (groupProgress > 0 && !allFinished)
-                        SizedBox(
-                          width: 40,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(2),
-                            child: LinearProgressIndicator(
-                              value: groupProgress,
-                              minHeight: 3,
-                              backgroundColor: cs.onSurface.withValues(alpha: 0.06),
-                              valueColor: AlwaysStoppedAnimation(cs.primary),
-                            ),
-                          ),
-                        ),
                     ]),
                   ),
                 ),
                 if (isExpanded)
-                  ...books.map((book) => _buildBookCard(cs, tt, lib, book)),
+                  ...subBooks.map((book) => _buildBookCard(cs, tt, lib, book)),
               ],
             );
           }(),
         ],
+        // Standalone books
+        ...parsed.standalone.map((book) => _buildBookCard(cs, tt, lib, book)),
       ],
     );
   }
@@ -549,8 +496,10 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
       },
     );
     if (data == null && mounted) setState(() => _isLoading = false);
-    // Fetch full item data in background to detect sub-series
-    if (_books.length >= 3) _fetchSubSeriesData();
+    // If collapse is enabled and we now have books, load sub-series data
+    if (_collapseSeries && _books.isNotEmpty && !_subSeriesLoaded) {
+      _loadSubSeriesData();
+    }
   }
 
 
@@ -878,18 +827,21 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                if (_hasSubSeries)
-                  IconButton(
-                    icon: Icon(
-                      _collapseSeries ? Icons.unfold_less_rounded : Icons.unfold_more_rounded,
-                      size: 20,
+                IconButton(
+                    icon: Icon(Icons.collections_bookmark_rounded, size: 20,
                       color: _collapseSeries ? cs.primary : cs.onSurfaceVariant),
                     visualDensity: VisualDensity.compact,
                     tooltip: _collapseSeries ? 'Show all books' : 'Group by sub-series',
-                    onPressed: () => setState(() {
-                      _collapseSeries = !_collapseSeries;
-                      if (_collapseSeries) _expandedSubSeries.clear();
-                    }),
+                    onPressed: () {
+                      setState(() {
+                        _collapseSeries = !_collapseSeries;
+                        if (_collapseSeries) {
+                          _expandedSubSeries.clear();
+                          if (!_subSeriesLoaded) _loadSubSeriesData();
+                        }
+                      });
+                      PlayerSettings.setCollapseBookSeries(_collapseSeries);
+                    },
                   ),
                 const Spacer(),
                 IconButton(
@@ -918,6 +870,14 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                       ?.copyWith(color: cs.onSurfaceVariant)),
             ),
           )
+        else if (_collapseSeries && !_subSeriesLoaded)
+          Expanded(
+            child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(height: 12),
+              Text('Loading sub-series...', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4))),
+            ])),
+          )
         else if (_collapseSeries && _gridView)
           Expanded(
             child: ListenableBuilder(
@@ -941,7 +901,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
               padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).viewPadding.bottom),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: (MediaQuery.of(context).size.width / 130).floor().clamp(3, 10),
-                mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 0.55,
+                mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 0.65,
               ),
               itemCount: _books.length,
               itemBuilder: (context, index) => GridBookTile(item: _books[index], sequenceBadge: _getSequenceString(_books[index])),

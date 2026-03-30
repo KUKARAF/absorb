@@ -213,6 +213,8 @@ class PlayerSettings {
   static Future<void> setSheetGridView(bool value) => _set('sheetGridView', value);
   static Future<bool> getSheetCollapseSeries() => _get('sheetCollapseSeries', true);
   static Future<void> setSheetCollapseSeries(bool value) => _set('sheetCollapseSeries', value);
+  static Future<bool> getCollapseBookSeries() => _get('collapseBookSeries', false);
+  static Future<void> setCollapseBookSeries(bool value) => _set('collapseBookSeries', value);
 
   static Future<bool> getHideEbookOnly() => _get('hideEbookOnly', false);
   static Future<void> setHideEbookOnly(bool value) => _set('hideEbookOnly', value, notify: true);
