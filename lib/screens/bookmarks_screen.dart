@@ -33,12 +33,65 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
   Future<void> _loadSort() async {
     _sort = await PlayerSettings.getBookmarkSort();
+    // Show local bookmarks immediately, then sync with server
     _load();
+    _syncAll();
   }
 
   Future<void> _load() async {
     final all = await BookmarkService().getAllBookmarks(sort: _sort);
     if (mounted) setState(() { _allBookmarks = all; _loading = false; });
+  }
+
+  Future<void> _syncAll() async {
+    final api = context.read<AuthProvider>().apiService;
+    if (api == null) return;
+    final user = await api.getMe();
+    if (user == null || !mounted) return;
+    final itemIds = <String>{};
+    // Bookmarks on the user object (keyed by libraryItemId)
+    final userBookmarks = user['bookmarks'] as List<dynamic>?;
+    if (userBookmarks != null) {
+      for (final b in userBookmarks) {
+        if (b is Map<String, dynamic>) {
+          final itemId = b['libraryItemId'] as String? ?? '';
+          if (itemId.isNotEmpty) itemIds.add(itemId);
+        }
+      }
+    }
+    // Also check mediaProgress for bookmarks
+    final progressList = user['mediaProgress'] as List<dynamic>? ?? [];
+    for (final p in progressList) {
+      if (p is! Map<String, dynamic>) continue;
+      final bookmarks = p['bookmarks'] as List?;
+      if (bookmarks != null && bookmarks.isNotEmpty) {
+        final itemId = p['libraryItemId'] as String? ?? '';
+        if (itemId.isNotEmpty) itemIds.add(itemId);
+      }
+    }
+    // Also include items we have local bookmarks for
+    final local = await BookmarkService().getAllBookmarks();
+    itemIds.addAll(local.keys);
+    // Group server bookmarks by itemId for efficient sync
+    final serverByItem = <String, List<Map<String, dynamic>>>{};
+    if (userBookmarks != null) {
+      for (final b in userBookmarks) {
+        if (b is Map<String, dynamic>) {
+          final id = b['libraryItemId'] as String? ?? '';
+          if (id.isNotEmpty) {
+            serverByItem.putIfAbsent(id, () => []).add(b);
+          }
+        }
+      }
+    }
+    // Sync each item with pre-loaded server data
+    for (final itemId in itemIds) {
+      if (!mounted) break;
+      await BookmarkService().syncBookmarks(itemId, api,
+        preloadedServerBookmarks: serverByItem[itemId] ?? []);
+    }
+    // Reload after sync
+    if (mounted) _load();
   }
 
   String _selKey(String itemId, String bookmarkId) => '$itemId::$bookmarkId';
@@ -116,7 +169,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
     for (final entry in grouped.entries) {
       for (final bmId in entry.value) {
-        await BookmarkService().deleteBookmark(itemId: entry.key, bookmarkId: bmId);
+        await BookmarkService().deleteBookmark(itemId: entry.key, bookmarkId: bmId, api: context.read<AuthProvider>().apiService);
       }
     }
 
@@ -146,29 +199,78 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
     return itemId.length > 12 ? '${itemId.substring(0, 12)}…' : itemId;
   }
 
+  Future<void> _editBookmark(String itemId, Bookmark bookmark) async {
+    final titleC = TextEditingController(text: bookmark.title);
+    final noteC = TextEditingController(text: bookmark.note ?? '');
+    final result = await showDialog<Map<String, String>>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Edit Bookmark'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: titleC, decoration: const InputDecoration(labelText: 'Title', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: noteC, maxLines: 3, decoration: const InputDecoration(labelText: 'Note (optional)', border: OutlineInputBorder(), alignLabelWithHint: true)),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, {'title': titleC.text, 'note': noteC.text}), child: const Text('Save')),
+      ],
+    ));
+    if (result != null && result['title']!.isNotEmpty) {
+      await BookmarkService().updateBookmark(
+        itemId: itemId, bookmarkId: bookmark.id,
+        title: result['title']!, note: result['note']?.isNotEmpty == true ? result['note'] : null,
+        api: context.read<AuthProvider>().apiService,
+      );
+      _load();
+    }
+  }
+
   Future<void> _jumpToBookmark(String itemId, Bookmark bookmark, String bookTitle) async {
-    final confirmed = await showDialog<bool>(
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.bookmark_rounded),
-        title: const Text('Jump to bookmark?'),
-        content: Text(
-          '"${bookmark.title}" at ${bookmark.formattedPosition}\nin $bookTitle',
-        ),
+        title: Text(bookmark.title, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (bookmark.note != null && bookmark.note!.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.onSurface.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(bookmark.note!, style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant, height: 1.4)),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Text('${bookmark.formattedPosition} in $bookTitle',
+            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
+        ]),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'edit'),
+            child: const Text('Edit'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => Navigator.pop(ctx, 'jump'),
             child: const Text('Jump'),
           ),
         ],
       ),
     );
 
-    if (confirmed != true || !mounted) return;
+    if (action == 'edit') {
+      await _editBookmark(itemId, bookmark);
+      return;
+    }
+
+    if (action != 'jump' || !mounted) return;
 
     // Read providers before async gaps
     final lib = context.read<LibraryProvider>();
@@ -178,6 +280,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
     // If the same book is already loaded, just seek
     if (player.currentItemId == itemId) {
       await player.seekTo(Duration(seconds: bookmark.positionSeconds.round()));
+      if (!player.isPlaying) player.play();
       if (mounted) Navigator.pop(context);
       AppShell.goToAbsorbingGlobal();
       return;
@@ -223,6 +326,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
       totalDuration: duration,
       chapters: chapters,
       startTime: bookmark.positionSeconds,
+      forceStartTime: true,
     );
     if (error != null && mounted) showErrorSnackBar(context, error);
 

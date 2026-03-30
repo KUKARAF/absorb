@@ -1,5 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/library_provider.dart';
+import '../screens/app_shell.dart';
 import '../services/audio_player_service.dart';
 import '../services/bookmark_service.dart';
 import '../services/chromecast_service.dart';
@@ -260,7 +264,19 @@ class CardBookmarkButtonInline extends StatefulWidget {
 
 class _CardBookmarkButtonInlineState extends State<CardBookmarkButtonInline> {
   int _count = 0;
-  @override void initState() { super.initState(); _loadCount(); }
+  @override void initState() { super.initState(); _syncThenLoadCount(); }
+
+  Future<void> _syncThenLoadCount() async {
+    // Show local count immediately
+    _loadCount();
+    // Then sync with server and update
+    final api = AudioPlayerService().currentApi;
+    if (api != null) {
+      await BookmarkService().syncBookmarks(widget.itemId, api);
+      _loadCount();
+    }
+  }
+
   Future<void> _loadCount() async {
     final c = await BookmarkService().getCount(widget.itemId);
     if (mounted) setState(() => _count = c);
@@ -270,7 +286,7 @@ class _CardBookmarkButtonInlineState extends State<CardBookmarkButtonInline> {
     final cs = Theme.of(context).colorScheme;
     final cp = widget.compact;
     final lg = widget.large;
-    final enabled = widget.isActive || _isCasting;
+    final active = widget.isActive || _isCasting;
     final iconSz = cp ? 13.0 : (lg ? 22.0 : 18.0);
     final fontSize = cp ? 10.0 : (lg ? 14.0 : 12.0);
     final vPad = cp ? 6.0 : (lg ? 12.0 : 8.0);
@@ -278,8 +294,8 @@ class _CardBookmarkButtonInlineState extends State<CardBookmarkButtonInline> {
     final sh = widget.short;
     final label = cp ? (_count > 0 ? '$_count' : 'Bookmark') : sh ? 'Bookmarks' : (_count > 0 ? 'Bookmarks ($_count)' : 'Bookmark');
     return Pressable(
-      onTap: enabled ? () => _showBookmarks(context) : () => showInactiveToast(context),
-      onLongPress: enabled ? () => _quickAdd(context) : null,
+      onTap: () => _showBookmarks(context),
+      onLongPress: active ? () => _quickAdd(context) : null,
       child: Container(
         padding: EdgeInsets.symmetric(vertical: vPad),
         decoration: BoxDecoration(
@@ -288,17 +304,14 @@ class _CardBookmarkButtonInlineState extends State<CardBookmarkButtonInline> {
           border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
         ),
         child: cp
-          ? Center(child: Icon(Icons.bookmark_outline_rounded, size: iconSz,
-              color: enabled ? cs.onSurfaceVariant : cs.onSurface.withValues(alpha: 0.24)))
+          ? Center(child: Icon(Icons.bookmark_outline_rounded, size: iconSz, color: cs.onSurfaceVariant))
           : Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.bookmark_outline_rounded, size: iconSz,
-                  color: enabled ? cs.onSurfaceVariant : cs.onSurface.withValues(alpha: 0.24)),
+                Icon(Icons.bookmark_outline_rounded, size: iconSz, color: cs.onSurfaceVariant),
                 const SizedBox(width: 8),
                 Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: TextStyle(
-                  color: enabled ? cs.onSurfaceVariant : cs.onSurface.withValues(alpha: 0.24),
-                  fontSize: fontSize, fontWeight: FontWeight.w500))),
+                  color: cs.onSurfaceVariant, fontSize: fontSize, fontWeight: FontWeight.w500))),
               ],
             ),
       ),
@@ -323,7 +336,7 @@ class _CardBookmarkButtonInlineState extends State<CardBookmarkButtonInline> {
       final e = (m['end'] as num?)?.toDouble() ?? 0;
       if (pos >= s && pos < e) { chTitle = m['title'] as String?; break; }
     }
-    await BookmarkService().addBookmark(itemId: widget.itemId, positionSeconds: pos, title: chTitle ?? 'Bookmark');
+    await BookmarkService().addBookmark(itemId: widget.itemId, positionSeconds: pos, title: chTitle ?? 'Bookmark', api: AudioPlayerService().currentApi);
     _loadCount();
     if (ctx.mounted) {
       ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: const Text('Bookmark added'), behavior: SnackBarBehavior.floating,
@@ -540,6 +553,11 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
   @override void initState() { super.initState(); _loadSort(); }
   Future<void> _loadSort() async {
     _sort = await PlayerSettings.getBookmarkSort();
+    // Sync first, then load
+    final api = AudioPlayerService().currentApi;
+    if (api != null) {
+      await BookmarkService().syncBookmarks(widget.itemId, api);
+    }
     _load();
   }
   Future<void> _load() async {
@@ -600,14 +618,29 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
                       final bm = _bookmarks![i];
                       final hasNote = bm.note != null && bm.note!.isNotEmpty;
                       return InkWell(
-                        onTap: () {
-                          final seekDur = Duration(seconds: bm.positionSeconds.round());
-                          if (_isCasting) {
-                            ChromecastService().seekTo(seekDur);
+                        onTap: () async {
+                          final confirmed = await showDialog<bool>(context: ctx, builder: (dlg) => AlertDialog(
+                            title: const Text('Jump to bookmark?'),
+                            content: Text('"${bm.title}" at ${bm.formattedPosition}'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(dlg, false), child: const Text('Cancel')),
+                              FilledButton(onPressed: () => Navigator.pop(dlg, true), child: const Text('Jump')),
+                            ],
+                          ));
+                          if (confirmed != true || !ctx.mounted) return;
+                          final isActive = widget.player.currentItemId == widget.itemId;
+                          Navigator.pop(ctx); // Close bookmark sheet first
+                          if (isActive || _isCasting) {
+                            final seekDur = Duration(seconds: bm.positionSeconds.round());
+                            if (_isCasting) {
+                              ChromecastService().seekTo(seekDur);
+                            } else {
+                              await widget.player.seekTo(seekDur);
+                              if (!widget.player.isPlaying) widget.player.play();
+                            }
                           } else {
-                            widget.player.seekTo(seekDur);
+                            await _startPlaybackAt(bm.positionSeconds);
                           }
-                          Navigator.pop(ctx);
                         },
                         onLongPress: () => _editBookmark(bm),
                         child: Padding(
@@ -640,7 +673,16 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
                             const SizedBox(width: 8),
                             GestureDetector(
                               onTap: () async {
-                                await BookmarkService().deleteBookmark(itemId: widget.itemId, bookmarkId: bm.id);
+                                final confirmed = await showDialog<bool>(context: context, builder: (dlg) => AlertDialog(
+                                  title: const Text('Delete bookmark?'),
+                                  content: Text('"${bm.title}" at ${bm.formattedPosition}'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(dlg, false), child: const Text('Cancel')),
+                                    TextButton(onPressed: () => Navigator.pop(dlg, true), child: Text('Delete', style: TextStyle(color: Colors.red.shade300))),
+                                  ],
+                                ));
+                                if (confirmed != true) return;
+                                await BookmarkService().deleteBookmark(itemId: widget.itemId, bookmarkId: bm.id, api: AudioPlayerService().currentApi);
                                 _load();
                               },
                               child: Padding(
@@ -659,6 +701,29 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
   bool get _isCasting {
     final cast = ChromecastService();
     return cast.isCasting && cast.castingItemId == widget.itemId;
+  }
+
+  Future<void> _startPlaybackAt(double positionSeconds) async {
+    final api = context.read<AuthProvider>().apiService;
+    if (api == null) return;
+    final lib = context.read<LibraryProvider>();
+    final player = widget.player;
+    final fullItem = await api.getLibraryItem(widget.itemId);
+    if (fullItem == null) return;
+    final media = fullItem['media'] as Map<String, dynamic>? ?? {};
+    final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+    final title = metadata['title'] as String? ?? '';
+    final author = metadata['authorName'] as String? ?? '';
+    final coverUrl = lib.getCoverUrl(widget.itemId);
+    final duration = (media['duration'] is num) ? (media['duration'] as num).toDouble() : 0.0;
+    final chapters = (media['chapters'] as List<dynamic>?) ?? [];
+    await player.playItem(
+      api: api, itemId: widget.itemId,
+      title: title, author: author, coverUrl: coverUrl,
+      totalDuration: duration, chapters: chapters,
+      startTime: positionSeconds, forceStartTime: true,
+    );
+    AppShell.goToAbsorbingGlobal();
   }
 
   Future<void> _addBookmark() async {
@@ -695,7 +760,7 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
     ));
     if (result != null && result['title']!.isNotEmpty) {
       final note = result['note']?.isNotEmpty == true ? result['note'] : null;
-      await BookmarkService().addBookmark(itemId: widget.itemId, positionSeconds: pos, title: result['title']!, note: note);
+      await BookmarkService().addBookmark(itemId: widget.itemId, positionSeconds: pos, title: result['title']!, note: note, api: AudioPlayerService().currentApi);
       _load();
     }
   }
@@ -719,6 +784,7 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
       await BookmarkService().updateBookmark(
         itemId: widget.itemId, bookmarkId: bm.id,
         title: result['title']!, note: result['note']?.isNotEmpty == true ? result['note'] : null,
+        api: AudioPlayerService().currentApi,
       );
       _load();
     }

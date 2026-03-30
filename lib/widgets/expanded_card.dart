@@ -1299,6 +1299,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
       isCastingThis: _isCastingThis,
       displaySpeed: _speedAdjustedTime && _isActive ? widget.player.speed : 1.0,
       player: widget.player,
+      itemId: _itemId,
     );
   }
 

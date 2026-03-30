@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'api_service.dart';
 import 'scoped_prefs.dart';
 import 'user_account_service.dart';
 
@@ -20,6 +21,12 @@ class Bookmark {
     this.note,
   });
 
+  /// Combined text for syncing to ABS server (which only has a single "title" field).
+  String get serverTitle {
+    if (note != null && note!.isNotEmpty) return '$title - $note';
+    return title;
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'pos': positionSeconds,
@@ -30,11 +37,29 @@ class Bookmark {
 
   factory Bookmark.fromJson(Map<String, dynamic> json) {
     return Bookmark(
-      id: json['id'] as String,
-      positionSeconds: (json['pos'] as num).toDouble(),
-      created: DateTime.fromMillisecondsSinceEpoch(json['ts'] as int),
+      id: json['id'] as String? ?? '${DateTime.now().millisecondsSinceEpoch}',
+      positionSeconds: (json['pos'] as num?)?.toDouble() ?? (json['time'] as num?)?.toDouble() ?? 0,
+      created: json['ts'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(json['ts'] as int)
+          : json['createdAt'] != null
+              ? DateTime.fromMillisecondsSinceEpoch((json['createdAt'] as num).toInt())
+              : DateTime.now(),
       title: json['title'] as String? ?? 'Bookmark',
       note: json['note'] as String?,
+    );
+  }
+
+  /// Create from ABS server bookmark format: { title, time, createdAt }
+  /// Server only has "title" - we put it into the note body since we don't
+  /// know what part is the title vs note.
+  factory Bookmark.fromServer(Map<String, dynamic> json) {
+    return Bookmark(
+      id: '${(json['createdAt'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch}',
+      positionSeconds: (json['time'] as num?)?.toDouble() ?? 0,
+      created: json['createdAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch((json['createdAt'] as num).toInt())
+          : DateTime.now(),
+      title: json['title'] as String? ?? 'Bookmark',
     );
   }
 
@@ -49,18 +74,16 @@ class Bookmark {
   }
 }
 
-/// Stores per-book bookmarks in SharedPreferences.
+/// Stores per-book bookmarks in SharedPreferences with server sync.
 class BookmarkService {
   static final BookmarkService _instance = BookmarkService._();
   factory BookmarkService() => _instance;
   BookmarkService._();
 
   static const int _maxBookmarksPerBook = 100;
-
   static const _keyPrefix = 'bookmarks_';
 
   /// Get all bookmarks for a book.
-  /// [sort] is 'newest' (by creation time, newest first) or 'position' (by book position).
   Future<List<Bookmark>> getBookmarks(String itemId, {String sort = 'newest'}) async {
     final stored = await ScopedPrefs.getStringList('$_keyPrefix$itemId');
 
@@ -87,6 +110,7 @@ class BookmarkService {
     required double positionSeconds,
     required String title,
     String? note,
+    ApiService? api,
   }) async {
     final bookmark = Bookmark(
       id: '${DateTime.now().millisecondsSinceEpoch}',
@@ -98,16 +122,20 @@ class BookmarkService {
 
     final key = '$_keyPrefix$itemId';
     final existing = (await ScopedPrefs.getStringList(key)).toList();
-
     existing.add(jsonEncode(bookmark.toJson()));
 
-    // Trim to max
     if (existing.length > _maxBookmarksPerBook) {
       existing.removeRange(0, existing.length - _maxBookmarksPerBook);
     }
 
     await ScopedPrefs.setStringList(key, existing);
     debugPrint('[Bookmarks] Added "${bookmark.title}" at ${bookmark.formattedPosition}');
+
+    // Push to server
+    if (api != null) {
+      await api.createBookmark(itemId, time: positionSeconds, title: bookmark.serverTitle);
+    }
+
     return bookmark;
   }
 
@@ -117,10 +145,13 @@ class BookmarkService {
     required String bookmarkId,
     String? title,
     String? note,
+    ApiService? api,
   }) async {
     final key = '$_keyPrefix$itemId';
     final stored = await ScopedPrefs.getStringList(key);
 
+    double? time;
+    String? serverTitle;
     final updated = <String>[];
     for (final json in stored) {
       try {
@@ -128,6 +159,8 @@ class BookmarkService {
         if (bm.id == bookmarkId) {
           if (title != null) bm.title = title;
           bm.note = note ?? bm.note;
+          time = bm.positionSeconds;
+          serverTitle = bm.serverTitle;
           updated.add(jsonEncode(bm.toJson()));
         } else {
           updated.add(json);
@@ -138,22 +171,31 @@ class BookmarkService {
     }
 
     await ScopedPrefs.setStringList(key, updated);
+
+    // Update on server
+    if (api != null && time != null && serverTitle != null) {
+      await api.updateBookmark(itemId, time: time, title: serverTitle);
+    }
   }
 
   /// Delete a bookmark.
   Future<void> deleteBookmark({
     required String itemId,
     required String bookmarkId,
+    ApiService? api,
   }) async {
     final key = '$_keyPrefix$itemId';
     final stored = await ScopedPrefs.getStringList(key);
 
+    double? time;
     final updated = <String>[];
     for (final json in stored) {
       try {
         final bm = Bookmark.fromJson(jsonDecode(json));
         if (bm.id != bookmarkId) {
           updated.add(json);
+        } else {
+          time = bm.positionSeconds;
         }
       } catch (_) {
         updated.add(json);
@@ -162,10 +204,67 @@ class BookmarkService {
 
     await ScopedPrefs.setStringList(key, updated);
     debugPrint('[Bookmarks] Deleted bookmark $bookmarkId');
+
+    // Delete on server
+    if (api != null && time != null) {
+      await api.deleteBookmark(itemId, time: time);
+    }
+  }
+
+  /// Sync bookmarks for a specific item with the server.
+  /// Merges local and server bookmarks by position (time).
+  /// If [preloadedServerBookmarks] is provided, uses that instead of fetching.
+  Future<void> syncBookmarks(String itemId, ApiService api, {List<Map<String, dynamic>>? preloadedServerBookmarks}) async {
+    try {
+      final serverBookmarks = preloadedServerBookmarks ?? await api.getServerBookmarks(itemId);
+      if (serverBookmarks == null) return; // offline or error
+
+      final localBookmarks = await getBookmarks(itemId);
+
+      // Build position-based lookup (with 1s tolerance)
+      bool posMatch(double a, double b) => (a - b).abs() < 1.0;
+
+      // Find server bookmarks not in local
+      for (final sb in serverBookmarks) {
+        final serverBm = Bookmark.fromServer(sb);
+        final localMatch = localBookmarks.where((lb) => posMatch(lb.positionSeconds, serverBm.positionSeconds)).firstOrNull;
+        if (localMatch == null) {
+          // Server has it, local doesn't - add locally
+          final key = '$_keyPrefix$itemId';
+          final existing = (await ScopedPrefs.getStringList(key)).toList();
+          existing.add(jsonEncode(serverBm.toJson()));
+          await ScopedPrefs.setStringList(key, existing);
+          debugPrint('[Bookmarks] Synced from server: "${serverBm.title}" at ${serverBm.formattedPosition}');
+        } else if (serverBm.title != localMatch.serverTitle && serverBm.created.isAfter(localMatch.created)) {
+          // Server is newer - update local note body with server content
+          localMatch.note = serverBm.title;
+          await _saveAll(itemId, localBookmarks);
+          debugPrint('[Bookmarks] Updated from server: "${serverBm.title}"');
+        }
+      }
+
+      // Find local bookmarks not on server - push them
+      final refreshedLocal = await getBookmarks(itemId);
+      for (final lb in refreshedLocal) {
+        final serverMatch = serverBookmarks.where((sb) =>
+            posMatch((sb['time'] as num?)?.toDouble() ?? 0, lb.positionSeconds)).firstOrNull;
+        if (serverMatch == null) {
+          await api.createBookmark(itemId, time: lb.positionSeconds, title: lb.serverTitle);
+          debugPrint('[Bookmarks] Pushed to server: "${lb.serverTitle}" at ${lb.formattedPosition}');
+        }
+      }
+    } catch (e) {
+      debugPrint('[Bookmarks] Sync error: $e');
+    }
+  }
+
+  /// Save all bookmarks for an item (used internally after batch updates).
+  Future<void> _saveAll(String itemId, List<Bookmark> bookmarks) async {
+    final key = '$_keyPrefix$itemId';
+    await ScopedPrefs.setStringList(key, bookmarks.map((b) => jsonEncode(b.toJson())).toList());
   }
 
   /// Get all bookmarks across all books for the current account, keyed by itemId.
-  /// [sort] is 'newest' (by creation time, newest first) or 'position' (by book position).
   Future<Map<String, List<Bookmark>>> getAllBookmarks({String sort = 'newest'}) async {
     final prefs = await SharedPreferences.getInstance();
     final scope = UserAccountService().activeScopeKey;
@@ -192,7 +291,6 @@ class BookmarkService {
       }
     }
 
-    // Sort book groups by most recent bookmark when in newest mode
     if (sort == 'newest') {
       final sorted = Map.fromEntries(
         result.entries.toList()..sort((a, b) => b.value.first.created.compareTo(a.value.first.created)),

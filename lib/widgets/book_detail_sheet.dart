@@ -20,6 +20,7 @@ import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import 'card_buttons.dart';
 import '../services/api_service.dart';
+import '../services/bookmark_service.dart';
 import '../services/download_service.dart';
 import '../services/progress_sync_service.dart';
 import '../services/metadata_override_service.dart';
@@ -61,6 +62,8 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   String? _asin;
   bool _isLoading = true;
   bool _chaptersExpanded = false;
+  bool _bookmarksExpanded = false;
+  List<Bookmark> _bookmarks = [];
   bool _isAbsorbing = false;
   bool _hasLocalOverride = false;
   bool _showGoodreads = false;
@@ -71,12 +74,18 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   @override void initState() {
     super.initState();
     _loadItem();
+    _loadBookmarks();
     PlayerSettings.getShowGoodreadsButton().then((v) { if (mounted) setState(() => _showGoodreads = v); });
     ScopedPrefs.getStringList('saved_ebooks').then((list) {
       if (mounted && list.contains(widget.itemId)) {
         setState(() => _ebookSaved = true);
       }
     });
+  }
+
+  Future<void> _loadBookmarks() async {
+    final bm = await BookmarkService().getBookmarks(widget.itemId, sort: 'position');
+    if (mounted) setState(() => _bookmarks = bm);
   }
 
   Future<void> _loadItem() async {
@@ -510,6 +519,24 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                 SizedBox(width: 28, child: Text('${e.key + 1}', style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.3)))),
                 Expanded(child: Text(ch['title'] as String? ?? 'Chapter ${e.key + 1}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.6)))),
                 Text(_fmtDur(((ch['end'] as num?)?.toDouble() ?? 0) - ((ch['start'] as num?)?.toDouble() ?? 0)), style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.3))),
+              ]));
+          })]],
+      if (_bookmarks.isNotEmpty) ...[const SizedBox(height: 16),
+        GestureDetector(onTap: () => setState(() => _bookmarksExpanded = !_bookmarksExpanded),
+          child: Row(children: [
+            Text('Bookmarks (${_bookmarks.length})', style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
+            const Spacer(), Icon(_bookmarksExpanded ? Icons.expand_less : Icons.expand_more, color: cs.onSurface.withValues(alpha: 0.3), size: 20)])),
+        if (_bookmarksExpanded) ...[const SizedBox(height: 8),
+          ..._bookmarks.map((bm) {
+            final hasNote = bm.note != null && bm.note!.isNotEmpty;
+            return Padding(padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(width: 56, child: Text(bm.formattedPosition, style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.3)))),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(bm.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.6))),
+                  if (hasNote)
+                    Text(bm.note!, maxLines: 2, overflow: TextOverflow.ellipsis, style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.35))),
+                ])),
               ]));
           })]],
       // Secondary actions are in the More sheet now.

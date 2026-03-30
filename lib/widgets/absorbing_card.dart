@@ -1263,6 +1263,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
       isCastingThis: _isCastingThis,
       displaySpeed: _speedAdjustedTime ? (_isActive ? widget.player.speed : _savedSpeed) : 1.0,
       player: widget.player,
+      itemId: _itemId,
     );
   }
 

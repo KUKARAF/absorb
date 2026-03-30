@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/library_provider.dart';
+import '../screens/app_shell.dart';
 import '../services/audio_player_service.dart';
 import '../services/chromecast_service.dart';
 import 'absorbing_shared.dart';
@@ -14,6 +18,7 @@ void showChaptersSheet({
   required bool isCastingThis,
   required double displaySpeed,
   required AudioPlayerService player,
+  String? itemId,
 }) {
   if (chapters.isEmpty) return;
 
@@ -80,15 +85,49 @@ void showChaptersSheet({
                   const SizedBox(width: 8),
                   Text(fmtDur((end - start) / displaySpeed), style: tt.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ]),
-                onTap: isPlaybackActive ? () {
-                  final seekDur = Duration(seconds: start.round());
-                  if (isCastingThis) {
-                    cast.seekTo(seekDur);
-                  } else {
-                    player.seekTo(seekDur);
+                onTap: () async {
+                  if (isPlaybackActive) {
+                    // Active card - jump directly
+                    final seekDur = Duration(seconds: start.round());
+                    if (isCastingThis) {
+                      cast.seekTo(seekDur);
+                    } else {
+                      player.seekTo(seekDur);
+                    }
+                    Navigator.pop(ctx);
+                  } else if (itemId != null) {
+                    // Inactive card - confirm then start playback
+                    final confirmed = await showDialog<bool>(context: ctx, builder: (dlg) => AlertDialog(
+                      title: const Text('Play from chapter?'),
+                      content: Text('Start playing from "$chTitle"?'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(dlg, false), child: const Text('Cancel')),
+                        FilledButton(onPressed: () => Navigator.pop(dlg, true), child: const Text('Play')),
+                      ],
+                    ));
+                    if (confirmed != true || !ctx.mounted) return;
+                    Navigator.pop(ctx); // Close chapter sheet first
+                    final api = context.read<AuthProvider>().apiService;
+                    if (api == null) return;
+                    final lib = context.read<LibraryProvider>();
+                    final fullItem = await api.getLibraryItem(itemId);
+                    if (fullItem == null) return;
+                    final media = fullItem['media'] as Map<String, dynamic>? ?? {};
+                    final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+                    final title = metadata['title'] as String? ?? '';
+                    final author = metadata['authorName'] as String? ?? '';
+                    final coverUrl = lib.getCoverUrl(itemId);
+                    final dur = (media['duration'] is num) ? (media['duration'] as num).toDouble() : 0.0;
+                    final chs = (media['chapters'] as List<dynamic>?) ?? [];
+                    await player.playItem(
+                      api: api, itemId: itemId,
+                      title: title, author: author, coverUrl: coverUrl,
+                      totalDuration: dur, chapters: chs,
+                      startTime: start, forceStartTime: true,
+                    );
+                    AppShell.goToAbsorbingGlobal();
                   }
-                  Navigator.pop(ctx);
-                } : null,
+                },
               );
             },
           )),

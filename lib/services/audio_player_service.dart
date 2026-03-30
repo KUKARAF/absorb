@@ -642,6 +642,7 @@ class AudioPlayerService extends ChangeNotifier {
   double _totalDuration = 0;
   List<dynamic> _chapters = [];
   ApiService? _api;
+  ApiService? get currentApi => _api;
   String? _playbackSessionId;
   bool _isOfflineMode = false;
   StreamSubscription? _syncSub;
@@ -1123,6 +1124,7 @@ class AudioPlayerService extends ChangeNotifier {
     required double totalDuration,
     required List<dynamic> chapters,
     double startTime = 0,
+    bool forceStartTime = false,
     String? episodeId,
     String? episodeTitle,
   }) async {
@@ -1166,9 +1168,9 @@ class AudioPlayerService extends ChangeNotifier {
     // Notify rolling download listener that a new item is playing
     _onPlayStartedCallback?.call(progressKey);
 
-    // Check for local saved position
+    // Check for local saved position (skip if startTime was forced)
     final localPos = await _progressSync.getSavedPosition(progressKey);
-    if (localPos > 0 && startTime == 0) {
+    if (localPos > 0 && startTime == 0 && !forceStartTime) {
       startTime = localPos;
       debugPrint('[Player] Resuming from local position: ${startTime}s');
     }
@@ -1197,7 +1199,7 @@ class AudioPlayerService extends ChangeNotifier {
     final String? result;
     if (_downloadService.isDownloaded(progressKey)) {
       result = await _playFromLocal(progressKey, title, author, coverUrl,
-          totalDuration, chapters, startTime);
+          totalDuration, chapters, startTime, forceStartTime);
     } else {
       // Check manual offline — don't stream from server
       final prefs = await SharedPreferences.getInstance();
@@ -1209,7 +1211,7 @@ class AudioPlayerService extends ChangeNotifier {
       }
       // Stream from server
       result = await _playFromServer(api, itemId, title, author, coverUrl,
-          totalDuration, chapters, startTime);
+          totalDuration, chapters, startTime, forceStartTime);
     }
 
     _isLoadingNewItem = false;
@@ -1296,8 +1298,9 @@ class AudioPlayerService extends ChangeNotifier {
     String? coverUrl,
     double totalDuration,
     List<dynamic> chapters,
-    double startTime,
-  ) async {
+    double startTime, [
+    bool forceStartTime = false,
+  ]) async {
     debugPrint('[Player] Playing from local files: $title');
     _isOfflineMode = false; // We still sync to server if possible
     _playbackSessionId = null;
@@ -1484,8 +1487,9 @@ class AudioPlayerService extends ChangeNotifier {
     String? coverUrl,
     double totalDuration,
     List<dynamic> chapters,
-    double startTime,
-  ) async {
+    double startTime, [
+    bool forceStartTime = false,
+  ]) async {
     debugPrint('[Player] Streaming from server: $title');
     _isOfflineMode = false;
 
@@ -1533,10 +1537,13 @@ class AudioPlayerService extends ChangeNotifier {
     // Compare server position vs local.
     // Usually the furthest position wins, but if local is ahead we also
     // check timestamps to catch stale local saves.
+    // Skip all of this when startTime was forced (bookmark/chapter jump).
     final serverPos = (sessionData['currentTime'] as num?)?.toDouble() ?? 0;
     final pKey = _currentEpisodeId != null ? '$itemId-$_currentEpisodeId' : itemId;
     final localTs = await _progressSync.getSavedTimestamp(pKey);
-    if (serverPos > startTime + 1.0) {
+    if (forceStartTime) {
+      debugPrint('[Player] Forced start time: ${startTime}s — skipping server/local position comparison');
+    } else if (serverPos > startTime + 1.0) {
       debugPrint('[Player] Server position is ahead: server=${serverPos}s vs local=${startTime}s — using server');
       startTime = serverPos;
     } else if (startTime > 0) {

@@ -909,6 +909,75 @@ class ApiService {
     return null;
   }
 
+  // ─── Bookmark Endpoints ───────────────────────────────────
+
+  /// Get bookmarks for an item from the server.
+  /// Uses GET /api/me/item/:id which includes bookmarks in the response.
+  Future<List<Map<String, dynamic>>?> getServerBookmarks(String itemId) async {
+    try {
+      // Try mediaProgress first
+      final progress = await getItemProgress(itemId);
+      if (progress != null) {
+        final bookmarks = progress['bookmarks'] as List<dynamic>?;
+        if (bookmarks != null && bookmarks.isNotEmpty) {
+          return bookmarks.cast<Map<String, dynamic>>();
+        }
+      }
+      // Fall back to user object - bookmarks may be stored there
+      final user = await getMe();
+      if (user != null) {
+        final bookmarks = user['bookmarks'] as List<dynamic>?;
+        if (bookmarks != null) {
+          // Filter to bookmarks for this item
+          return bookmarks
+              .whereType<Map<String, dynamic>>()
+              .where((b) => b['libraryItemId'] == itemId)
+              .toList();
+        }
+      }
+      return [];
+    } catch (e) { debugPrint('getServerBookmarks error: $e'); }
+    return null;
+  }
+
+  /// Create a bookmark on the server.
+  /// POST /api/me/item/:id/bookmark  body: { time, title }
+  Future<bool> createBookmark(String itemId, {required double time, required String title}) async {
+    try {
+      final r = await _authPost(
+        Uri.parse('$_cleanBaseUrl/api/me/item/$itemId/bookmark'),
+        body: jsonEncode({'time': time, 'title': title}),
+      );
+      return r.statusCode == 200;
+    } catch (e) { debugPrint('createBookmark error: $e'); }
+    return false;
+  }
+
+  /// Update a bookmark on the server.
+  /// PATCH /api/me/item/:id/bookmark  body: { time, title }
+  Future<bool> updateBookmark(String itemId, {required double time, required String title}) async {
+    try {
+      final r = await _authPatch(
+        Uri.parse('$_cleanBaseUrl/api/me/item/$itemId/bookmark'),
+        body: jsonEncode({'time': time, 'title': title}),
+      );
+      return r.statusCode == 200;
+    } catch (e) { debugPrint('updateBookmark error: $e'); }
+    return false;
+  }
+
+  /// Delete a bookmark on the server.
+  /// DELETE /api/me/item/:id/bookmark/:time
+  Future<bool> deleteBookmark(String itemId, {required double time}) async {
+    try {
+      final r = await _authDelete(
+        Uri.parse('$_cleanBaseUrl/api/me/item/$itemId/bookmark/$time'),
+      );
+      return r.statusCode == 200;
+    } catch (e) { debugPrint('deleteBookmark error: $e'); }
+    return false;
+  }
+
   /// Get a single series with its books (paginated).
   /// If [onPageLoaded] is provided, it's called after each page with the
   /// cumulative results and total so the UI can show books as they arrive.
