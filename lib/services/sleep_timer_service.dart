@@ -168,79 +168,56 @@ class SleepTimerService extends ChangeNotifier {
   void _startTimeCountdown() {
     _timer?.cancel();
     _wasPlaying = _isPlaybackActive;
-    _lastTickTime = DateTime.now();
-    _scheduleNextTick();
-  }
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (_timeRemaining.inSeconds <= 0) {
+        _triggerSleep();
+        return;
+      }
+      final isPlaying = _isPlaybackActive;
 
-  DateTime _lastTickTime = DateTime.now();
-
-  /// Use a shorter interval during fade-out for smooth volume, longer otherwise.
-  void _scheduleNextTick() {
-    _timer?.cancel();
-    final interval = (_isFadingOut || _timeRemaining <= _warningThreshold)
-        ? const Duration(seconds: 1)
-        : const Duration(seconds: 5);
-    _timer = Timer.periodic(interval, (_) => _onTimerTick());
-  }
-
-  void _onTimerTick() async {
-    if (_timeRemaining.inSeconds <= 0) {
-      _triggerSleep();
-      return;
-    }
-    final isPlaying = _isPlaybackActive;
-
-    // Detect pause->play transition and reset if setting is on
-    if (isPlaying && !_wasPlaying) {
-      final resetOnPause = await PlayerSettings.getResetSleepOnPause();
-      if (resetOnPause) {
-        _timeRemaining = _initialDuration;
-        _warningSent = false;
-        if (_isFadingOut) {
-          _isFadingOut = false;
-          _player.setVolume(_fadeStartVolume);
+      // Detect pause->play transition and reset if setting is on
+      if (isPlaying && !_wasPlaying) {
+        final resetOnPause = await PlayerSettings.getResetSleepOnPause();
+        if (resetOnPause) {
+          _timeRemaining = _initialDuration;
+          _warningSent = false;
+          if (_isFadingOut) {
+            _isFadingOut = false;
+            _player.setVolume(_fadeStartVolume);
+          }
+          debugPrint('[SleepTimer] Reset to ${_initialDuration.inMinutes}m on resume');
+          onToast?.call('Sleep timer reset: ${_initialDuration.inMinutes}m');
         }
-        debugPrint('[SleepTimer] Reset to ${_initialDuration.inMinutes}m on resume');
-        onToast?.call('Sleep timer reset: ${_initialDuration.inMinutes}m');
-        _scheduleNextTick(); // switch back to slow interval
       }
-    }
-    _wasPlaying = isPlaying;
+      _wasPlaying = isPlaying;
 
-    // Only count down when playing
-    if (isPlaying) {
-      // Use real elapsed time instead of assuming fixed tick interval
-      final now = DateTime.now();
-      final elapsed = now.difference(_lastTickTime);
-      _lastTickTime = now;
-      _timeRemaining -= elapsed;
-      if (_timeRemaining.isNegative) _timeRemaining = Duration.zero;
+      // Only count down when playing
+      if (isPlaying) {
+        _timeRemaining -= const Duration(seconds: 1);
 
-      // Wind-down warning at 30 seconds: vibration + optional fade
-      if (!_warningSent && _timeRemaining <= _warningThreshold && _timeRemaining.inSeconds > 0) {
-        _warningSent = true;
-        onToast?.call('Sleep timer ending soon...');
-        final fadeEnabled = await PlayerSettings.getSleepFadeOut();
-        if (fadeEnabled && !_cast.isCasting) {
-          _isFadingOut = true;
-          _fadeStartVolume = _player.volume;
-          debugPrint('[SleepTimer] Warning: ${_timeRemaining.inSeconds}s remaining - starting fade');
-        } else {
-          debugPrint('[SleepTimer] Warning: ${_timeRemaining.inSeconds}s remaining');
+        // Wind-down warning at 30 seconds: vibration + optional fade
+        if (!_warningSent && _timeRemaining <= _warningThreshold && _timeRemaining.inSeconds > 0) {
+          _warningSent = true;
+          onToast?.call('Sleep timer ending soon...');
+          final fadeEnabled = await PlayerSettings.getSleepFadeOut();
+          if (fadeEnabled && !_cast.isCasting) {
+            _isFadingOut = true;
+            _fadeStartVolume = _player.volume;
+            debugPrint('[SleepTimer] Warning: ${_timeRemaining.inSeconds}s remaining - starting fade');
+          } else {
+            debugPrint('[SleepTimer] Warning: ${_timeRemaining.inSeconds}s remaining');
+          }
         }
-        _scheduleNextTick(); // switch to 1s for smooth fade
-      }
 
-      // Gradually lower volume during the last 30 seconds
-      if (_isFadingOut && _timeRemaining.inSeconds > 0 && !_cast.isCasting) {
-        final fraction = _timeRemaining.inSeconds / _warningThreshold.inSeconds;
-        _player.setVolume((_fadeStartVolume * fraction).clamp(0.0, 1.0));
-      }
+        // Gradually lower volume during the last 30 seconds
+        if (_isFadingOut && _timeRemaining.inSeconds > 0 && !_cast.isCasting) {
+          final fraction = _timeRemaining.inSeconds / _warningThreshold.inSeconds;
+          _player.setVolume((_fadeStartVolume * fraction).clamp(0.0, 1.0));
+        }
 
-      notifyListeners();
-    } else {
-      _lastTickTime = DateTime.now(); // don't accumulate paused time
-    }
+        notifyListeners();
+      }
+    });
   }
 
   /// Add time (used by shake reset in time mode, or manual add)
