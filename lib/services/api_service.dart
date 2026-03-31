@@ -424,7 +424,7 @@ class ApiService {
           '$_cleanBaseUrl/api/libraries/$libraryId/series'
           '?page=$page&limit=$limit&sort=$sort&desc=$desc',
         ),
-        timeout: const Duration(seconds: 30),
+        timeout: const Duration(seconds: 60),
       );
 
       if (response.statusCode == 200) {
@@ -1041,13 +1041,24 @@ class ApiService {
   Future<List<dynamic>> getSeriesCollapsed(String seriesId, {required String libraryId}) async {
     try {
       final filterValue = base64Encode(utf8.encode(seriesId));
-      final url = '$_cleanBaseUrl/api/libraries/$libraryId/items?filter=series.$filterValue&sort=media.metadata.series.sequence&limit=100&collapseseries=1';
-      final resp = await _authGet(Uri.parse(url), timeout: const Duration(seconds: 30));
-      if (resp.statusCode == 200) {
+      final allResults = <dynamic>[];
+      int page = 0;
+      while (true) {
+        final url = '$_cleanBaseUrl/api/libraries/$libraryId/items?filter=series.$filterValue&sort=addedAt&limit=100&page=$page&collapseseries=1';
+        final resp = await _authGet(Uri.parse(url), timeout: const Duration(seconds: 60));
+        if (resp.statusCode != 200) {
+          debugPrint('[API] getSeriesCollapsed page $page failed: ${resp.statusCode}');
+          break;
+        }
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        return data['results'] as List<dynamic>? ?? [];
+        final results = data['results'] as List<dynamic>? ?? [];
+        final total = (data['total'] as num?)?.toInt() ?? results.length;
+        allResults.addAll(results);
+        if (allResults.length >= total || results.isEmpty) break;
+        page++;
       }
-    } catch (_) {}
+      return allResults;
+    } catch (e) { debugPrint('[API] getSeriesCollapsed error: $e'); }
     return [];
   }
 
@@ -1063,6 +1074,7 @@ class ApiService {
         Uri.parse(
           '$_cleanBaseUrl/api/libraries/$libraryId/search?q=$encoded&limit=$limit',
         ),
+        timeout: const Duration(seconds: 60),
       );
 
       if (response.statusCode == 200) {
