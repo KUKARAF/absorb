@@ -295,7 +295,7 @@ class HomeWidgetService {
 
   void _startProgressTimer() {
     if (_progressTimer?.isActive == true) return;
-    _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    _progressTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       _scheduleUpdate();
     });
   }

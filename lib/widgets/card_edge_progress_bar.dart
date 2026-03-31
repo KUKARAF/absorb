@@ -36,10 +36,11 @@ class CardEdgeProgressBar extends StatefulWidget {
 }
 
 class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
 
   // ── Smooth position tracking (same pattern as CardDualProgressBar) ──
-  late AnimationController _smoothTicker;
+  Timer? _smoothTicker;
+  final _tickNotifier = ChangeNotifier(); // drives ListenableBuilder rebuilds
   double _lastKnownPos = 0;
   DateTime _lastPosTime = DateTime.now();
   double _currentSpeed = 1.0;
@@ -64,7 +65,6 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _smoothTicker = AnimationController(vsync: this, duration: const Duration(days: 999));
     _expandController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 250),
@@ -108,10 +108,15 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
   }
 
   void _syncTicker() {
-    if (_isPlaying && (widget.isActive || _isCastMode)) {
-      if (!_smoothTicker.isAnimating) _smoothTicker.repeat();
-    } else {
-      if (_smoothTicker.isAnimating) _smoothTicker.stop();
+    final shouldRun = _isPlaying && (widget.isActive || _isCastMode);
+    if (shouldRun && _smoothTicker == null) {
+      _smoothTicker = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+        _tickNotifier.notifyListeners();
+      });
+    } else if (!shouldRun && _smoothTicker != null) {
+      _smoothTicker!.cancel();
+      _smoothTicker = null;
     }
   }
 
@@ -212,7 +217,8 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
     PlayerSettings.settingsChanged.removeListener(_loadSettings);
     ChromecastService().removeListener(_onCastChanged);
     _posSub?.cancel();
-    _smoothTicker.dispose();
+    _smoothTicker?.cancel();
+    _tickNotifier.dispose();
     _expandController.dispose();
     super.dispose();
   }
@@ -235,7 +241,7 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
     final active = widget.isActive || _isCastMode;
 
     return ListenableBuilder(
-      listenable: Listenable.merge([_smoothTicker, _expandController]),
+      listenable: Listenable.merge([_tickNotifier, _expandController]),
       builder: (context, _) {
         final staticPos = widget.staticProgress * widget.staticDuration;
         final posS = active ? _smoothPos : staticPos;

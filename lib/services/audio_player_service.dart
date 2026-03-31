@@ -1861,13 +1861,10 @@ class AudioPlayerService extends ChangeNotifier {
     _lastChapterCheckSec = -1;
     _lastKnownPositionSec = 0;
 
-    // Independent periodic timer for position persistence.
-    // The positionStream listener (below) saves every 5s, but Android can
-    // throttle stream events when the Dart isolate is backgrounded while
-    // ExoPlayer keeps playing natively.  This timer acts as a safety net so
-    // progress is still written to SharedPreferences even when the stream
-    // goes silent.
-    _bgSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    // Safety-net timer for position persistence when Android throttles the
+    // Dart position stream in the background. The primary positionStream
+    // listener saves every 5s; this only matters when that stream goes silent.
+    _bgSaveTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
       if (_currentItemId == null || _player == null || !_player!.playing) return;
       final pos = position;
       final posSec = pos.inMilliseconds / 1000.0;
@@ -1932,18 +1929,36 @@ class AudioPlayerService extends ChangeNotifier {
         String? chapterTitle;
         double chapterStart = 0;
         double chapterEnd = _totalDuration;
-        for (int i = 0; i < _chapters.length; i++) {
-          final ch = _chapters[i] as Map<String, dynamic>;
-          final start = (ch['start'] as num?)?.toDouble() ?? 0;
-          final end = (ch['end'] as num?)?.toDouble() ?? _totalDuration;
-          if (posSec >= start && posSec < end) {
-            chapterIdx = i;
+
+        // Fast path: check if still in the cached chapter
+        if (_lastNotifiedChapterIndex >= 0 && _lastNotifiedChapterIndex < _chapters.length) {
+          final ch = _chapters[_lastNotifiedChapterIndex] as Map<String, dynamic>;
+          final s = (ch['start'] as num?)?.toDouble() ?? 0;
+          final e = (ch['end'] as num?)?.toDouble() ?? _totalDuration;
+          if (posSec >= s && posSec < e) {
+            chapterIdx = _lastNotifiedChapterIndex;
             chapterTitle = ch['title'] as String?;
-            chapterStart = start;
-            chapterEnd = end;
-            break;
+            chapterStart = s;
+            chapterEnd = e;
           }
         }
+
+        // Slow path: linear scan only if cached chapter didn't match
+        if (chapterIdx < 0) {
+          for (int i = 0; i < _chapters.length; i++) {
+            final ch = _chapters[i] as Map<String, dynamic>;
+            final start = (ch['start'] as num?)?.toDouble() ?? 0;
+            final end = (ch['end'] as num?)?.toDouble() ?? _totalDuration;
+            if (posSec >= start && posSec < end) {
+              chapterIdx = i;
+              chapterTitle = ch['title'] as String?;
+              chapterStart = start;
+              chapterEnd = end;
+              break;
+            }
+          }
+        }
+
         if (chapterIdx >= 0 && chapterIdx != _lastNotifiedChapterIndex) {
           _lastNotifiedChapterIndex = chapterIdx;
           _currentChapterStart = chapterStart;

@@ -25,7 +25,7 @@ class CardDualProgressBar extends StatefulWidget {
   @override State<CardDualProgressBar> createState() => _CardDualProgressBarState();
 }
 
-class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerProviderStateMixin, WidgetsBindingObserver {
+class _CardDualProgressBarState extends State<CardDualProgressBar> with WidgetsBindingObserver {
   double? _chapterDragValue;
   double? _bookDragValue;
   double _bookDragStartDy = 0;
@@ -34,7 +34,8 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
   double _chapterScrubSpeed = 1.0;
   bool _showBookSlider = false;
   bool _speedAdjustedTime = true;
-  late AnimationController _smoothTicker;
+  Timer? _smoothTicker;
+  final _tickNotifier = ChangeNotifier(); // drives ListenableBuilder rebuilds
 
   // Smooth position tracking
   double _lastKnownPos = 0;
@@ -48,7 +49,6 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _smoothTicker = AnimationController(vsync: this, duration: const Duration(days: 999));
     _loadSettings();
     _subscribePosition();
     PlayerSettings.settingsChanged.addListener(_loadSettings);
@@ -79,10 +79,15 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
   }
 
   void _syncTicker() {
-    if (_isPlaying && (widget.isActive || _isCastMode)) {
-      if (!_smoothTicker.isAnimating) _smoothTicker.repeat();
-    } else {
-      if (_smoothTicker.isAnimating) _smoothTicker.stop();
+    final shouldRun = _isPlaying && (widget.isActive || _isCastMode);
+    if (shouldRun && _smoothTicker == null) {
+      _smoothTicker = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+        _tickNotifier.notifyListeners();
+      });
+    } else if (!shouldRun && _smoothTicker != null) {
+      _smoothTicker!.cancel();
+      _smoothTicker = null;
     }
   }
 
@@ -176,7 +181,8 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
     PlayerSettings.settingsChanged.removeListener(_loadSettings);
     ChromecastService().removeListener(_onCastChanged);
     _posSub?.cancel();
-    _smoothTicker.dispose();
+    _smoothTicker?.cancel();
+    _tickNotifier.dispose();
     super.dispose();
   }
 
@@ -210,7 +216,7 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with TickerPr
     final active = widget.isActive || _isCastMode;
 
     return ListenableBuilder(
-      listenable: _smoothTicker,
+      listenable: _tickNotifier,
       builder: (context, _) {
         final staticPos = widget.staticProgress * widget.staticDuration;
         final posS = active ? _smoothPos : staticPos;
