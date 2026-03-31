@@ -734,6 +734,28 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
   }
 
   void _onRemoteUserUpdated(Map<String, dynamic> data) {
+    // Sync bookmarks from user_updated event
+    final bookmarks = data['bookmarks'] as List<dynamic>?;
+    if (bookmarks != null && _api != null) {
+      // Group server bookmarks by libraryItemId
+      final byItem = <String, List<Map<String, dynamic>>>{};
+      for (final b in bookmarks) {
+        if (b is Map<String, dynamic>) {
+          final id = b['libraryItemId'] as String? ?? '';
+          if (id.isNotEmpty) byItem.putIfAbsent(id, () => []).add(b);
+        }
+      }
+      // Sync each item that has bookmarks, plus the currently playing item
+      final player = AudioPlayerService();
+      final currentId = player.currentItemId;
+      final idsToSync = <String>{...byItem.keys};
+      if (currentId != null) idsToSync.add(currentId);
+      for (final itemId in idsToSync) {
+        BookmarkService().syncBookmarks(itemId, _api!,
+          preloadedServerBookmarks: byItem[itemId] ?? []);
+      }
+    }
+
     final progressList = data['mediaProgress'] as List<dynamic>?;
     if (progressList != null) {
       final player = AudioPlayerService();

@@ -82,6 +82,8 @@ class BookmarkService {
 
   static const int _maxBookmarksPerBook = 100;
   static const _keyPrefix = 'bookmarks_';
+  // Track bookmarks not yet pushed to server (created offline)
+  final Set<String> _unpushed = {}; // "itemId::position" keys
 
   /// Get all bookmarks for a book.
   Future<List<Bookmark>> getBookmarks(String itemId, {String sort = 'newest'}) async {
@@ -132,8 +134,12 @@ class BookmarkService {
     debugPrint('[Bookmarks] Added "${bookmark.title}" at ${bookmark.formattedPosition}');
 
     // Push to server
+    final unpushedKey = '$itemId::${positionSeconds.toStringAsFixed(1)}';
     if (api != null) {
-      await api.createBookmark(itemId, time: positionSeconds, title: bookmark.serverTitle);
+      final ok = await api.createBookmark(itemId, time: positionSeconds, title: bookmark.serverTitle);
+      if (!ok) _unpushed.add(unpushedKey);
+    } else {
+      _unpushed.add(unpushedKey);
     }
 
     return bookmark;
@@ -243,15 +249,32 @@ class BookmarkService {
         }
       }
 
-      // Find local bookmarks not on server - push them
+      // Remove local bookmarks that no longer exist on server,
+      // but push any that were created offline and haven't been synced yet.
       final refreshedLocal = await getBookmarks(itemId);
+      final kept = <Bookmark>[];
+      bool changed = false;
       for (final lb in refreshedLocal) {
         final serverMatch = serverBookmarks.where((sb) =>
             posMatch((sb['time'] as num?)?.toDouble() ?? 0, lb.positionSeconds)).firstOrNull;
-        if (serverMatch == null) {
-          await api.createBookmark(itemId, time: lb.positionSeconds, title: lb.serverTitle);
-          debugPrint('[Bookmarks] Pushed to server: "${lb.serverTitle}" at ${lb.formattedPosition}');
+        if (serverMatch != null) {
+          kept.add(lb);
+        } else {
+          final unpushedKey = '$itemId::${lb.positionSeconds.toStringAsFixed(1)}';
+          if (_unpushed.contains(unpushedKey)) {
+            // Created offline, push now
+            await api.createBookmark(itemId, time: lb.positionSeconds, title: lb.serverTitle);
+            _unpushed.remove(unpushedKey);
+            debugPrint('[Bookmarks] Pushed offline bookmark: "${lb.title}" at ${lb.formattedPosition}');
+            kept.add(lb);
+          } else {
+            debugPrint('[Bookmarks] Removed locally (deleted on server): "${lb.title}" at ${lb.formattedPosition}');
+            changed = true;
+          }
         }
+      }
+      if (changed) {
+        await _saveAll(itemId, kept);
       }
     } catch (e) {
       debugPrint('[Bookmarks] Sync error: $e');

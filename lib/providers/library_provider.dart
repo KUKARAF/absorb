@@ -12,6 +12,7 @@ import '../services/progress_sync_service.dart';
 import '../services/download_service.dart';
 import '../services/android_auto_service.dart';
 import '../services/chromecast_service.dart';
+import '../services/bookmark_service.dart';
 import '../services/socket_service.dart';
 import '../main.dart' show scaffoldMessengerKey;
 
