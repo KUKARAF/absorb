@@ -1048,6 +1048,7 @@ class AudioPlayerService extends ChangeNotifier {
       androidWillPauseWhenDucked: true,
     ));
     await session.setActive(true);
+    debugPrint('[Battery] AudioSession ACTIVATED');
 
     _interruptSub?.cancel();
     _interruptSub = session.interruptionEventStream.listen((event) async {
@@ -1717,8 +1718,10 @@ class AudioPlayerService extends ChangeNotifier {
 
   void _updateWakeLock(bool playing) {
     if (PlayerSettings.keepScreenAwake && playing) {
+      debugPrint('[Battery] WakeLock ENABLED (playing=$playing, keepScreenAwake=true)');
       WakelockPlus.enable();
     } else {
+      debugPrint('[Battery] WakeLock DISABLED (playing=$playing, keepScreenAwake=${PlayerSettings.keepScreenAwake})');
       WakelockPlus.disable();
     }
   }
@@ -1744,12 +1747,14 @@ class AudioPlayerService extends ChangeNotifier {
     _completionSub?.cancel();
     _completionSub = null;
     _lastKnownPositionSec = 0;
+    if (_bgSaveTimer != null) debugPrint('[Battery] bgSaveTimer CANCELLED (clearState)');
     _bgSaveTimer?.cancel();
     _bgSaveTimer = null;
     _eqSessionSub?.cancel();
     _eqSessionSub = null;
     _streamRetryCount = 0;
     _retryInProgress = false;
+    if (_stuckCheckTimer != null) debugPrint('[Battery] stuckCheckTimer CANCELLED (clearState)');
     _stuckCheckTimer?.cancel();
     _stuckCheckTimer = null;
     _resetStuckDetection();
@@ -1864,7 +1869,9 @@ class AudioPlayerService extends ChangeNotifier {
     // Safety-net timer for position persistence when Android throttles the
     // Dart position stream in the background. The primary positionStream
     // listener saves every 5s; this only matters when that stream goes silent.
+    debugPrint('[Battery] bgSaveTimer STARTED (30s interval)');
     _bgSaveTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+      debugPrint('[Battery] bgSaveTimer TICK (playing=${_player?.playing}, item=$_currentItemId)');
       if (_currentItemId == null || _player == null || !_player!.playing) return;
       final pos = position;
       final posSec = pos.inMilliseconds / 1000.0;
@@ -1895,6 +1902,7 @@ class AudioPlayerService extends ChangeNotifier {
       _attemptStreamRetry(e);
     });
 
+    debugPrint('[Battery] positionStream SUBSCRIBED');
     _syncSub = _player?.positionStream.listen((trackRelativePos) async {
       // Reset retry counter on successful position updates
       _streamRetryCount = 0;
@@ -2047,6 +2055,7 @@ class AudioPlayerService extends ChangeNotifier {
     _stuckCheckTimer?.cancel();
     _resetStuckDetection();
 
+    debugPrint('[Battery] stuckCheckTimer STARTED (3s interval)');
     _stuckCheckTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       // Only check while actively playing
       if (_player == null || !_player!.playing) {
@@ -2351,6 +2360,7 @@ class AudioPlayerService extends ChangeNotifier {
       }
       // Release audio focus so other apps can use it
       if (!_audioFocusDisabled) {
+        debugPrint('[Battery] AudioSession DEACTIVATED (pause timeout)');
         try { (await AudioSession.instance).setActive(false); } catch (_) {}
       }
       // Cancel sleep timer
@@ -2540,6 +2550,7 @@ class AudioPlayerService extends ChangeNotifier {
     // Release audio focus so other apps can use it - but not during casting,
     // because deactivating the session can interfere with cast playback.
     if (!_audioFocusDisabled && !ChromecastService().isCasting) {
+      debugPrint('[Battery] AudioSession DEACTIVATED (stop)');
       try { (await AudioSession.instance).setActive(false); } catch (_) {}
     }
   }

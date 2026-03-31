@@ -182,7 +182,7 @@ class SocketService {
   /// cheaply reconnect later without re-wiring everything.
   void softDisconnect() {
     if (_socket == null) return;
-    debugPrint('[Socket] Soft disconnect (battery saving)');
+    debugPrint('[Battery] Socket DISCONNECTED (soft, battery saving)');
     _socket!.dispose();
     _socket = null;
   }
@@ -206,7 +206,7 @@ class SocketService {
     final url = _serverUrl;
     final token = _token;
     if (url == null || token == null) return;
-    debugPrint('[Socket] Soft reconnect');
+    debugPrint('[Battery] Socket RECONNECTED (soft)');
 
     try {
       _socket = io.io(url, _buildOptions());

@@ -72,10 +72,12 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with WidgetsB
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      debugPrint('[Battery] CardDualProgressBar RESUMED');
       _backgrounded = false;
       _loadSettings();
       _syncTicker();
     } else if (state == AppLifecycleState.paused) {
+      debugPrint('[Battery] CardDualProgressBar PAUSED - stopping ticker');
       _backgrounded = true;
       _smoothTicker?.cancel();
       _smoothTicker = null;
@@ -91,11 +93,13 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with WidgetsB
   void _syncTicker() {
     final shouldRun = _isPlaying && (widget.isActive || _isCastMode) && !_backgrounded;
     if (shouldRun && _smoothTicker == null) {
+      debugPrint('[Battery] CardDualProgressBar ticker STARTED (playing=$_isPlaying, active=${widget.isActive}, bg=$_backgrounded)');
       _smoothTicker = Timer.periodic(const Duration(milliseconds: 100), (_) {
         // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
         _tickNotifier.notifyListeners();
       });
     } else if (!shouldRun && _smoothTicker != null) {
+      debugPrint('[Battery] CardDualProgressBar ticker STOPPED (playing=$_isPlaying, active=${widget.isActive}, bg=$_backgrounded)');
       _smoothTicker!.cancel();
       _smoothTicker = null;
     }

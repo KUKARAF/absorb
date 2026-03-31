@@ -343,6 +343,7 @@ class SleepTimerService extends ChangeNotifier {
     _timer = null;
     _positionSub?.cancel();
     _positionSub = null;
+    if (_accelSub != null) debugPrint('[Battery] Accelerometer stream STOPPED');
     _accelSub?.cancel();
     _accelSub = null;
     _mode = SleepTimerMode.off;
@@ -375,6 +376,7 @@ class SleepTimerService extends ChangeNotifier {
     if (_shakeMode == 'off') return;
     
     _accelSub?.cancel();
+    debugPrint('[Battery] Accelerometer stream STARTED (shakeMode=$_shakeMode)');
     _accelSub = userAccelerometerEventStream().listen((event) {
       final magnitude = sqrt(
         event.x * event.x + event.y * event.y + event.z * event.z);
