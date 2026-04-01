@@ -115,6 +115,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
   bool _mergeLibraries = false;
   bool? _lastSeenHasBook;
   bool? _lastSeenIsPlaying;
+  String? _lastSeenLibraryId;
 
   void _rebuild() {
     if (!mounted) return;
@@ -454,6 +455,14 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final lowerFade = Color.lerp(cs.surface, scaffoldBg, 0.55) ?? scaffoldBg;
     final lib = context.watch<LibraryProvider>();
+
+    // Reset carousel to first card when library changes
+    if (lib.selectedLibraryId != _lastSeenLibraryId && _lastSeenLibraryId != null) {
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(0);
+      }
+    }
+    _lastSeenLibraryId = lib.selectedLibraryId;
     final dl = DownloadService();
     var books = _getAbsorbingBooks(lib);
     

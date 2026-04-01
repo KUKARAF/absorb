@@ -223,6 +223,19 @@ class LibraryProvider extends ChangeNotifier
   }
 
   Future<void> selectLibrary(String libraryId) async {
+    final wasPlaying = AudioPlayerService().isPlaying;
+    final wasCasting = ChromecastService().isPlaying;
+
+    // Stop playback if something is playing from the old library
+    if (wasPlaying) {
+      debugPrint('[Library] Stopping playback on library switch');
+      await AudioPlayerService().stop();
+    }
+    if (wasCasting) {
+      debugPrint('[Library] Stopping cast on library switch');
+      ChromecastService().stopCasting();
+    }
+
     _selectedLibraryId = libraryId;
     _series = [];
     _playlists = [];
