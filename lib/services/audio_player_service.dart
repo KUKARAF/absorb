@@ -2311,6 +2311,19 @@ class AudioPlayerService extends ChangeNotifier {
     _logEvent(PlaybackEventType.play);
     _onPlaybackStateChangedCallback?.call(true);
     _updateWakeLock(true);
+    // Restart safety-net save timer (stopped on pause to avoid background wakes)
+    if (_bgSaveTimer == null || !_bgSaveTimer!.isActive) {
+      debugPrint('[Battery] bgSaveTimer RESTARTED (play)');
+      _bgSaveTimer?.cancel();
+      _bgSaveTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+        debugPrint('[Battery] bgSaveTimer TICK (playing=${_player?.playing}, item=$_currentItemId)');
+        if (_currentItemId == null || _player == null || !_player!.playing) return;
+        final pos = position;
+        final posSec = pos.inMilliseconds / 1000.0;
+        if (posSec <= 0) return;
+        await _saveProgressLocal(pos);
+      });
+    }
     // Check auto sleep on every resume — catches window entry between pauses
     SleepTimerService().checkAutoSleep();
     notifyListeners();
@@ -2320,6 +2333,12 @@ class AudioPlayerService extends ChangeNotifier {
     debugPrint('[Service] pause() called');
     _wasPlayingBeforeInterrupt = false;
     _lastPauseTime = DateTime.now();
+    // Stop safety-net save timer to avoid background wakes while paused
+    if (_bgSaveTimer != null) {
+      debugPrint('[Battery] bgSaveTimer STOPPED (pause)');
+      _bgSaveTimer!.cancel();
+      _bgSaveTimer = null;
+    }
     await _player?.pause();
     _logEvent(PlaybackEventType.pause);
     _onPlaybackStateChangedCallback?.call(false);
