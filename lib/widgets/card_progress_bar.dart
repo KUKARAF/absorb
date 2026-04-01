@@ -91,13 +91,11 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with WidgetsB
   void _syncTicker() {
     final shouldRun = _isPlaying && (widget.isActive || _isCastMode) && !_backgrounded;
     if (shouldRun && _smoothTicker == null) {
-      debugPrint('[Battery] CardDualProgressBar ticker STARTED (playing=$_isPlaying, active=${widget.isActive}, bg=$_backgrounded)');
       _smoothTicker = Timer.periodic(const Duration(milliseconds: 100), (_) {
         // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
         _tickNotifier.notifyListeners();
       });
     } else if (!shouldRun && _smoothTicker != null) {
-      debugPrint('[Battery] CardDualProgressBar ticker STOPPED (playing=$_isPlaying, active=${widget.isActive}, bg=$_backgrounded)');
       _smoothTicker!.cancel();
       _smoothTicker = null;
     }

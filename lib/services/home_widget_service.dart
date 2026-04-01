@@ -295,15 +295,12 @@ class HomeWidgetService {
 
   void _startProgressTimer() {
     if (_progressTimer?.isActive == true) return;
-    debugPrint('[Battery] HomeWidget progressTimer STARTED (60s interval)');
     _progressTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      debugPrint('[Battery] HomeWidget progressTimer TICK');
       _scheduleUpdate();
     });
   }
 
   void _stopProgressTimer() {
-    if (_progressTimer != null) debugPrint('[Battery] HomeWidget progressTimer STOPPED');
     _progressTimer?.cancel();
     _progressTimer = null;
   }

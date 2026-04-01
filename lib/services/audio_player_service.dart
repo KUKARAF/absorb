@@ -82,8 +82,6 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
         final elapsed = now.difference(_lastPlaybackStateUpdate);
 
         if (playingChanged || processingChanged || elapsed.inSeconds >= 5) {
-          final reason = playingChanged ? 'play/pause' : processingChanged ? 'procState=${_player.processingState}' : '5s tick';
-          debugPrint('[Battery] PlaybackState pushed ($reason, pos=${_player.position.inSeconds}s)');
           playbackState.add(state);
           _lastPlaybackStateUpdate = now;
           _lastPlaying = _player.playing;
@@ -1822,8 +1820,6 @@ class AudioPlayerService extends ChangeNotifier {
   }
 
   int _lastSyncSecond = -1;
-  int _posStreamTickCount = 0;
-  DateTime _lastPosStreamLog = DateTime.now();
 
   StreamSubscription? _eqSessionSub;
 
@@ -1874,7 +1870,6 @@ class AudioPlayerService extends ChangeNotifier {
     // listener saves every 5s; this only matters when that stream goes silent.
     debugPrint('[Battery] bgSaveTimer STARTED (60s interval)');
     _bgSaveTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
-      debugPrint('[Battery] bgSaveTimer TICK (playing=${_player?.playing}, item=$_currentItemId)');
       if (_currentItemId == null || _player == null || !_player!.playing) return;
       final pos = position;
       final posSec = pos.inMilliseconds / 1000.0;
@@ -1904,8 +1899,6 @@ class AudioPlayerService extends ChangeNotifier {
       debugPrint('[Player] processingState stream error: $e');
       _attemptStreamRetry(e);
     });
-
-    debugPrint('[Battery] positionStream SUBSCRIBED');
     _syncSub = _player?.positionStream.listen((trackRelativePos) async {
       // Reset retry counter on successful position updates
       _streamRetryCount = 0;
@@ -1913,15 +1906,6 @@ class AudioPlayerService extends ChangeNotifier {
       final absolutePos = position; // uses the getter which adds track offset
       final sec = absolutePos.inSeconds;
       final posSec = absolutePos.inMilliseconds / 1000.0;
-
-      // [Battery] Heartbeat: log position stream activity every 30s
-      _posStreamTickCount++;
-      final now = DateTime.now();
-      if (now.difference(_lastPosStreamLog).inSeconds >= 30) {
-        debugPrint('[Battery] positionStream heartbeat: $_posStreamTickCount ticks in ${now.difference(_lastPosStreamLog).inSeconds}s, pos=${posSec.toStringAsFixed(1)}s');
-        _posStreamTickCount = 0;
-        _lastPosStreamLog = now;
-      }
 
       // ─── Position-reset guard ────────────────────────────
       // ExoPlayer can seek to 0 on STATE_ENDED. If we were near the end
@@ -2070,7 +2054,6 @@ class AudioPlayerService extends ChangeNotifier {
 
     debugPrint('[Battery] stuckCheckTimer STARTED (10s interval)');
     _stuckCheckTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
-      debugPrint('[Battery] stuckCheckTimer TICK (playing=${_player?.playing})');
       // Only check while actively playing
       if (_player == null || !_player!.playing) {
         _stuckCheckLastPosition = -1;
@@ -2225,7 +2208,6 @@ class AudioPlayerService extends ChangeNotifier {
   Future<void> _saveProgressLocal(Duration pos) async {
     if (_currentItemId == null) return;
     final ct = pos.inMilliseconds / 1000.0;
-    debugPrint('[Battery] _saveProgressLocal: ${ct.toStringAsFixed(1)}s');
     // Use compound key for podcast episodes
     final progressKey = _currentEpisodeId != null
         ? '$_currentItemId-$_currentEpisodeId'
@@ -2331,7 +2313,6 @@ class AudioPlayerService extends ChangeNotifier {
       debugPrint('[Battery] bgSaveTimer RESTARTED (play)');
       _bgSaveTimer?.cancel();
       _bgSaveTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
-        debugPrint('[Battery] bgSaveTimer TICK (playing=${_player?.playing}, item=$_currentItemId)');
         if (_currentItemId == null || _player == null || !_player!.playing) return;
         final pos = position;
         final posSec = pos.inMilliseconds / 1000.0;

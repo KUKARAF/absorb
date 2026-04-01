@@ -344,7 +344,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    debugPrint('[Battery] AppShell lifecycle: $state (playing=${AudioPlayerService().isPlaying})');
     if (state == AppLifecycleState.resumed) {
       context.read<LibraryProvider>().onAppForegrounded();
       SleepTimerService().onAppForegrounded();
