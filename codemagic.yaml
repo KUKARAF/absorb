@@ -1,0 +1,57 @@
+workflows:
+  android-release:
+    name: Android Release
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    triggering:
+      enabled: false
+    environment:
+      android_signing:
+        - absorb_keystore
+      groups:
+        - github_credentials
+      flutter: stable
+      java: 17
+    scripts:
+      - name: Build GitHub APK
+        script: flutter build apk --release --flavor github --dart-define=GITHUB_BUILD=true
+      - name: Build Play Store AAB
+        script: flutter build appbundle --release --flavor playstore --dart-define=PLAYSTORE_BUILD=true
+    artifacts:
+      - build/app/outputs/apk/github/release/*.apk
+      - build/app/outputs/bundle/playstoreRelease/*.aab
+    publishing:
+      github:
+        owner: neilpoulin
+        name: absorb
+        is_pre_release: false
+        is_draft: true
+
+  ios-release:
+    name: iOS Release
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    triggering:
+      enabled: false
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.barnabas.absorb
+      groups:
+        - app_store_credentials
+      flutter: stable
+      xcode: latest
+    scripts:
+      - name: Set up code signing
+        script: xcode-project use-profiles
+      - name: Build IPA
+        script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        expire_build_submitted_for_review: true
+        cancel_previous_submissions: true
+        submit_to_app_store: false
