@@ -3,8 +3,6 @@ workflows:
     name: Android Release
     max_build_duration: 60
     instance_type: mac_mini_m2
-    triggering:
-      enabled: false
     environment:
       android_signing:
         - absorb_keystore
@@ -17,22 +15,22 @@ workflows:
         script: flutter build apk --release --flavor github --dart-define=GITHUB_BUILD=true
       - name: Build Play Store AAB
         script: flutter build appbundle --release --flavor playstore --dart-define=PLAYSTORE_BUILD=true
+      - name: Publish to GitHub Draft Release
+        script: |
+          gh release create "v$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)" \
+            build/app/outputs/apk/github/release/*.apk \
+            build/app/outputs/bundle/playstoreRelease/*.aab \
+            --draft \
+            --title "v$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)" \
+            --repo "$CM_REPO_SLUG"
     artifacts:
       - build/app/outputs/apk/github/release/*.apk
       - build/app/outputs/bundle/playstoreRelease/*.aab
-    publishing:
-      github:
-        owner: neilpoulin
-        name: absorb
-        is_pre_release: false
-        is_draft: true
 
   ios-release:
     name: iOS Release
     max_build_duration: 60
     instance_type: mac_mini_m2
-    triggering:
-      enabled: false
     environment:
       ios_signing:
         distribution_type: app_store
