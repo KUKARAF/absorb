@@ -17,6 +17,9 @@ class ProgressSyncService {
   bool _isOnline = true;
   bool _isFlushing = false;
   bool _flushAgain = false;
+  int _consecutiveFailures = 0;
+  static const _maxRetryDelay = Duration(minutes: 5);
+  static const _maxConsecutiveFailures = 10;
 
   /// Initialize — start listening for connectivity changes.
   Future<void> init() async {
@@ -27,7 +30,8 @@ class ProgressSyncService {
       final wasOffline = !_isOnline;
       _isOnline = !result.contains(ConnectivityResult.none);
       if (_isOnline && wasOffline) {
-        debugPrint('[Sync] Back online — flushing pending syncs');
+        debugPrint('[Sync] Back online - flushing pending syncs');
+        _consecutiveFailures = 0; // reset backoff on connectivity change
         flushPendingSync();
       }
     });
@@ -257,16 +261,25 @@ class ProgressSyncService {
             );
           }
           debugPrint('[Sync] Flushed $itemId via progress update: ${localTime}s');
+          _consecutiveFailures = 0; // reset backoff on success
 
           final updated = await ScopedPrefs.getStringList('pending_syncs');
           updated.remove(itemId);
           await ScopedPrefs.setStringList('pending_syncs', updated);
         } catch (e) {
           debugPrint('[Sync] Flush failed for $itemId: $e');
-          // Stop the batch if we lost connectivity
-          if (e.toString().contains('SocketException') ||
-              e.toString().contains('connection abort')) {
-            debugPrint('[Sync] Network error — stopping flush');
+          // Stop the batch on any network/TLS error - don't keep hammering
+          final msg = e.toString();
+          if (msg.contains('SocketException') ||
+              msg.contains('connection abort') ||
+              msg.contains('HandshakeException') ||
+              msg.contains('CERTIFICATE_VERIFY_FAILED') ||
+              msg.contains('Connection refused') ||
+              msg.contains('Connection reset') ||
+              msg.contains('timed out') ||
+              msg.contains('Network is unreachable')) {
+            debugPrint('[Sync] Network/TLS error - stopping flush');
+            _consecutiveFailures++;
             break;
           }
         }
@@ -278,8 +291,20 @@ class ProgressSyncService {
     final remaining = await ScopedPrefs.getStringList('pending_syncs');
     if ((_flushAgain || remaining.isNotEmpty) && _isOnline) {
       _flushAgain = false;
+
+      // Exponential backoff: 5s, 10s, 20s, 40s, ... capped at 5 minutes
+      if (_consecutiveFailures >= _maxConsecutiveFailures) {
+        debugPrint('[Sync] Too many consecutive failures ($_consecutiveFailures) - waiting for next connectivity change');
+        return;
+      }
+      final delay = _consecutiveFailures == 0
+          ? const Duration(milliseconds: 250)
+          : Duration(seconds: 5 * (1 << (_consecutiveFailures - 1)).clamp(1, 60));
+      final clampedDelay = delay > _maxRetryDelay ? _maxRetryDelay : delay;
+      debugPrint('[Sync] Scheduling retry in ${clampedDelay.inSeconds}s (failures=$_consecutiveFailures)');
+
       unawaited(
-        Future<void>.delayed(const Duration(milliseconds: 250), () {
+        Future<void>.delayed(clampedDelay, () {
           return flushPendingSync(api: api, maxItems: maxItems);
         }),
       );
