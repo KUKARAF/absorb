@@ -49,7 +49,7 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
     integrations:
-      app_store_connect: Absorb App Store Connect
+      app_store_connect: Apple Dev Key
     environment:
       ios_signing:
         distribution_type: app_store
