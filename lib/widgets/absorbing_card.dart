@@ -995,7 +995,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
         return CardWideButton(
           icon: Icons.bedtime_outlined, label: short ? 'Sleep' : 'Sleep Timer',
           accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact,
-          child: CardSleepButtonInline(accent: accent, isActive: true, large: large, compact: compact),
+          child: CardSleepButtonInline(accent: accent, isActive: _isPlaybackActive, large: large, compact: compact),
         );
       case 'bookmarks':
         return CardWideButton(

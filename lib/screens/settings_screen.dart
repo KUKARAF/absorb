@@ -2497,15 +2497,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: cs.surfaceContainerHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => Column(mainAxisSize: MainAxisSize.min, children: [
-          Center(child: Container(margin: const EdgeInsets.only(top: 12), width: 36, height: 4,
-            decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Center(child: Container(margin: const EdgeInsets.only(top: 12), width: 36, height: 4,
+              decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 16),
           // Current user info
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -2602,6 +2605,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
         ]),
+        ),
+      ),
     );
   }
 
