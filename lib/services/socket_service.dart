@@ -14,15 +14,22 @@ class SocketService {
   bool get isConnected => _socket?.connected ?? false;
   bool get hasSocket => _socket != null;
 
+  Map<String, String> _customHeaders = {};
+
   /// Build socket.io options with capped reconnection to avoid
   /// hammering an unreachable server (and draining battery).
-  Map<String, dynamic> _buildOptions() => io.OptionBuilder()
-      .setTransports(['websocket'])
-      .enableReconnection()
-      .setReconnectionDelay(1000)
-      .setReconnectionDelayMax(30000)
-      .setReconnectionAttempts(5)
-      .build();
+  Map<String, dynamic> _buildOptions() {
+    final builder = io.OptionBuilder()
+        .setTransports(['websocket'])
+        .enableReconnection()
+        .setReconnectionDelay(1000)
+        .setReconnectionDelayMax(30000)
+        .setReconnectionAttempts(5);
+    if (_customHeaders.isNotEmpty) {
+      builder.setExtraHeaders(_customHeaders);
+    }
+    return builder.build();
+  }
 
   /// Called when the server pushes a progress update (cross-device sync).
   void Function(Map<String, dynamic> progress)? onProgressUpdated;
@@ -54,11 +61,12 @@ class SocketService {
     }
   }
 
-  void connect(String serverUrl, String token) {
+  void connect(String serverUrl, String token, {Map<String, String> customHeaders = const {}}) {
     if (_socket != null) disconnect();
 
     _token = token;
     _serverUrl = serverUrl;
+    _customHeaders = customHeaders;
 
     try {
       _socket = io.io(serverUrl, _buildOptions());

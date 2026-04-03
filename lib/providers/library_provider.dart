@@ -129,7 +129,7 @@ class LibraryProvider extends ChangeNotifier
           socket.onCollectionUpdated = _onRemoteCollectionUpdated;
           socket.onUserUpdated = _onRemoteUserUpdated;
           socket.onReconnectFailed = _onSocketReconnectFailed;
-          socket.connect(auth.serverUrl!, auth.token!);
+          socket.connect(auth.serverUrl!, auth.token!, customHeaders: auth.customHeaders);
         }
         debugPrint('[Library] Calling loadLibraries()');
         loadLibraries();
