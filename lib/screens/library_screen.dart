@@ -116,10 +116,12 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   final ValueNotifier<bool> barsVisibleNotifier = ValueNotifier(true);
   late final AnimationController _headerAnimController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 250),
+    duration: const Duration(milliseconds: 400),
     value: 1.0,
   );
   double _lastScrollOffset = 0;
+  double _scrollAccumulator = 0;
+  static const _scrollThreshold = 40.0; // pixels of scroll before hide/show triggers
 
   void _onScrollDirection(ScrollController controller) {
     if (_isInSearchMode) return;
@@ -130,15 +132,19 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
 
     // At the top, always show
     if (offset <= 0) {
+      _scrollAccumulator = 0;
       _showBars();
       return;
     }
-    // Ignore tiny deltas (noise from overscroll bounce etc.)
-    if (delta.abs() < 1.0) return;
+    if (delta.abs() < 0.5) return;
 
-    if (delta > 0) {
+    // Accumulate scroll in current direction; reset on direction change
+    if ((delta > 0) != (_scrollAccumulator > 0)) _scrollAccumulator = 0;
+    _scrollAccumulator += delta;
+
+    if (_scrollAccumulator > _scrollThreshold) {
       _hideBars();
-    } else if (delta < 0) {
+    } else if (_scrollAccumulator < -_scrollThreshold) {
       _showBars();
     }
   }
@@ -1191,168 +1197,163 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
               ),
             ),
           SafeArea(
-        child: Column(
-          children: [
-            SizeTransition(
-              sizeFactor: _headerAnimController,
-              axisAlignment: -1.0,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AbsorbPageHeader(
-                    title: 'Library',
-                    trailing: GestureDetector(
-                      onTap: () {
-                        final newVal = !lib.isManualOffline;
-                        lib.setManualOffline(newVal);
-                        if (newVal) {
-                          final dl = DownloadService();
-                          final player = AudioPlayerService();
-                          final itemId = player.currentItemId;
-                          final epId = player.currentEpisodeId;
-                          final dlKey = epId != null && itemId != null
-                              ? '$itemId-$epId'
-                              : itemId;
-                          if (dlKey == null || !dl.isDownloaded(dlKey)) {
-                            player.stop();
-                          }
+            child: Column(
+              children: [
+                SizeTransition(
+                  sizeFactor: _headerAnimController,
+                  axisAlignment: -1.0,
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                AbsorbPageHeader(
+                  title: 'Library',
+                  trailing: GestureDetector(
+                    onTap: () {
+                      final newVal = !lib.isManualOffline;
+                      lib.setManualOffline(newVal);
+                      if (newVal) {
+                        final dl = DownloadService();
+                        final player = AudioPlayerService();
+                        final itemId = player.currentItemId;
+                        final epId = player.currentEpisodeId;
+                        final dlKey = epId != null && itemId != null
+                            ? '$itemId-$epId'
+                            : itemId;
+                        if (dlKey == null || !dl.isDownloaded(dlKey)) {
+                          player.stop();
                         }
-                      },
-                      child: Icon(
-                        lib.isOffline ? Icons.cloud_off_rounded : Icons.cloud_done_rounded,
-                        size: 20, color: lib.isOffline ? Colors.orange : Colors.green,
+                      }
+                    },
+                    child: Icon(
+                      lib.isOffline ? Icons.cloud_off_rounded : Icons.cloud_done_rounded,
+                      size: 20, color: lib.isOffline ? Colors.orange : Colors.green,
+                    ),
+                  ),
+                  actions: hasMultipleLibraries ? [
+                    GestureDetector(
+                      onTap: () => _showLibraryPicker(context, cs, tt, allLibraries, lib),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: cs.onSurface.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+                        ),
+                        child: SizedBox(
+                          height: 20,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(lib.isPodcastLibrary ? Icons.podcasts_rounded : Icons.auto_stories_rounded, size: 18, color: cs.onSurfaceVariant),
+                              const SizedBox(width: 6),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 140),
+                                child: Text(libraryName, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant),
+                                  overflow: TextOverflow.ellipsis, maxLines: 1),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.unfold_more_rounded, size: 18, color: cs.onSurfaceVariant),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                    actions: hasMultipleLibraries ? [
-                      GestureDetector(
-                        onTap: () => _showLibraryPicker(context, cs, tt, allLibraries, lib),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: cs.onSurface.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+                  ] : null,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: SearchBar(
+                    controller: _searchController,
+                    focusNode: _focusNode,
+                    hintText: lib.isPodcastLibrary
+                        ? 'Search shows and episodes...'
+                        : 'Search books, series, and authors...',
+                    leading: const Padding(
+                      padding: EdgeInsets.only(left: 8),
+                      child: Icon(Icons.search_rounded),
+                    ),
+                    trailing: [
+                      if (_searchController.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                            _focusNode.unfocus();
+                          },
+                        ),
+                    ],
+                    onChanged: _onSearchChanged,
+                    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+                    side: WidgetStatePropertyAll(
+                      BorderSide(color: cs.onSurface.withValues(alpha: 0.08)),
+                    ),
+                  ),
+                ),
+                // Item count + filter badge row
+                if (!_isInSearchMode)
+                  _buildInfoRow(cs, tt),
+                ]),
+                ),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      _isInSearchMode
+                          ? _buildSearchResults(cs, tt)
+                          : hasTabs
+                              ? _buildTabbedContent(cs, tt)
+                              : _buildGrid(),
+                      // Floating tab bar at bottom (book libraries only, hidden during search)
+                      if (hasTabs)
+                        Positioned(
+                          left: 0, right: 0,
+                          bottom: 12,
+                          child: ValueListenableBuilder<bool>(
+                            valueListenable: barsVisibleNotifier,
+                            builder: (_, visible, child) => AnimatedSlide(
+                              duration: const Duration(milliseconds: 250),
+                              offset: visible ? Offset.zero : const Offset(0, 3),
+                              child: AnimatedOpacity(
+                                duration: const Duration(milliseconds: 200),
+                                opacity: visible ? 1.0 : 0.0,
+                                child: child,
+                              ),
+                            ),
+                            child: _buildFloatingTabBar(cs),
                           ),
-                          child: SizedBox(
-                            height: 20,
-                            child: Row(
+                        ),
+                      // Floating sort button for podcast libraries
+                      if (!hasTabs && !_isInSearchMode)
+                        Positioned(
+                          left: 0, right: 0,
+                          bottom: 12,
+                          child: ValueListenableBuilder<bool>(
+                            valueListenable: barsVisibleNotifier,
+                            builder: (_, visible, child) => AnimatedSlide(
+                              duration: const Duration(milliseconds: 250),
+                              offset: visible ? Offset.zero : const Offset(0, 3),
+                              child: AnimatedOpacity(
+                                duration: const Duration(milliseconds: 200),
+                                opacity: visible ? 1.0 : 0.0,
+                                child: child,
+                              ),
+                            ),
+                            child: Center(child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(lib.isPodcastLibrary ? Icons.podcasts_rounded : Icons.auto_stories_rounded, size: 18, color: cs.onSurfaceVariant),
-                                const SizedBox(width: 6),
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 140),
-                                  child: Text(libraryName, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant),
-                                    overflow: TextOverflow.ellipsis, maxLines: 1),
-                                ),
-                                const SizedBox(width: 4),
-                                Icon(Icons.unfold_more_rounded, size: 18, color: cs.onSurfaceVariant),
+                                _buildFloatingSortButton(cs, tt),
+                                if (context.read<AuthProvider>().isRoot) ...[
+                                  const SizedBox(width: 8),
+                                  _buildFloatingManageButton(cs),
+                                ],
                               ],
-                            ),
+                            )),
                           ),
                         ),
-                      ),
-                    ] : null,
+                    ],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: SearchBar(
-                      controller: _searchController,
-                      focusNode: _focusNode,
-                      hintText: lib.isPodcastLibrary
-                          ? 'Search shows and episodes...'
-                          : 'Search books, series, and authors...',
-                      leading: const Padding(
-                        padding: EdgeInsets.only(left: 8),
-                        child: Icon(Icons.search_rounded),
-                      ),
-                      trailing: [
-                        if (_searchController.text.isNotEmpty)
-                          IconButton(
-                            icon: const Icon(Icons.clear_rounded),
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                              _focusNode.unfocus();
-                            },
-                          ),
-                      ],
-                      onChanged: _onSearchChanged,
-                      padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
-                      side: WidgetStatePropertyAll(
-                        BorderSide(color: cs.onSurface.withValues(alpha: 0.08)),
-                      ),
-                    ),
-                  ),
-
-                  // Item count + filter badge row
-                  if (!_isInSearchMode)
-                    _buildInfoRow(cs, tt),
-                ],
-              ),
+                ),
+              ],
             ),
-
-            Expanded(
-              child: Stack(
-                children: [
-                  _isInSearchMode
-                      ? _buildSearchResults(cs, tt)
-                      : hasTabs
-                          ? _buildTabbedContent(cs, tt)
-                          : _buildGrid(),
-                  // Floating tab bar at bottom (book libraries only, hidden during search)
-                  if (hasTabs)
-                    Positioned(
-                      left: 0, right: 0,
-                      bottom: 12,
-                      child: ValueListenableBuilder<bool>(
-                        valueListenable: barsVisibleNotifier,
-                        builder: (_, visible, child) => AnimatedSlide(
-                          duration: const Duration(milliseconds: 250),
-                          offset: visible ? Offset.zero : const Offset(0, 3),
-                          child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 200),
-                            opacity: visible ? 1.0 : 0.0,
-                            child: child,
-                          ),
-                        ),
-                        child: _buildFloatingTabBar(cs),
-                      ),
-                    ),
-                  // Floating sort button for podcast libraries
-                  if (!hasTabs && !_isInSearchMode)
-                    Positioned(
-                      left: 0, right: 0,
-                      bottom: 12,
-                      child: ValueListenableBuilder<bool>(
-                        valueListenable: barsVisibleNotifier,
-                        builder: (_, visible, child) => AnimatedSlide(
-                          duration: const Duration(milliseconds: 250),
-                          offset: visible ? Offset.zero : const Offset(0, 3),
-                          child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 200),
-                            opacity: visible ? 1.0 : 0.0,
-                            child: child,
-                          ),
-                        ),
-                        child: Center(child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildFloatingSortButton(cs, tt),
-                            if (context.read<AuthProvider>().isRoot) ...[
-                              const SizedBox(width: 8),
-                              _buildFloatingManageButton(cs),
-                            ],
-                          ],
-                        )),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
         ],
       ),
     );

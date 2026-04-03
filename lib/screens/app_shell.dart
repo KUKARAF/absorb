@@ -485,10 +485,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
   }
 
   Widget _buildBottomNav(BuildContext context) {
-    // Lazily attach listener when on Home or Library tab (handles start-on-tab case)
+    // Lazily attach listener when on Home or Library tab (handles start-on-tab case).
+    // The screen's state may not exist on the first frame, so retry until attached.
     if ((_currentIndex == 0 || _currentIndex == 1) && _navBarListener == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _syncNavBarListener(_currentIndex);
+        if (!mounted) return;
+        _syncNavBarListener(_currentIndex);
+        // If the screen state wasn't ready yet, retry on next frame
+        if (_navBarListener == null && (_currentIndex == 0 || _currentIndex == 1)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _syncNavBarListener(_currentIndex);
+          });
+        }
       });
     }
     return SizeTransition(

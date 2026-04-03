@@ -142,7 +142,7 @@ class _HomeCustomizeSheetState extends State<HomeCustomizeSheet> {
                 ? Center(child: Text('No genres found', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)))
                 : ListView.builder(
                     controller: sc,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    padding: EdgeInsets.only(top: 8, bottom: MediaQuery.of(ctx).padding.bottom + 8),
                     itemCount: genres.length,
                     itemBuilder: (ctx, i) {
                       final genre = genres[i];
@@ -265,7 +265,7 @@ class _HomeCustomizeSheetState extends State<HomeCustomizeSheet> {
       Expanded(
         child: ReorderableListView.builder(
           scrollController: widget.scrollController,
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: EdgeInsets.only(top: 8, bottom: MediaQuery.of(context).padding.bottom + 8),
           itemCount: _sections.length,
           onReorderStart: (_) => HapticFeedback.mediumImpact(),
           onReorder: (oldIndex, newIndex) {

@@ -409,39 +409,48 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
             final numBooks = series['numBooks'] as int? ?? subBooks.length;
             final isExpanded = _expandedSubSeries.contains(seriesId);
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                GestureDetector(
-                  onTap: () => setState(() {
-                    if (isExpanded) _expandedSubSeries.remove(seriesId);
-                    else _expandedSubSeries.add(seriesId);
-                  }),
-                  onLongPress: seriesId.isNotEmpty ? () {
-                    showSeriesBooksSheet(context,
-                      seriesName: seriesName, seriesId: seriesId,
-                      serverUrl: widget.serverUrl, token: widget.token, libraryId: widget.libraryId,
-                      parentSeriesId: widget.seriesId);
-                  } : null,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 8, top: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(12)),
-                    child: Row(children: [
-                      Icon(isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 20, color: cs.onSurfaceVariant),
-                      const SizedBox(width: 8),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(seriesName, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
-                        const SizedBox(height: 2),
-                        Text('$numBooks book${numBooks != 1 ? 's' : ''}',
-                          style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 11)),
-                      ])),
-                    ]),
+            return AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      if (isExpanded) _expandedSubSeries.remove(seriesId);
+                      else _expandedSubSeries.add(seriesId);
+                    }),
+                    onLongPress: seriesId.isNotEmpty ? () {
+                      showSeriesBooksSheet(context,
+                        seriesName: seriesName, seriesId: seriesId,
+                        serverUrl: widget.serverUrl, token: widget.token, libraryId: widget.libraryId,
+                        parentSeriesId: widget.seriesId);
+                    } : null,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8, top: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(12)),
+                      child: Row(children: [
+                        AnimatedRotation(
+                          turns: isExpanded ? 0.5 : 0.0,
+                          duration: const Duration(milliseconds: 250),
+                          child: Icon(Icons.expand_more_rounded, size: 20, color: cs.onSurfaceVariant),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(seriesName, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+                          const SizedBox(height: 2),
+                          Text('$numBooks book${numBooks != 1 ? 's' : ''}',
+                            style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 11)),
+                        ])),
+                      ]),
+                    ),
                   ),
-                ),
-                if (isExpanded)
-                  ...subBooks.map((book) => _buildBookCard(cs, tt, lib, book)),
-              ],
+                  if (isExpanded)
+                    ...subBooks.map((book) => _buildBookCard(cs, tt, lib, book)),
+                ],
+              ),
             );
           }(),
         ],
@@ -619,7 +628,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                 decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
               if (!allDownloaded)
                 _moreItem(cs, Icons.download_rounded,
-                  downloaded > 0 ? 'Download Remaining (${_books.length - downloaded})' : 'Download All',
+                  downloaded > 0 ? 'Download Remaining (${(_totalBooks > 0 ? _totalBooks : _books.length) - downloaded})' : 'Download All',
                   onTap: () { Navigator.pop(ctx); _downloadAll(); }),
               _moreItem(cs,
                 allDone ? Icons.remove_done_rounded : Icons.done_all_rounded,
