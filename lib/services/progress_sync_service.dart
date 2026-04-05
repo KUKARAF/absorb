@@ -70,12 +70,18 @@ class ProgressSyncService {
   }
 
   /// Cache server-known progress locally without marking it as a pending sync.
+  /// Skips items with a pending sync so unsynced local writes (e.g. a finished
+  /// state saved while offline) are not clobbered by a stale server snapshot.
   Future<void> cacheServerProgress({
     required String itemId,
     required double currentTime,
     required double duration,
     bool isFinished = false,
   }) async {
+    final pendingList = await ScopedPrefs.getStringList('pending_syncs');
+    if (pendingList.contains(itemId)) {
+      return;
+    }
     final data = {
       'itemId': itemId,
       'currentTime': currentTime,
