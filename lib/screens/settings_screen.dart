@@ -85,6 +85,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _keepScreenAwake = false;
   bool _disableAudioFocus = false;
   bool _trustAllCerts = false;
+  bool _includePreReleases = false;
   bool _loaded = false;
   String _downloadLocationLabel = 'App Internal Storage (Default)';
   bool _canPickDownloadLocation = false;
@@ -189,6 +190,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PlayerSettings.getCoverPlayButton(),                             // 41
       PlayerSettings.getSkipChapterBarrier(),                            // 42
       PlayerSettings.getShowExplicitBadge(),                               // 43
+      PlayerSettings.getIncludePreReleases(),                               // 44
     ]);
     final s = results[0] as AutoRewindSettings;
     final speed = results[1] as double;
@@ -232,6 +234,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final coverPlay = results[39] as bool;
     final skipBarrier = results[40] as bool;
     final showExplicit = results[41] as bool;
+    final preReleases = results[42] as bool;
     if (mounted) setState(() {
       _rewindSettings = s;
       _defaultSpeed = speed;
@@ -279,6 +282,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _skipChapterBarrier = skipBarrier;
       _trustAllCerts = trustCerts;
       _showExplicitBadge = showExplicit;
+      _includePreReleases = preReleases;
       _canPickDownloadLocation = !_isPlayStoreBuild;
 
       _loaded = true;
@@ -1839,6 +1843,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         applyTrustAllCerts(v);
                       } : null,
                     ),
+                    if (_isGithubBuild) ...[
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                      SwitchListTile(
+                        title: Row(children: [
+                          const Flexible(child: Text('Include pre-releases')),
+                          _infoIcon('Pre-release Updates',
+                            'When enabled, the update checker will also notify you about alpha and pre-release builds from GitHub. '
+                            'These may be less stable but include the latest features and fixes.'),
+                        ]),
+                        subtitle: Text(
+                          _includePreReleases
+                              ? 'On - checking for alpha & pre-release builds'
+                              : 'Off - stable releases only',
+                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        value: _includePreReleases,
+                        onChanged: _loaded ? (v) async {
+                          setState(() => _includePreReleases = v);
+                          await PlayerSettings.setIncludePreReleases(v);
+                        } : null,
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -1964,7 +1989,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 4),
                   Center(child: TextButton.icon(
                     onPressed: () async {
-                      final info = await UpdateCheckerService.check(force: true);
+                      final info = await UpdateCheckerService.check(force: true, includePreReleases: _includePreReleases);
                       if (!mounted) return;
                       if (info == null || !info.hasUpdate) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -1975,8 +2000,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       showDialog(
                         context: context,
                         builder: (ctx) => AlertDialog(
-                          title: const Text('Update available'),
-                          content: Text('A new version of Absorb is available: ${info.latestVersion}\n\nYou are on ${info.currentVersion}.'),
+                          title: Text(info.isPreRelease ? 'Pre-release available' : 'Update available'),
+                          content: Text('A new ${info.isPreRelease ? 'pre-release' : 'version'} of Absorb is available: ${info.latestVersion}\n\nYou are on ${info.currentVersion}.'),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx),

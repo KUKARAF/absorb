@@ -21,6 +21,7 @@ import 'stats_screen.dart';
 import 'settings_screen.dart';
 import '../widgets/welcome_sheet.dart';
 import '../services/update_checker_service.dart';
+import '../services/player_settings.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AppShell extends StatefulWidget {
@@ -206,13 +207,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
 
   void _checkForUpdate() async {
     if (!_isGithubBuild) return;
-    final info = await UpdateCheckerService.check();
+    final includePreReleases = await PlayerSettings.getIncludePreReleases();
+    final info = await UpdateCheckerService.check(includePreReleases: includePreReleases);
     if (info == null || !mounted) return;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Update available'),
-        content: Text('A new version of Absorb is available: ${info.latestVersion}\n\nYou are on ${info.currentVersion}.'),
+        title: Text(info.isPreRelease ? 'Pre-release available' : 'Update available'),
+        content: Text('A new ${info.isPreRelease ? 'pre-release' : 'version'} of Absorb is available: ${info.latestVersion}\n\nYou are on ${info.currentVersion}.'),
         actions: [
           TextButton(
             onPressed: () {

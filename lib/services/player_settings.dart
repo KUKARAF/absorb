@@ -320,6 +320,17 @@ class PlayerSettings {
     await prefs.setBool('trustAllCerts', value);
   }
 
+  // ── Pre-release updates (GitHub build only) ──
+
+  static Future<bool> getIncludePreReleases() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('includePreReleases') ?? false;
+  }
+  static Future<void> setIncludePreReleases(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('includePreReleases', value);
+  }
+
   // ── Local server ──
 
   static Future<bool> getLocalServerEnabled() => _get('localServerEnabled', false);
