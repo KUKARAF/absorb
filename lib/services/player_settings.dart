@@ -170,6 +170,8 @@ class PlayerSettings {
   static Future<bool> getSkipChapterBarrier() => _get('skipChapterBarrier', true);
   static Future<void> setSkipChapterBarrier(bool value) => _set('skipChapterBarrier', value);
 
+  /// Intentionally NOT persisted - resets to false on every app start so
+  /// users can't accidentally leave wake lock on after a listening session.
   static bool keepScreenAwake = false;
 
   /// Cached value for synchronous access in widget build methods.
