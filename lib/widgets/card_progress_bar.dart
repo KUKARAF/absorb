@@ -112,9 +112,12 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with WidgetsB
       _currentSpeed = cast.castSpeed;
       _isPlaying = cast.isPlaying;
       _syncTicker();
-      _posSub = cast.castPositionStream?.listen((dur) {
-        final posSeconds = dur.inMilliseconds / 1000.0;
-        _lastKnownPos = posSeconds;
+      _posSub = cast.castPositionStream?.listen((_) {
+        // Read from cast.castPosition (not the raw stream value) so we get the
+        // book-level position after multi-track fallback offset translation.
+        // The chromecast service subscribes to the raw stream first, so by the
+        // time this listener fires, _castPosition is already updated.
+        _lastKnownPos = cast.castPosition.inMilliseconds / 1000.0;
         _lastPosTime = DateTime.now();
         _currentSpeed = cast.castSpeed;
         _isPlaying = cast.isPlaying;

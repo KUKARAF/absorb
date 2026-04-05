@@ -237,12 +237,15 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
     if (_isCastingThis) {
       final stream = ChromecastService().castPositionStream;
       if (stream == null) return;
-      _chapterTrackSub = stream.listen((pos) {
+      _chapterTrackSub = stream.listen((_) {
         if (!_isCastingThis) return;
-        final posS = pos.inMilliseconds / 1000.0;
-        final chapters = ChromecastService().castingChapters;
+        // Use translated book-level position from ChromecastService, not the raw
+        // stream value (which is track-local in multi-track fallback mode).
+        final cast = ChromecastService();
+        final posS = cast.castPosition.inMilliseconds / 1000.0;
+        final chapters = cast.castingChapters;
         if (chapters.isEmpty) {
-          final sec = pos.inSeconds;
+          final sec = cast.castPosition.inSeconds;
           if (sec != _lastChapterIdx) {
             _lastChapterIdx = sec;
             if (mounted) setState(() {});
