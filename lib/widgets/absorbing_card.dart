@@ -554,7 +554,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                       final elapsed = pos / speed;
                       final remaining = (_effectiveDuration - pos) / speed;
                       final timeStyle = tt.labelSmall?.copyWith(
-                        color: isDark ? Colors.white.withValues(alpha: 0.55) : Colors.black.withValues(alpha: 0.45),
+                        color: isDark ? Colors.white.withValues(alpha: 0.55) : cs.onSurface,
                         fontWeight: FontWeight.w500, fontSize: compact ? 10 : 11,
                         fontFeatures: const [FontFeature.tabularFigures()],
                         shadows: [Shadow(color: isDark ? Colors.black.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.6), blurRadius: 4)],
