@@ -69,12 +69,15 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   bool _showGoodreads = false;
   bool _ebookSaved = false;
   bool _authorsExpanded = false;
+  bool _squareCovers = false;
   ColorScheme? _coverScheme;
+  String? _coverSchemeUrl; // URL the current scheme was derived from
 
   @override void initState() {
     super.initState();
     _loadItem();
     _loadBookmarks();
+    PlayerSettings.getRectangleCovers().then((v) { if (mounted) setState(() => _squareCovers = !v); });
     PlayerSettings.getShowGoodreadsButton().then((v) { if (mounted) setState(() => _showGoodreads = v); });
     ScopedPrefs.getStringList('saved_ebooks').then((list) {
       if (mounted && list.contains(widget.itemId)) {
@@ -89,6 +92,8 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   }
 
   Future<void> _loadItem() async {
+    // Force re-derivation of cover scheme on reload (cover may have changed).
+    _coverSchemeUrl = null;
     final auth = context.read<AuthProvider>();
     final lib = context.read<LibraryProvider>();
     final api = auth.apiService;
@@ -197,6 +202,9 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   void _deriveCoverScheme() {
     final url = _coverUrl;
     if (url == null) return;
+    // Skip if the scheme was already derived from this exact URL.
+    if (url == _coverSchemeUrl) return;
+    _coverSchemeUrl = url;
     final brightness = Theme.of(context).brightness;
     final ImageProvider provider;
     if (url.startsWith('/')) {
@@ -213,7 +221,10 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       if (seedColor == null || !mounted) return;
       setState(() => _coverScheme = ColorScheme.fromSeed(
         seedColor: seedColor, brightness: brightness));
-    }).catchError((_) {});
+    }).catchError((_) {
+      // Reset so a retry can re-derive if the image wasn't available yet.
+      _coverSchemeUrl = null;
+    });
   }
 
   String? get _coverUrl {
@@ -272,6 +283,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     final genres = (metadata['genres'] as List<dynamic>?)?.cast<String>() ?? [];
     final publisher = metadata['publisher'] as String? ?? '';
     final year = metadata['publishedYear'] as String? ?? '';
+    final serverPath = _item!['path'] as String? ?? _item!['relPath'] as String? ?? '';
     final lib = context.watch<LibraryProvider>();
     final progress = lib.getProgress(widget.itemId);
     final auth = context.read<AuthProvider>();
@@ -291,17 +303,39 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
           onTap: () => _showFullCover(context, _fullResCoverUrl ?? _coverUrl!, lib.mediaHeaders, title),
           child: Container(
             height: 240,
+            width: _squareCovers ? 240 : null,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 4))],
             ),
             clipBehavior: Clip.antiAlias,
-            child: CachedNetworkImage(
-              imageUrl: _coverUrl!, fit: BoxFit.contain,
-              httpHeaders: lib.mediaHeaders,
-              placeholder: (_, __) => const SizedBox(),
-              errorWidget: (_, __, ___) => const SizedBox(),
-            ),
+            child: _squareCovers
+                ? (_coverUrl!.startsWith('/')
+                    ? BlurPaddedCover(
+                        child: Image.file(File(_coverUrl!), fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const SizedBox()),
+                        blurChild: Image.file(File(_coverUrl!), fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                      )
+                    : BlurPaddedCover(
+                        child: CachedNetworkImage(
+                          imageUrl: _coverUrl!, fit: BoxFit.contain,
+                          httpHeaders: lib.mediaHeaders,
+                          placeholder: (_, __) => const SizedBox(),
+                          errorWidget: (_, __, ___) => const SizedBox(),
+                        ),
+                        blurChild: CachedNetworkImage(
+                          imageUrl: _coverUrl!, fit: BoxFit.cover,
+                          httpHeaders: lib.mediaHeaders,
+                          errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                        ),
+                      ))
+                : CachedNetworkImage(
+                    imageUrl: _coverUrl!, fit: BoxFit.contain,
+                    httpHeaders: lib.mediaHeaders,
+                    placeholder: (_, __) => const SizedBox(),
+                    errorWidget: (_, __, ___) => const SizedBox(),
+                  ),
           ),
         )),
         const SizedBox(height: 16),
@@ -537,7 +571,32 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                 ])),
               ]));
           })]],
-      // Secondary actions are in the More sheet now.
+      // ─── Server path (tap to copy) ────────────────────────
+      if (serverPath.isNotEmpty) ...[const SizedBox(height: 16),
+        GestureDetector(
+          onTap: () {
+            Clipboard.setData(ClipboardData(text: serverPath));
+            HapticFeedback.lightImpact();
+            showOverlayToast(context, 'Path copied', icon: Icons.copy_rounded);
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: cs.onSurface.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+            ),
+            child: Row(children: [
+              Icon(Icons.folder_outlined, size: 12, color: cs.onSurface.withValues(alpha: 0.3)),
+              const SizedBox(width: 6),
+              Expanded(child: Text(serverPath, overflow: TextOverflow.ellipsis, maxLines: 1,
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11))),
+              const SizedBox(width: 6),
+              Icon(Icons.copy_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.2)),
+            ]),
+          ),
+        ),
+      ],
     ]);
   }
 
