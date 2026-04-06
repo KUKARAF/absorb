@@ -82,14 +82,16 @@ class BlurPaddedCover extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         // Blurred background fill
-        ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24, tileMode: TileMode.decal),
-          child: blurChild,
+        SizedBox.expand(
+          child: ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24, tileMode: TileMode.clamp),
+            child: blurChild,
+          ),
         ),
         // Darkening scrim so the foreground cover pops
         Container(color: Colors.black.withValues(alpha: 0.15)),
         // Actual cover, contained (no crop)
-        child,
+        SizedBox.expand(child: child),
       ],
     );
   }
