@@ -219,16 +219,14 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   String? get _coverUrl {
     final localCover = _item?['_localCoverUrl'] as String?;
     if (localCover != null && localCover.isNotEmpty) return localCover;
-    final auth = context.read<AuthProvider>();
-    return auth.apiService?.getCoverUrl(widget.itemId, width: 800);
+    return context.read<LibraryProvider>().getCoverUrl(widget.itemId, width: 800);
   }
 
   /// Full-res cover for the viewer and sharing.
   String? get _fullResCoverUrl {
     final localCover = _item?['_localCoverUrl'] as String?;
     if (localCover != null && localCover.isNotEmpty) return localCover;
-    final auth = context.read<AuthProvider>();
-    return auth.apiService?.getCoverUrl(widget.itemId, width: 4000);
+    return context.read<LibraryProvider>().getCoverUrl(widget.itemId, width: 4000);
   }
 
 

@@ -247,8 +247,11 @@ class HomeWidgetService {
   }
 
   Future<void> _updateCoverArt(String itemId) async {
-    if (_lastCoverItemId == itemId) return;
-    _lastCoverItemId = itemId;
+    final player = AudioPlayerService();
+    final coverUrl = player.currentCoverUrl;
+    final cacheKey = '$itemId|$coverUrl';
+    if (_lastCoverItemId == cacheKey) return;
+    _lastCoverItemId = cacheKey;
 
     String? coverPath;
 
@@ -261,8 +264,6 @@ class HomeWidgetService {
 
       // If no local cover, download from server to a temp file.
       if (coverPath == null) {
-        final player = AudioPlayerService();
-        final coverUrl = player.currentCoverUrl;
         if (coverUrl != null && coverUrl.isNotEmpty) {
           final cacheDir = await getTemporaryDirectory();
           final widgetCoverDir = Directory('${cacheDir.path}/widget_covers');
