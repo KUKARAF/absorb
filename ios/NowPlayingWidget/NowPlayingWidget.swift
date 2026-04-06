@@ -4,6 +4,13 @@ import SwiftUI
 
 private let appGroup = "group.com.barnabas.absorb"
 
+// Deep-link URLs for when the app is not running and we need to launch it.
+// Must use the registered URL scheme (audiobookshelf://) and include ?homeWidget
+// so the home_widget Flutter plugin intercepts the URL on launch.
+private let playPauseURL = URL(string: "audiobookshelf://widget/play_pause?homeWidget")!
+private let skipBackURL = URL(string: "audiobookshelf://widget/skip_back?homeWidget")!
+private let skipForwardURL = URL(string: "audiobookshelf://widget/skip_forward?homeWidget")!
+
 // MARK: - Darwin Notification Helper
 
 /// Posts a Darwin notification visible to the main app process.
@@ -62,6 +69,7 @@ struct NowPlayingEntry: TimelineEntry {
     let coverImage: UIImage?
     let skipBack: Int
     let skipForward: Int
+    let appAlive: Bool
 }
 
 // MARK: - Provider
@@ -71,7 +79,7 @@ struct NowPlayingProvider: TimelineProvider {
         NowPlayingEntry(
             date: .now, hasBook: true, title: "Audiobook Title",
             author: "Author Name", isPlaying: false, progress: 0.35,
-            coverImage: nil, skipBack: 10, skipForward: 30
+            coverImage: nil, skipBack: 10, skipForward: 30, appAlive: false
         )
     }
 
@@ -80,7 +88,8 @@ struct NowPlayingProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<NowPlayingEntry>) -> Void) {
-        completion(Timeline(entries: [readEntry()], policy: .never))
+        let refreshDate = Date().addingTimeInterval(300)
+        completion(Timeline(entries: [readEntry()], policy: .after(refreshDate)))
     }
 
     private func readEntry() -> NowPlayingEntry {
@@ -98,6 +107,11 @@ struct NowPlayingProvider: TimelineProvider {
             cover = UIImage(contentsOfFile: path)
         }
 
+        // Check if the app process is alive by comparing a heartbeat timestamp.
+        // The Flutter app writes this on every widget data update.
+        let heartbeat = d?.integer(forKey: "widget_heartbeat") ?? 0
+        let appAlive = heartbeat > 0 && (Int(Date().timeIntervalSince1970) - heartbeat) < 300
+
         return NowPlayingEntry(
             date: .now,
             hasBook: hasBook,
@@ -107,7 +121,8 @@ struct NowPlayingProvider: TimelineProvider {
             progress: progress,
             coverImage: cover,
             skipBack: skipBack > 0 ? skipBack : 10,
-            skipForward: skipForward > 0 ? skipForward : 30
+            skipForward: skipForward > 0 ? skipForward : 30,
+            appAlive: appAlive
         )
     }
 }
@@ -160,22 +175,38 @@ struct SmallWidgetView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 16) {
-                Button(intent: SkipBackIntent()) {
-                    Image(systemName: "backward.fill")
-                        .font(.caption)
-                }
-                Button(intent: PlayPauseIntent()) {
-                    Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.caption)
-                }
-                Button(intent: SkipForwardIntent()) {
-                    Image(systemName: "forward.fill")
-                        .font(.caption)
+                if entry.appAlive {
+                    Button(intent: SkipBackIntent()) {
+                        Image(systemName: "backward.fill")
+                            .font(.caption)
+                    }
+                    Button(intent: PlayPauseIntent()) {
+                        Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.caption)
+                    }
+                    Button(intent: SkipForwardIntent()) {
+                        Image(systemName: "forward.fill")
+                            .font(.caption)
+                    }
+                } else {
+                    Link(destination: skipBackURL) {
+                        Image(systemName: "backward.fill")
+                            .font(.caption)
+                    }
+                    Link(destination: playPauseURL) {
+                        Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.caption)
+                    }
+                    Link(destination: skipForwardURL) {
+                        Image(systemName: "forward.fill")
+                            .font(.caption)
+                    }
                 }
             }
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
         }
+        .widgetURL(playPauseURL)
         .containerBackground(.fill.tertiary, for: .widget)
     }
 }
@@ -206,25 +237,48 @@ struct MediumWidgetView: View {
                 Spacer(minLength: 0)
 
                 HStack(spacing: 28) {
-                    Button(intent: SkipBackIntent()) {
-                        Image(systemName: "backward.fill")
-                            .font(.title3)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
-                    }
+                    if entry.appAlive {
+                        Button(intent: SkipBackIntent()) {
+                            Image(systemName: "backward.fill")
+                                .font(.title3)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
 
-                    Button(intent: PlayPauseIntent()) {
-                        Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.title2)
-                            .frame(width: 40, height: 40)
-                            .contentShape(Rectangle())
-                    }
+                        Button(intent: PlayPauseIntent()) {
+                            Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.title2)
+                                .frame(width: 40, height: 40)
+                                .contentShape(Rectangle())
+                        }
 
-                    Button(intent: SkipForwardIntent()) {
-                        Image(systemName: "forward.fill")
-                            .font(.title3)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
+                        Button(intent: SkipForwardIntent()) {
+                            Image(systemName: "forward.fill")
+                                .font(.title3)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                    } else {
+                        Link(destination: skipBackURL) {
+                            Image(systemName: "backward.fill")
+                                .font(.title3)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+
+                        Link(destination: playPauseURL) {
+                            Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.title2)
+                                .frame(width: 40, height: 40)
+                                .contentShape(Rectangle())
+                        }
+
+                        Link(destination: skipForwardURL) {
+                            Image(systemName: "forward.fill")
+                                .font(.title3)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
                     }
                 }
                 .buttonStyle(.plain)
@@ -234,6 +288,7 @@ struct MediumWidgetView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .widgetURL(playPauseURL)
         .containerBackground(.fill.tertiary, for: .widget)
     }
 }

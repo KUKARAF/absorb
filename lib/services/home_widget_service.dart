@@ -248,6 +248,11 @@ class HomeWidgetService {
     final player = AudioPlayerService();
     final hasBook = player.hasBook;
 
+    // Heartbeat so the iOS widget knows the app process is alive.
+    // When stale (> 5 min), the widget switches from AppIntent buttons
+    // (Darwin notification) to Link buttons (launches the app).
+    await HomeWidget.saveWidgetData<int>(
+        'widget_heartbeat', DateTime.now().millisecondsSinceEpoch ~/ 1000);
     await HomeWidget.saveWidgetData<bool>('widget_has_book', hasBook);
 
     // Push user's skip durations so the widget shows them on the buttons.
