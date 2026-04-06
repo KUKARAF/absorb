@@ -385,14 +385,30 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToNext() async {
-    debugPrint('[Handler] skipToNext() - seeking forward');
-    await fastForward();
+    // ColorOS (OnePlus/Oppo/Realme) reverses transport controls in Android Auto,
+    // so swap the action to compensate (same idea as the notification control swap).
+    final m = ApiService.deviceManufacturer.toLowerCase();
+    final isColorOS = m == 'oneplus' || m == 'oppo' || m == 'realme';
+    if (isColorOS) {
+      debugPrint('[Handler] skipToNext() - ColorOS swap → seeking back');
+      await rewind();
+    } else {
+      debugPrint('[Handler] skipToNext() - seeking forward');
+      await fastForward();
+    }
   }
 
   @override
   Future<void> skipToPrevious() async {
-    debugPrint('[Handler] skipToPrevious() - seeking back');
-    await rewind();
+    final m = ApiService.deviceManufacturer.toLowerCase();
+    final isColorOS = m == 'oneplus' || m == 'oppo' || m == 'realme';
+    if (isColorOS) {
+      debugPrint('[Handler] skipToPrevious() - ColorOS swap → seeking forward');
+      await fastForward();
+    } else {
+      debugPrint('[Handler] skipToPrevious() - seeking back');
+      await rewind();
+    }
   }
 
   @override
