@@ -489,13 +489,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     // Lazily attach listener when on Home or Library tab (handles start-on-tab case).
     // The screen's state may not exist on the first frame, so retry until attached.
     if ((_currentIndex == 0 || _currentIndex == 1) && _navBarListener == null) {
+      final scheduledIndex = _currentIndex;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
+        if (!mounted || _currentIndex != scheduledIndex) return;
         _syncNavBarListener(_currentIndex);
         // If the screen state wasn't ready yet, retry on next frame
-        if (_navBarListener == null && (_currentIndex == 0 || _currentIndex == 1)) {
+        if (_navBarListener == null && _currentIndex == scheduledIndex) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _syncNavBarListener(_currentIndex);
+            if (mounted && _currentIndex == scheduledIndex) {
+              _syncNavBarListener(_currentIndex);
+            }
           });
         }
       });
