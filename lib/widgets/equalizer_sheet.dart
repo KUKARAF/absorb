@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import '../services/equalizer_service.dart';
 
@@ -445,16 +446,18 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                 ),
                 const SizedBox(height: 8),
 
-                // Virtualizer
-                _EffectRow(
-                  icon: Icons.surround_sound_rounded,
-                  label: 'Surround',
-                  value: _vVirt,
-                  accent: accent,
-                  enabled: _vEnabled,
-                  onChanged: (v) => _setVirt(v),
-                ),
-                const SizedBox(height: 8),
+                // Virtualizer (Android only - no iOS equivalent)
+                if (Platform.isAndroid) ...[
+                  _EffectRow(
+                    icon: Icons.surround_sound_rounded,
+                    label: 'Surround',
+                    value: _vVirt,
+                    accent: accent,
+                    enabled: _vEnabled,
+                    onChanged: (v) => _setVirt(v),
+                  ),
+                  const SizedBox(height: 8),
+                ],
 
                 // Loudness
                 _EffectRow(

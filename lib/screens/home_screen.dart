@@ -595,6 +595,7 @@ class HomeScreenState extends State<HomeScreen> {
                                   final item = clItems[i] as Map<String, dynamic>;
                                   return _ContinueListeningCard(
                                     item: item, lib: lib, player: _player,
+                                    rectangleCovers: _rectangleCovers,
                                   );
                                 },
                               ),
@@ -684,11 +685,13 @@ class _ContinueListeningCard extends StatefulWidget {
   final Map<String, dynamic> item;
   final LibraryProvider lib;
   final AudioPlayerService player;
+  final bool rectangleCovers;
 
   const _ContinueListeningCard({
     required this.item,
     required this.lib,
     required this.player,
+    required this.rectangleCovers,
   });
 
   @override
@@ -785,13 +788,14 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
                 // Cover with play overlay
                 ClipRect(
                 child: AspectRatio(
-                  aspectRatio: 1,
+                  aspectRatio: widget.rectangleCovers ? 2 / 3 : 1.0,
                   child: Stack(children: [
                     Positioned.fill(
                       child: coverUrl != null
                           ? coverUrl.startsWith('/')
                               ? BlurPaddedCover(
-                                  child: Image.file(File(coverUrl), fit: BoxFit.contain,
+                                  enabled: !widget.rectangleCovers,
+                                  child: Image.file(File(coverUrl), fit: widget.rectangleCovers ? BoxFit.cover : BoxFit.contain,
                                       errorBuilder: (_, __, ___) => Container(
                                           color: cs.surfaceContainerHighest,
                                           child: Icon(Icons.headphones_rounded,
@@ -799,8 +803,9 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
                                   blurChild: Image.file(File(coverUrl), fit: BoxFit.cover,
                                       errorBuilder: (_, __, ___) => const SizedBox.shrink()))
                               : BlurPaddedCover(
+                                  enabled: !widget.rectangleCovers,
                                   child: CachedNetworkImage(
-                                      imageUrl: coverUrl, fit: BoxFit.contain,
+                                      imageUrl: coverUrl, fit: widget.rectangleCovers ? BoxFit.cover : BoxFit.contain,
                                       httpHeaders: lib.mediaHeaders,
                                       fadeInDuration: const Duration(milliseconds: 300),
                                       placeholder: (_, __) => Container(
