@@ -80,6 +80,7 @@ class ProgressSyncService {
   }) async {
     final pendingList = await ScopedPrefs.getStringList('pending_syncs');
     if (pendingList.contains(itemId)) {
+      debugPrint('[Sync] Skipping server cache for $itemId - pending local sync would be clobbered (isFinished=$isFinished)');
       return;
     }
     final data = {
@@ -269,7 +270,10 @@ class ProgressSyncService {
           debugPrint('[Sync] Flushed $itemId via progress update: ${localTime}s');
           // Decay backoff on success instead of resetting - avoids
           // hammering when the server is intermittently reachable
-          if (_consecutiveFailures > 0) _consecutiveFailures--;
+          if (_consecutiveFailures > 0) {
+            _consecutiveFailures--;
+            debugPrint('[Sync] Backoff decayed to $_consecutiveFailures');
+          }
 
           final updated = await ScopedPrefs.getStringList('pending_syncs');
           updated.remove(itemId);
@@ -335,6 +339,7 @@ class ProgressSyncService {
     final key = 'offline_listening_$itemId';
     final existing = await ScopedPrefs.getInt(key) ?? 0;
     await ScopedPrefs.setInt(key, existing + seconds);
+    debugPrint('[Sync] Offline listening +${seconds}s for $itemId (total=${existing + seconds}s)');
 
     // Track which items have pending offline time
     final pending = await ScopedPrefs.getStringList('pending_offline_listening');

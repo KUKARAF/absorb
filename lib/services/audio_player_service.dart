@@ -1156,6 +1156,7 @@ class AudioPlayerService extends ChangeNotifier {
   static Future<void> onAppForegrounded() async {
     final service = _instance;
     if (!service.hasBook) return;
+    debugPrint('[MediaSession] Foregrounded - refreshing (playing=${service.isPlaying}, session=${service._playbackSessionId != null}, item=${service._currentItemId})');
     // Re-activate audio session to get a fresh system token
     if (!_audioFocusDisabled) {
       try { (await AudioSession.instance).setActive(true); } catch (_) {}
@@ -1175,6 +1176,7 @@ class AudioPlayerService extends ChangeNotifier {
         service._totalDuration,
         chapter: chapterTitle,
       );
+      debugPrint('[MediaSession] Re-pushed media item and playback state');
     }
   }
 
@@ -2505,7 +2507,9 @@ class AudioPlayerService extends ChangeNotifier {
     if (_playbackSessionId == null && _api != null && _currentItemId != null) {
       final prefs = await SharedPreferences.getInstance();
       final manualOffline = prefs.getBool('manual_offline_mode') ?? false;
-      if (!manualOffline && !_isOfflineMode) {
+      if (manualOffline || _isOfflineMode) {
+        debugPrint('[Player] Skipping session re-create on resume (manualOffline=$manualOffline, isOffline=$_isOfflineMode)');
+      } else {
         try {
           final sessionData = _currentEpisodeId != null
               ? await _api!.startEpisodePlaybackSession(_currentItemId!, _currentEpisodeId!)
