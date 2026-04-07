@@ -1241,10 +1241,12 @@ class ApiService {
 
   /// Fetch full book metadata from Audnexus by ASIN.
   /// Returns the raw Audnexus response including seriesPrimary, releaseDate, etc.
-  static Future<Map<String, dynamic>?> getAudnexusBook(String asin) async {
+  /// If [region] is provided, it overrides the device locale region.
+  static Future<Map<String, dynamic>?> getAudnexusBook(String asin, {String? region}) async {
     try {
+      final r = region ?? _region;
       final response = await http.get(
-        Uri.parse('https://api.audnex.us/books/$asin?region=$_region'),
+        Uri.parse('https://api.audnex.us/books/$asin?region=$r'),
       ).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;

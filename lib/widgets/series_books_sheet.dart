@@ -652,6 +652,35 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
       debugPrint('[FindSeries] Audnexus had no series info for $bookAsin');
     }
 
+    // Fallback: retry with region=us if device region isn't US
+    if (seriesAsin == null && ApiService.debugRegion != 'us') {
+      debugPrint('[FindSeries] Retrying with region=us');
+      for (final book in _books) {
+        final media = book['media'] as Map<String, dynamic>? ?? {};
+        final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+        final bookAsin = metadata['asin'] as String? ?? '';
+        if (bookAsin.isEmpty) continue;
+
+        final audnexus = await ApiService.getAudnexusBook(bookAsin, region: 'us');
+        if (audnexus == null) continue;
+
+        final primary = audnexus['seriesPrimary'] as Map<String, dynamic>?;
+        if (primary != null && primary['asin'] != null) {
+          seriesAsin = primary['asin'] as String;
+          resolveMethod = 'audnexus-primary-us';
+          debugPrint('[FindSeries] Got series ASIN $seriesAsin from US fallback (book $bookAsin)');
+          break;
+        }
+        final secondary = audnexus['seriesSecondary'] as Map<String, dynamic>?;
+        if (secondary != null && secondary['asin'] != null) {
+          seriesAsin = secondary['asin'] as String;
+          resolveMethod = 'audnexus-secondary-us';
+          debugPrint('[FindSeries] Got series ASIN $seriesAsin from US fallback secondary (book $bookAsin)');
+          break;
+        }
+      }
+    }
+
     // Fallback: search Audible for the first book if no ASINs found
     if (seriesAsin == null && _books.isNotEmpty) {
       final firstBook = _books.first;
