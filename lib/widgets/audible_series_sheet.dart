@@ -48,7 +48,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
   List<Map<String, dynamic>> _allBooks = [];
   bool _isLoading = true;
   String? _error;
-  bool _showAll = false; // false = missing only, true = all books
+  int _filter = 0; // 0 = missing, 1 = upcoming, 2 = all
 
   @override
   void initState() {
@@ -106,7 +106,10 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
     if (dateStr.isEmpty) return false;
     final date = DateTime.tryParse(dateStr);
     if (date == null) return false;
-    return date.isAfter(DateTime.now());
+    final now = DateTime.now();
+    // Ignore bogus far-future dates (placeholder data from Audible)
+    if (date.year > now.year + 5) return false;
+    return date.isAfter(now);
   }
 
   String _formatRuntime(dynamic minutes) {
@@ -132,12 +135,14 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    final displayBooks = _showAll
-        ? _allBooks
-        : _allBooks.where((b) => !_isOwned(b)).toList();
-
-    final missingCount = _allBooks.where((b) => !_isOwned(b)).length;
+    final missingCount = _allBooks.where((b) => !_isOwned(b) && !_isUpcoming(b)).length;
     final upcomingCount = _allBooks.where((b) => _isUpcoming(b)).length;
+
+    final displayBooks = switch (_filter) {
+      0 => _allBooks.where((b) => !_isOwned(b) && !_isUpcoming(b)).toList(),
+      1 => _allBooks.where((b) => _isUpcoming(b)).toList(),
+      _ => _allBooks,
+    };
 
     return ClipRect(child: Column(
       children: [
@@ -172,9 +177,13 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(children: [
-              _filterChip(cs, 'Missing ($missingCount)', !_showAll, () => setState(() => _showAll = false)),
+              _filterChip(cs, 'Missing ($missingCount)', _filter == 0, () => setState(() => _filter = 0)),
               const SizedBox(width: 8),
-              _filterChip(cs, 'All (${_allBooks.length})', _showAll, () => setState(() => _showAll = true)),
+              if (upcomingCount > 0) ...[
+                _filterChip(cs, 'Upcoming ($upcomingCount)', _filter == 1, () => setState(() => _filter = 1)),
+                const SizedBox(width: 8),
+              ],
+              _filterChip(cs, 'All (${_allBooks.length})', _filter == 2, () => setState(() => _filter = 2)),
             ]),
           ),
         const SizedBox(height: 8),
@@ -190,9 +199,15 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
           Expanded(child: Center(child: Text(_error!, style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant))))
         else if (displayBooks.isEmpty)
           Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.check_circle_outline_rounded, size: 48, color: cs.primary.withValues(alpha: 0.5)),
+            Icon(
+              _filter == 1 ? Icons.event_available_rounded : Icons.check_circle_outline_rounded,
+              size: 48, color: cs.primary.withValues(alpha: 0.5)),
             const SizedBox(height: 12),
-            Text('You have the complete series!', style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
+            Text(
+              _filter == 0 ? 'You have the complete series!'
+                  : _filter == 1 ? 'No upcoming releases found'
+                  : 'No books found',
+              style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
           ])))
         else
           Expanded(
@@ -248,12 +263,16 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
                 : cs.surfaceContainerHigh,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         clipBehavior: Clip.antiAlias,
-        child: SizedBox(
-            height: 112,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 100),
+          child: IntrinsicHeight(
             child: Row(children: [
-              // Cover
-              AspectRatio(
-                aspectRatio: 1,
+              // Cover - keep square regardless of row height
+              Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: 112,
+                  height: 112,
                 child: Stack(children: [
                   Positioned.fill(
                     child: coverUrl.isNotEmpty
@@ -290,12 +309,14 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
                     ),
                 ]),
               ),
+              ),
               // Details
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
                         style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
@@ -305,7 +326,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
                           child: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
                             style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.7), fontSize: 11)),
                         ),
-                      const Spacer(),
+                      const SizedBox(height: 6),
                       if (authors.isNotEmpty)
                         Text(authors, maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 11)),
@@ -339,6 +360,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
               ),
             ]),
           ),
+        ),
       ),
     );
   }

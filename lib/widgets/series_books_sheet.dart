@@ -616,11 +616,9 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
       if (asin.isNotEmpty) ownedAsins.add(asin);
     }
 
-    // Try to get a series ASIN from one of the books
-    // First check if any book already has an ASIN we can use to look up via Audnexus
+    // Try to get a series ASIN from one of the books via Audnexus
     String? seriesAsin;
 
-    // Try each book's ASIN until we find a series ASIN
     for (final book in _books) {
       final media = book['media'] as Map<String, dynamic>? ?? {};
       final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
@@ -642,7 +640,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
       }
     }
 
-    // If no book has an ASIN, try searching Audible for the first book to get one
+    // Fallback: search Audible for the first book if no ASINs found
     if (seriesAsin == null && _books.isNotEmpty) {
       final firstBook = _books.first;
       final media = firstBook['media'] as Map<String, dynamic>? ?? {};
