@@ -1223,6 +1223,163 @@ class ApiService {
     return null;
   }
 
+  // ─── Audible Series Discovery ─────────────────────────────
+
+  /// Map region code to Audible API TLD.
+  static String get _audibleTld {
+    const tlds = {
+      'us': '.com', 'uk': '.co.uk', 'gb': '.co.uk', 'au': '.com.au',
+      'ca': '.ca', 'de': '.de', 'fr': '.fr', 'it': '.it', 'es': '.es',
+      'jp': '.co.jp', 'in': '.in', 'br': '.com.br',
+    };
+    return tlds[_region] ?? '.com';
+  }
+
+  /// Fetch full book metadata from Audnexus by ASIN.
+  /// Returns the raw Audnexus response including seriesPrimary, releaseDate, etc.
+  static Future<Map<String, dynamic>?> getAudnexusBook(String asin) async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://api.audnex.us/books/$asin?region=$_region'),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('[API] getAudnexusBook error: $e');
+    }
+    return null;
+  }
+
+  /// Get all book ASINs in an Audible series using the catalog relationships endpoint.
+  /// Returns a list of { asin, sequence, sort } maps.
+  static Future<List<Map<String, dynamic>>> getAudibleSeriesBooks(String seriesAsin) async {
+    try {
+      final url = 'https://api.audible$_audibleTld/1.0/catalog/products/$seriesAsin'
+          '?response_groups=relationships';
+      debugPrint('[API] getAudibleSeriesBooks: $url');
+      final response = await http.get(Uri.parse(url))
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final product = data['product'] as Map<String, dynamic>? ?? {};
+        final relationships = product['relationships'] as List<dynamic>? ?? [];
+
+        final books = <Map<String, dynamic>>[];
+        for (final r in relationships) {
+          if (r is! Map<String, dynamic>) continue;
+          final asin = r['asin'] as String?;
+          if (asin == null || asin.isEmpty) continue;
+          books.add({
+            'asin': asin,
+            'sequence': r['sequence']?.toString() ?? '',
+            'sort': r['sort']?.toString() ?? '0',
+          });
+        }
+        return books;
+      }
+      debugPrint('[API] getAudibleSeriesBooks status=${response.statusCode}');
+    } catch (e) {
+      debugPrint('[API] getAudibleSeriesBooks error: $e');
+    }
+    return [];
+  }
+
+  /// Fetch details for a single book from the Audible catalog API.
+  /// Returns title, authors, narrators, release_date, runtime, rating, cover, etc.
+  static Future<Map<String, dynamic>?> getAudibleBookDetails(String asin) async {
+    try {
+      final url = 'https://api.audible$_audibleTld/1.0/catalog/products/$asin'
+          '?response_groups=product_attrs,product_desc,product_details,series,rating,media';
+      final response = await http.get(Uri.parse(url))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return data['product'] as Map<String, dynamic>?;
+      }
+    } catch (e) {
+      debugPrint('[API] getAudibleBookDetails error: $e');
+    }
+    return null;
+  }
+
+  /// High-level: discover all books in an Audible series, returning enriched data.
+  /// [seriesAsin] is the Audible series ASIN.
+  /// Returns a list of book maps with: asin, title, subtitle, authors, narrators,
+  /// releaseDate, runtimeMinutes, rating, coverUrl, sequence.
+  /// Books are deduplicated by sequence (prefers user's region) and sorted.
+  static Future<List<Map<String, dynamic>>> discoverAudibleSeries(String seriesAsin) async {
+    // Step 1: Get all book ASINs from relationships
+    final relationships = await getAudibleSeriesBooks(seriesAsin);
+    if (relationships.isEmpty) return [];
+
+    // Step 2: Deduplicate by sequence — group ASINs, pick one per sequence
+    final bySequence = <String, List<Map<String, dynamic>>>{};
+    for (final r in relationships) {
+      final seq = r['sequence'] as String? ?? '';
+      final sort = r['sort'] as String? ?? '0';
+      final key = seq.isNotEmpty ? seq : 'sort_$sort';
+      bySequence.putIfAbsent(key, () => []).add(r);
+    }
+
+    // Pick first ASIN per sequence (Audible returns regional ones for the user's TLD)
+    final uniqueBooks = <Map<String, dynamic>>[];
+    for (final entry in bySequence.entries) {
+      uniqueBooks.add({
+        ...entry.value.first,
+        '_allAsins': entry.value.map((e) => e['asin'] as String).toList(),
+      });
+    }
+
+    // Step 3: Fetch details for each unique book (parallel, batched)
+    final results = <Map<String, dynamic>>[];
+    // Fetch in batches of 5 to avoid overwhelming the API
+    for (var i = 0; i < uniqueBooks.length; i += 5) {
+      final batch = uniqueBooks.skip(i).take(5);
+      final futures = batch.map((book) async {
+        final asin = book['asin'] as String;
+        final details = await getAudibleBookDetails(asin);
+        if (details == null) return null;
+
+        final authors = (details['authors'] as List<dynamic>? ?? [])
+            .map((a) => (a as Map<String, dynamic>)['name'] ?? '').join(', ');
+        final narrators = (details['narrators'] as List<dynamic>? ?? [])
+            .map((n) => (n as Map<String, dynamic>)['name'] ?? '').join(', ');
+        final rating = details['rating'] as Map<String, dynamic>?;
+
+        return <String, dynamic>{
+          'asin': asin,
+          'title': details['title'] ?? '',
+          'subtitle': details['subtitle'] ?? '',
+          'authors': authors,
+          'narrators': narrators,
+          'releaseDate': details['release_date'] ?? '',
+          'runtimeMinutes': details['runtime_length_min'] ?? 0,
+          'rating': rating?['overall_distribution']?['display_average_rating']
+              ?? rating?['num_reviews'] != null ? (rating?['overall_distribution']?['display_average_rating'] ?? 0.0) : 0.0,
+          'numRatings': rating?['overall_distribution']?['num_ratings'] ?? 0,
+          'coverUrl': details['product_images']?['500'] ?? details['product_images']?['1024'] ?? '',
+          'sequence': book['sequence'] ?? '',
+          'sort': book['sort'] ?? '0',
+          'publisherSummary': details['publisher_summary'] ?? '',
+        };
+      });
+      final batchResults = await Future.wait(futures);
+      results.addAll(batchResults.whereType<Map<String, dynamic>>());
+    }
+
+    // Sort by sequence number
+    results.sort((a, b) {
+      final seqA = double.tryParse(a['sequence']?.toString() ?? '') ?? 999;
+      final seqB = double.tryParse(b['sequence']?.toString() ?? '') ?? 999;
+      return seqA.compareTo(seqB);
+    });
+
+    return results;
+  }
+
   // ─── Admin Endpoints ──────────────────────────────────────
 
   /// Get all users (admin only)

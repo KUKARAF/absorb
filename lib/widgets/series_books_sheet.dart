@@ -12,6 +12,8 @@ import 'book_detail_sheet.dart';
 import 'library_grid_tiles.dart';
 import 'episode_list_sheet.dart';
 import 'stackable_sheet.dart';
+import 'audible_series_sheet.dart';
+import '../services/api_service.dart';
 
 /// Show a bottom sheet with all books in a series, sorted by sequence.
 /// Can be called from any screen.
@@ -585,6 +587,90 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
     }
   }
 
+  Future<void> _findOnAudible() async {
+    // Collect owned titles and ASINs for cross-referencing
+    final ownedTitles = <String>{};
+    final ownedAsins = <String>{};
+    for (final book in _books) {
+      final media = book['media'] as Map<String, dynamic>? ?? {};
+      final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+      final title = metadata['title'] as String? ?? '';
+      final asin = metadata['asin'] as String? ?? '';
+      if (title.isNotEmpty) ownedTitles.add(title);
+      if (asin.isNotEmpty) ownedAsins.add(asin);
+    }
+
+    // Try to get a series ASIN from one of the books
+    // First check if any book already has an ASIN we can use to look up via Audnexus
+    String? seriesAsin;
+
+    // Try each book's ASIN until we find a series ASIN
+    for (final book in _books) {
+      final media = book['media'] as Map<String, dynamic>? ?? {};
+      final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+      final bookAsin = metadata['asin'] as String? ?? '';
+      if (bookAsin.isEmpty) continue;
+
+      final audnexus = await ApiService.getAudnexusBook(bookAsin);
+      if (audnexus == null) continue;
+
+      final primary = audnexus['seriesPrimary'] as Map<String, dynamic>?;
+      if (primary != null && primary['asin'] != null) {
+        seriesAsin = primary['asin'] as String;
+        break;
+      }
+      final secondary = audnexus['seriesSecondary'] as Map<String, dynamic>?;
+      if (secondary != null && secondary['asin'] != null) {
+        seriesAsin = secondary['asin'] as String;
+        break;
+      }
+    }
+
+    // If no book has an ASIN, try searching Audible for the first book to get one
+    if (seriesAsin == null && _books.isNotEmpty) {
+      final firstBook = _books.first;
+      final media = firstBook['media'] as Map<String, dynamic>? ?? {};
+      final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+      final title = metadata['title'] as String? ?? '';
+      final author = metadata['authorName'] as String? ?? '';
+
+      if (title.isNotEmpty && mounted) {
+        final auth = context.read<AuthProvider>();
+        final api = auth.apiService;
+        if (api != null) {
+          final results = await api.searchBooks(title: title, author: author.isNotEmpty ? author : null);
+          for (final r in results) {
+            final asin = r['asin'] as String? ?? '';
+            if (asin.isEmpty) continue;
+            final audnexus = await ApiService.getAudnexusBook(asin);
+            if (audnexus == null) continue;
+            final primary = audnexus['seriesPrimary'] as Map<String, dynamic>?;
+            if (primary != null && primary['asin'] != null) {
+              seriesAsin = primary['asin'] as String;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!mounted) return;
+
+    if (seriesAsin == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not find this series on Audible')),
+      );
+      return;
+    }
+
+    showAudibleSeriesSheet(context,
+      seriesName: widget.seriesName,
+      seriesAsin: seriesAsin,
+      ownedTitles: ownedTitles,
+      ownedAsins: ownedAsins,
+    );
+  }
+
   Widget _buildOverflowMenu(ColorScheme cs) {
     final allDone = _allFinished;
     final dl = DownloadService();
@@ -673,6 +759,8 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                     await lib.toggleRollingDownload(widget.seriesId!);
                     setState(() => _autoDownloadEnabled = lib.isRollingDownloadEnabled(widget.seriesId!));
                   }),
+              _moreItem(cs, Icons.search_rounded, 'Find Missing Books',
+                onTap: () { Navigator.pop(ctx); _findOnAudible(); }),
             ]),
           ),
         );

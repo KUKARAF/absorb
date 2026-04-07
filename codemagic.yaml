@@ -1,6 +1,46 @@
 workflows:
+  github-release:
+    name: GitHub APK Only
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      android_signing:
+        - absorb_keystore
+      groups:
+        - github_credentials
+      flutter: stable
+      java: 17
+    scripts:
+      - name: Set up key.properties
+        script: |
+          cat >> $CM_BUILD_DIR/android/key.properties <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE_PATH
+          EOF
+      - name: Build GitHub APK
+        script: flutter build apk --release --flavor github --dart-define=GITHUB_BUILD=true
+      - name: Publish to GitHub Draft Release
+        script: |
+          VERSION="v$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)"
+          if gh release view "$VERSION" --repo "$CM_REPO_SLUG" &>/dev/null; then
+            gh release upload "$VERSION" \
+              build/app/outputs/apk/github/release/*.apk \
+              --clobber \
+              --repo "$CM_REPO_SLUG"
+          else
+            gh release create "$VERSION" \
+              build/app/outputs/apk/github/release/*.apk \
+              --draft \
+              --title "$VERSION" \
+              --repo "$CM_REPO_SLUG"
+          fi
+    artifacts:
+      - build/app/outputs/apk/github/release/*.apk
+
   android-release:
-    name: Android Release
+    name: Android Release (GitHub + Play Store)
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
