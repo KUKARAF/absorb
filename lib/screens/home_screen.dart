@@ -767,7 +767,8 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
             Expanded(
               child: Row(children: [
                 // Cover with play overlay
-                AspectRatio(
+                ClipRect(
+                child: AspectRatio(
                   aspectRatio: 1,
                   child: Stack(children: [
                     Positioned.fill(
@@ -837,7 +838,7 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
                       ),
                     ),
                   ]),
-                ),
+                )),
                 // Info
                 Expanded(
                   child: Padding(
