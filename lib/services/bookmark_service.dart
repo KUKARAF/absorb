@@ -273,7 +273,7 @@ class BookmarkService {
       final kept = <Bookmark>[];
       bool changed = false;
       for (final lb in refreshedLocal) {
-        final serverMatch = serverBookmarks.where((sb) =>
+        final serverMatch = serverBookmarks.whereType<Map<String, dynamic>>().where((sb) =>
             posMatch((sb['time'] as num?)?.toDouble() ?? 0, lb.positionSeconds)).firstOrNull;
         if (serverMatch != null) {
           kept.add(lb);

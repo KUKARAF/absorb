@@ -941,7 +941,7 @@ class ApiService {
       if (progress != null) {
         final bookmarks = progress['bookmarks'] as List<dynamic>?;
         if (bookmarks != null && bookmarks.isNotEmpty) {
-          return bookmarks.cast<Map<String, dynamic>>();
+          return bookmarks.whereType<Map<String, dynamic>>().toList();
         }
       }
       // Fall back to user object - bookmarks may be stored there

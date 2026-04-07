@@ -265,8 +265,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
         clipBehavior: Clip.antiAlias,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 100),
-          child: IntrinsicHeight(
-            child: Row(children: [
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               // Cover - keep square regardless of row height
               Align(
                 alignment: Alignment.topLeft,
@@ -359,7 +358,6 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
                 ),
               ),
             ]),
-          ),
         ),
       ),
     );
