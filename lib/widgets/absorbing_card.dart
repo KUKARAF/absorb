@@ -574,11 +574,11 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                               opacity: isDownloaded ? 1.0 : 0.0,
                               child: Row(mainAxisSize: MainAxisSize.min, children: [
                                 Icon(Icons.download_done_rounded, size: 11,
-                                  color: isDark ? Colors.white.withValues(alpha: 0.35) : cs.onSurface.withValues(alpha: 0.35)),
+                                  color: isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700.withValues(alpha: 0.7)),
                                 const SizedBox(width: 3),
                                 Text('Saved', style: TextStyle(
                                   fontSize: 10, fontWeight: FontWeight.w500,
-                                  color: isDark ? Colors.white.withValues(alpha: 0.35) : cs.onSurface.withValues(alpha: 0.35),
+                                  color: isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700.withValues(alpha: 0.7),
                                 )),
                               ]),
                             ),

@@ -2488,6 +2488,23 @@ class AudioPlayerService extends ChangeNotifier {
     }
     // Re-activate audio session (needed after stop() releases it)
     try { (await AudioSession.instance).setActive(true); } catch (_) {}
+    // If the player is idle (source was disposed), we need to fully re-initialize
+    // playback instead of just calling play() on an empty player.
+    if (_player?.processingState == ProcessingState.idle && _currentItemId != null && _api != null) {
+      debugPrint('[Player] Player is idle on resume - re-initializing playback for $_currentItemId');
+      playItem(
+        api: _api!,
+        itemId: _currentItemId!,
+        title: _currentTitle ?? '',
+        author: _currentAuthor ?? '',
+        coverUrl: _currentCoverUrl,
+        totalDuration: _totalDuration,
+        chapters: _chapters,
+        episodeId: _currentEpisodeId,
+        episodeTitle: _currentEpisodeTitle,
+      );
+      return;
+    }
     _player?.play();
     _logEvent(PlaybackEventType.play);
     _onPlaybackStateChangedCallback?.call(true);
