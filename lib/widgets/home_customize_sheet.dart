@@ -139,7 +139,10 @@ class _HomeCustomizeSheetState extends State<HomeCustomizeSheet> {
           Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.3), indent: 20, endIndent: 20),
           Expanded(
             child: genres.isEmpty
-                ? Center(child: Text('No genres found', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)))
+                ? ListView(controller: sc, children: [
+                    const SizedBox(height: 60),
+                    Center(child: Text('No genres found', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant))),
+                  ])
                 : ListView.builder(
                     controller: sc,
                     padding: EdgeInsets.only(top: 8, bottom: MediaQuery.of(ctx).padding.bottom + 8),

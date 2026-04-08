@@ -573,7 +573,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                   ),
                   SizedBox(
                     width: 48,
-                    child: _episodes.isNotEmpty ? _buildOverflowMenu(cs) : null,
+                    child: _buildOverflowMenu(cs),
                   ),
                 ],
               ),
@@ -684,15 +684,14 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
             child: _isLoading
                 ? Center(child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurface.withValues(alpha: 0.24)))
                 : _episodes.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.podcasts_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.15)),
-                            const SizedBox(height: 12),
-                            Text('No episodes found', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
-                          ],
-                        ),
+                    ? ListView(
+                        controller: widget.scrollController,
+                        children: [
+                          SizedBox(height: 120),
+                          Icon(Icons.podcasts_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.15)),
+                          const SizedBox(height: 12),
+                          Center(child: Text('No episodes found', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant))),
+                        ],
                       )
                     : Builder(builder: (context) {
                         final visibleEpisodes = _hideFinished

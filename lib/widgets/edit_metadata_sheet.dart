@@ -479,14 +479,21 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
       Divider(color: cs.onSurface.withValues(alpha: 0.08), height: 1),
       Expanded(
         child: _isSearching
-            ? Center(child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurfaceVariant))
+            ? ListView(controller: widget.scrollController, children: [
+                const SizedBox(height: 80),
+                Center(child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurfaceVariant)),
+              ])
             : _searchResults.isEmpty
-                ? Center(child: Text(
-                    _hasSearched ? 'No results found.\nTry adjusting your search or provider.' : 'Search for metadata above',
-                    textAlign: TextAlign.center,
-                    style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
-                  ))
+                ? ListView(controller: widget.scrollController, children: [
+                    const SizedBox(height: 80),
+                    Center(child: Text(
+                      _hasSearched ? 'No results found.\nTry adjusting your search or provider.' : 'Search for metadata above',
+                      textAlign: TextAlign.center,
+                      style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+                    )),
+                  ])
                 : ListView.separated(
+                    controller: widget.scrollController,
                     padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + MediaQuery.of(context).viewPadding.bottom),
                     itemCount: _searchResults.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),

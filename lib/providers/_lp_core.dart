@@ -698,8 +698,8 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
     final playingKey = player.currentEpisodeId != null
         ? '${player.currentItemId}-${player.currentEpisodeId}'
         : player.currentItemId;
-    if (key == playingKey && player.hasBook) {
-      if (mp['isFinished'] == true && !player.isPlaying) {
+    if (key == playingKey && player.hasBook && player.isPlaying) {
+      if (mp['isFinished'] == true) {
         (this as _AbsorbingMixin).markFinishedLocally(key, skipAutoAdvance: true);
       }
       return;

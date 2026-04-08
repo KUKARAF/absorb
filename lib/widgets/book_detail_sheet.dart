@@ -1215,6 +1215,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         minChildSize: 0.05, snap: true,
         maxChildSize: 0.95,
         builder: (ctx, sc) => MetadataLookupSheet(
+          scrollController: sc,
           itemId: widget.itemId,
           api: api,
           initialTitle: title,

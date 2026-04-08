@@ -190,25 +190,30 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
 
         // Content
         if (_isLoading)
-          Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const CircularProgressIndicator(strokeWidth: 2),
+          Expanded(child: ListView(controller: widget.scrollController, children: [
+            const SizedBox(height: 80),
+            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
             const SizedBox(height: 12),
-            Text('Searching Audible...', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4))),
-          ])))
+            Center(child: Text('Searching Audible...', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4)))),
+          ]))
         else if (_error != null)
-          Expanded(child: Center(child: Text(_error!, style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant))))
+          Expanded(child: ListView(controller: widget.scrollController, children: [
+            const SizedBox(height: 80),
+            Center(child: Text(_error!, style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant))),
+          ]))
         else if (displayBooks.isEmpty)
-          Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Expanded(child: ListView(controller: widget.scrollController, children: [
+            const SizedBox(height: 80),
             Icon(
               _filter == 1 ? Icons.event_available_rounded : Icons.check_circle_outline_rounded,
               size: 48, color: cs.primary.withValues(alpha: 0.5)),
             const SizedBox(height: 12),
-            Text(
+            Center(child: Text(
               _filter == 0 ? 'You have the complete series!'
                   : _filter == 1 ? 'No upcoming releases found'
                   : 'No books found',
-              style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
-          ])))
+              style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant))),
+          ]))
         else
           Expanded(
             child: ListView.builder(

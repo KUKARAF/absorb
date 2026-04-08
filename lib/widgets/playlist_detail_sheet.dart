@@ -253,7 +253,10 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
     ).firstOrNull;
 
     if (playlist == null) {
-      return const Center(child: Text('Playlist not found'));
+      return ListView(controller: widget.scrollController, children: const [
+        SizedBox(height: 80),
+        Center(child: Text('Playlist not found')),
+      ]);
     }
 
     final name = playlist['name'] as String? ?? 'Playlist';

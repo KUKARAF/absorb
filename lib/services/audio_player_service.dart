@@ -2443,22 +2443,46 @@ class AudioPlayerService extends ChangeNotifier {
     // include pause duration as timeListened
     _lastServerSync = DateTime.now();
     // Re-create server session if it was closed (e.g. pause timeout)
-    if (_playbackSessionId == null && _api != null && _currentItemId != null) {
+    // and check if server progress is ahead (e.g. user listened on another client)
+    if (_api != null && _currentItemId != null) {
       final prefs = await SharedPreferences.getInstance();
       final manualOffline = prefs.getBool('manual_offline_mode') ?? false;
       if (manualOffline || _isOfflineMode) {
         debugPrint('[Player] Skipping session re-create on resume (manualOffline=$manualOffline, isOffline=$_isOfflineMode)');
       } else {
         try {
-          final sessionData = _currentEpisodeId != null
-              ? await _api!.startEpisodePlaybackSession(_currentItemId!, _currentEpisodeId!)
-              : await _api!.startPlaybackSession(_currentItemId!);
-          if (sessionData != null) {
-            _playbackSessionId = sessionData['id'] as String?;
-            debugPrint('[Player] Re-created session on resume: $_playbackSessionId');
+          if (_playbackSessionId == null) {
+            // Session expired — re-create it
+            final sessionData = _currentEpisodeId != null
+                ? await _api!.startEpisodePlaybackSession(_currentItemId!, _currentEpisodeId!)
+                : await _api!.startPlaybackSession(_currentItemId!);
+            if (sessionData != null) {
+              _playbackSessionId = sessionData['id'] as String?;
+              debugPrint('[Player] Re-created session on resume: $_playbackSessionId');
+              final serverPos = (sessionData['currentTime'] as num?)?.toDouble() ?? 0;
+              final localPos = position.inMilliseconds / 1000.0;
+              if (serverPos > localPos + 5.0) {
+                debugPrint('[Player] Server is ahead on resume: server=${serverPos}s vs local=${localPos}s — seeking');
+                await _seekAbsolute(serverPos);
+              }
+            }
+          } else {
+            // Session still active — check server progress in case another client advanced
+            final pKey = _currentEpisodeId != null
+                ? '$_currentItemId-$_currentEpisodeId'
+                : _currentItemId!;
+            final serverProgress = await _api!.getItemProgress(pKey);
+            if (serverProgress != null) {
+              final serverPos = (serverProgress['currentTime'] as num?)?.toDouble() ?? 0;
+              final localPos = position.inMilliseconds / 1000.0;
+              if (serverPos > localPos + 5.0) {
+                debugPrint('[Player] Server is ahead on resume: server=${serverPos}s vs local=${localPos}s — seeking');
+                await _seekAbsolute(serverPos);
+              }
+            }
           }
         } catch (e) {
-          debugPrint('[Player] Failed to re-create session on resume: $e');
+          debugPrint('[Player] Failed to check server progress on resume: $e');
         }
       }
     }

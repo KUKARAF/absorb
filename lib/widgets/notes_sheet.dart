@@ -226,21 +226,22 @@ class _NotesSheetState extends State<NotesSheet> {
           // Notes list
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? ListView(controller: widget.scrollController, children: const [
+                    SizedBox(height: 80),
+                    Center(child: CircularProgressIndicator()),
+                  ])
                 : _notes.isEmpty
-                    ? Center(child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.note_add_rounded, size: 48,
-                            color: cs.onSurface.withValues(alpha: 0.15)),
-                          const SizedBox(height: 12),
-                          Text('No notes yet', style: tt.bodyMedium?.copyWith(
-                            color: cs.onSurface.withValues(alpha: 0.4))),
-                          const SizedBox(height: 8),
-                          Text('Markdown is supported', style: tt.bodySmall?.copyWith(
-                            color: cs.onSurface.withValues(alpha: 0.25))),
-                        ],
-                      ))
+                    ? ListView(controller: widget.scrollController, children: [
+                        const SizedBox(height: 80),
+                        Icon(Icons.note_add_rounded, size: 48,
+                          color: cs.onSurface.withValues(alpha: 0.15)),
+                        const SizedBox(height: 12),
+                        Center(child: Text('No notes yet', style: tt.bodyMedium?.copyWith(
+                          color: cs.onSurface.withValues(alpha: 0.4)))),
+                        const SizedBox(height: 8),
+                        Center(child: Text('Markdown is supported', style: tt.bodySmall?.copyWith(
+                          color: cs.onSurface.withValues(alpha: 0.25)))),
+                      ])
                     : ListView.separated(
                         controller: widget.scrollController,
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),

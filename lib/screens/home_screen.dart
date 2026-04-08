@@ -734,12 +734,22 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
     final progressData = episodeId != null
         ? lib.getEpisodeProgressData(itemId, episodeId)
         : lib.getProgressData(itemId);
-    final currentTime = (progressData?['currentTime'] as num?)?.toDouble() ?? 0;
-    final totalDuration = (progressData?['duration'] as num?)?.toDouble() ??
-        (recentEpisode != null
-            ? (recentEpisode['duration'] as num?)?.toDouble() ?? 0
-            : (media['duration'] as num?)?.toDouble() ?? 0);
     final isCurrentItem = player.currentItemId == itemId;
+    final serverCurrentTime = (progressData?['currentTime'] as num?)?.toDouble() ?? 0;
+
+    // For the active item, prefer live player data over stale _progressMap
+    double currentTime;
+    double totalDuration;
+    if (isCurrentItem && player.hasBook) {
+      currentTime = player.position.inMilliseconds / 1000.0;
+      totalDuration = player.totalDuration;
+    } else {
+      currentTime = (progressData?['currentTime'] as num?)?.toDouble() ?? 0;
+      totalDuration = (progressData?['duration'] as num?)?.toDouble() ??
+          (recentEpisode != null
+              ? (recentEpisode['duration'] as num?)?.toDouble() ?? 0
+              : (media['duration'] as num?)?.toDouble() ?? 0);
+    }
 
     return Material(
       color: isCurrentItem
@@ -812,7 +822,19 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
                             ? null
                             : () {
                                 if (isCurrentItem) {
-                                  player.togglePlayPause();
+                                  if (player.isPlaying) {
+                                    player.pause();
+                                  } else {
+                                    // If server progress is ahead of the player's
+                                    // position (e.g. user listened on another client),
+                                    // re-start so the full server comparison runs.
+                                    final playerPosSec = player.position.inMilliseconds / 1000.0;
+                                    if (serverCurrentTime > playerPosSec + 5.0) {
+                                      _startBook(context, itemId);
+                                    } else {
+                                      player.play();
+                                    }
+                                  }
                                 } else {
                                   _startBook(context, itemId);
                                 }

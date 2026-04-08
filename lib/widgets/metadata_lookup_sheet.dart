@@ -14,6 +14,7 @@ class MetadataLookupSheet extends StatefulWidget {
   final VoidCallback onApplied;
   /// Current metadata so the Custom tab can pre-fill fields.
   final Map<String, dynamic>? currentMetadata;
+  final ScrollController? scrollController;
 
   const MetadataLookupSheet({
     super.key,
@@ -23,6 +24,7 @@ class MetadataLookupSheet extends StatefulWidget {
     required this.initialAuthor,
     required this.onApplied,
     this.currentMetadata,
+    this.scrollController,
   });
 
   @override
@@ -455,14 +457,21 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
 
       Expanded(
         child: _isSearching
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24))
+            ? ListView(controller: widget.scrollController, children: const [
+                SizedBox(height: 80),
+                Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24)),
+              ])
             : _results.isEmpty
-                ? Center(child: Text(
-                    _hasSearched ? 'No results found.\nTry adjusting your search or provider.' : 'Search for metadata above',
-                    textAlign: TextAlign.center,
-                    style: tt.bodyMedium?.copyWith(color: Colors.white38),
-                  ))
+                ? ListView(controller: widget.scrollController, children: [
+                    const SizedBox(height: 80),
+                    Center(child: Text(
+                      _hasSearched ? 'No results found.\nTry adjusting your search or provider.' : 'Search for metadata above',
+                      textAlign: TextAlign.center,
+                      style: tt.bodyMedium?.copyWith(color: Colors.white38),
+                    )),
+                  ])
                 : ListView.separated(
+                    controller: widget.scrollController,
                     padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + MediaQuery.of(context).viewPadding.bottom),
                     itemCount: _results.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
