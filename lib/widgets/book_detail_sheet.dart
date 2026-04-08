@@ -660,7 +660,6 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                     Clipboard.setData(ClipboardData(text: serverPath));
                     HapticFeedback.lightImpact();
                     Navigator.pop(ctx);
-                    showOverlayToast(context, 'Path copied', icon: Icons.copy_rounded);
                   },
                   child: Text(serverPath, maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: cs.onSurface.withValues(alpha: 0.25), fontSize: 11)),
