@@ -479,7 +479,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         const SizedBox(width: 8),
         // More button - opens styled bottom sheet with secondary actions
         GestureDetector(
-          onTap: () => _showMoreSheet(context, auth, lib, title, authorName, progress, isFinished, duration, ebookFile, isEbookOnly),
+          onTap: () => _showMoreSheet(context, auth, lib, title, authorName, progress, isFinished, duration, ebookFile, isEbookOnly, serverPath),
           child: Container(
             height: 36, width: 44,
             decoration: BoxDecoration(
@@ -571,38 +571,12 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                 ])),
               ]));
           })]],
-      // ─── Server path (tap to copy) ────────────────────────
-      if (serverPath.isNotEmpty) ...[const SizedBox(height: 16),
-        GestureDetector(
-          onTap: () {
-            Clipboard.setData(ClipboardData(text: serverPath));
-            HapticFeedback.lightImpact();
-            showOverlayToast(context, 'Path copied', icon: Icons.copy_rounded);
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: cs.onSurface.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
-            ),
-            child: Row(children: [
-              Icon(Icons.folder_outlined, size: 12, color: cs.onSurface.withValues(alpha: 0.3)),
-              const SizedBox(width: 6),
-              Expanded(child: Text(serverPath, overflow: TextOverflow.ellipsis, maxLines: 1,
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11))),
-              const SizedBox(width: 6),
-              Icon(Icons.copy_rounded, size: 11, color: cs.onSurface.withValues(alpha: 0.2)),
-            ]),
-          ),
-        ),
-      ],
     ]);
   }
 
   void _showMoreSheet(BuildContext context, AuthProvider auth, LibraryProvider lib,
       String title, String authorName, double progress, bool isFinished,
-      double duration, Map<String, dynamic>? ebookFile, bool isEbookOnly) {
+      double duration, Map<String, dynamic>? ebookFile, bool isEbookOnly, String serverPath) {
     final cs = Theme.of(context).colorScheme;
     showModalBottomSheet(
       context: context,
@@ -679,6 +653,19 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                     final meta = media['metadata'] as Map<String, dynamic>? ?? {};
                     showEditMetadataSheet(context, itemId: widget.itemId, metadata: meta);
                   }),
+              if (auth.isAdmin && serverPath.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: serverPath));
+                    HapticFeedback.lightImpact();
+                    Navigator.pop(ctx);
+                    showOverlayToast(context, 'Path copied', icon: Icons.copy_rounded);
+                  },
+                  child: Text(serverPath, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: cs.onSurface.withValues(alpha: 0.25), fontSize: 11)),
+                ),
+              ],
             ]),
           ),
         );

@@ -170,10 +170,6 @@ class PlayerSettings {
   static Future<bool> getSkipChapterBarrier() => _get('skipChapterBarrier', true);
   static Future<void> setSkipChapterBarrier(bool value) => _set('skipChapterBarrier', value);
 
-  /// Intentionally NOT persisted - resets to false on every app start so
-  /// users can't accidentally leave wake lock on after a listening session.
-  static bool keepScreenAwake = false;
-
   /// Cached value for synchronous access in widget build methods.
   static bool showExplicitBadge = true;
   static Future<bool> getShowExplicitBadge() => _get('showExplicitBadge', true);
@@ -303,11 +299,6 @@ class PlayerSettings {
 
   static Future<bool> getCoverPlayButton() => _get('coverPlayButton', false);
   static Future<void> setCoverPlayButton(bool value) => _set('coverPlayButton', value, notify: true);
-
-  // ── Audio focus ──
-
-  static Future<bool> getDisableAudioFocus() => _get('disableAudioFocus', false);
-  static Future<void> setDisableAudioFocus(bool value) => _set('disableAudioFocus', value);
 
   // ── Self-signed certificates (global, not per-user) ──
 

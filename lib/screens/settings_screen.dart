@@ -82,8 +82,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _localServerEnabled = false;
   String _localServerUrl = '';
   late final TextEditingController _localServerController;
-  bool _keepScreenAwake = false;
-  bool _disableAudioFocus = false;
   bool _trustAllCerts = false;
   bool _includePreReleases = false;
   bool _loaded = false;
@@ -180,8 +178,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PlayerSettings.getStreamingCacheSizeMb(),               // 30
       PlayerSettings.getLocalServerEnabled(),                  // 31
       PlayerSettings.getLocalServerUrl(),                      // 32
-      PlayerSettings.getDisableAudioFocus(),                   // 33
-      PlayerSettings.getAutoDownloadOnStream(),                  // 34
+      PlayerSettings.getAutoDownloadOnStream(),                  // 33
       PlayerSettings.getStartScreen(),                           // 36
       PlayerSettings.getPodcastQueueMode(),                      // 37
       PlayerSettings.getCardButtonLayout(),                        // 38
@@ -224,17 +221,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final cacheSizeMb = results[29] as int;
     final localEnabled = results[30] as bool;
     final localUrl = results[31] as String;
-    final audioFocusOff = results[32] as bool;
-    final autoDlStream = results[33] as bool;
-    final startScreen = results[34] as int;
-    final podcastQueueMode = results[35] as String;
-    final cardBtnLayout = results[36] as String;
-    final rectCovers = results[37] as bool;
-    final trustCerts = results[38] as bool;
-    final coverPlay = results[39] as bool;
-    final skipBarrier = results[40] as bool;
-    final showExplicit = results[41] as bool;
-    final preReleases = results[42] as bool;
+    final autoDlStream = results[32] as bool;
+    final startScreen = results[33] as int;
+    final podcastQueueMode = results[34] as String;
+    final cardBtnLayout = results[35] as String;
+    final rectCovers = results[36] as bool;
+    final trustCerts = results[37] as bool;
+    final coverPlay = results[38] as bool;
+    final skipBarrier = results[39] as bool;
+    final showExplicit = results[40] as bool;
+    final preReleases = results[41] as bool;
     if (mounted) setState(() {
       _rewindSettings = s;
       _defaultSpeed = speed;
@@ -274,7 +270,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _localServerEnabled = localEnabled;
       _localServerUrl = localUrl;
       _localServerController.text = localUrl;
-      _disableAudioFocus = audioFocusOff;
       _startScreen = startScreen;
       _cardButtonLayout = cardBtnLayout;
       _rectangleCovers = rectCovers;
@@ -953,18 +948,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: _loaded ? (v) {
                         setState(() => _notifChapterProgress = v);
                         PlayerSettings.setNotificationChapterProgress(v);
-                      } : null,
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    SwitchListTile(
-                      title: const Text('Keep screen awake'),
-                      subtitle: Text(
-                        _keepScreenAwake ? 'On - screen stays on during playback' : 'Off',
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      value: _keepScreenAwake,
-                      onChanged: _loaded ? (v) {
-                        setState(() => _keepScreenAwake = v);
-                        PlayerSettings.keepScreenAwake = v;
                       } : null,
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
@@ -1786,43 +1769,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ],
                     const Divider(height: 1, indent: 16, endIndent: 16),
-                    if (!Platform.isIOS) ...[
-                    SwitchListTile(
-                      title: Row(children: [
-                        const Flexible(child: Text('Disable audio focus')),
-                        _infoIcon('Audio Focus', 'By default, Android gives audio "focus" to one app at a time - when Absorb plays, other audio (music, videos) will pause. Disabling audio focus lets Absorb play alongside other apps. Phone calls will still pause playback regardless of this setting.'),
-                      ]),
-                      subtitle: Text(
-                        _disableAudioFocus
-                            ? 'On - plays alongside other audio (still pauses for calls)'
-                            : 'Off - other audio pauses when Absorb plays',
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      value: _disableAudioFocus,
-                      onChanged: _loaded ? (v) async {
-                        setState(() => _disableAudioFocus = v);
-                        await PlayerSettings.setDisableAudioFocus(v);
-                        if (!context.mounted) return;
-                        final restart = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Restart Required'),
-                            content: Text(
-                              'Audio focus change requires a full restart to take effect. '
-                              'Close the app now?',
-                            ),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Later')),
-                              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Close App')),
-                            ],
-                          ),
-                        );
-                        if (restart == true) {
-                          SystemChannels.platform.invokeMethod('SystemNavigator.pop', true);
-                        }
-                      } : null,
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    ],
                     SwitchListTile(
                       title: Row(children: [
                         const Flexible(child: Text('Trust all certificates')),

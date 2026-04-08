@@ -16,7 +16,6 @@ import android.os.StatFs
 import android.util.Log
 import com.ryanheise.audioservice.AudioServiceActivity
 import com.ryanheise.just_audio.MonoController
-import com.ryanheise.just_audio.OutputDeviceController
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -29,7 +28,6 @@ class MainActivity : AudioServiceActivity() {
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var currentSessionId: Int = 0
-    private var selectedOutputDeviceId: Int? = null  // user's manual override
     private var eqLoudnessGainMb: Int = 0  // extra gain from EQ loudness slider
 
     companion object {
@@ -86,23 +84,6 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
         Log.d(TAG, "EQ method channel registered")
-
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.absorb.audio_output")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "getAudioOutputDevices" -> {
-                        result.success(getAudioOutputDevices())
-                    }
-                    "setAudioOutputDevice" -> {
-                        val id = call.argument<Int>("id") ?: 0
-                        result.success(setAudioOutputDevice(id))
-                    }
-                    "resetAudioOutput" -> {
-                        result.success(resetAudioOutput())
-                    }
-                    else -> result.notImplemented()
-                }
-            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.absorb.storage")
             .setMethodCallHandler { call, result ->
@@ -237,100 +218,6 @@ class MainActivity : AudioServiceActivity() {
         } catch (e: Exception) {
             result.error("EQ_ERROR", e.message, null)
         }
-    }
-
-    private fun getAudioOutputDevices(): List<Map<String, Any>> {
-        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            .filter { isMediaOutputDevice(it.type) }
-
-        // If user has manually selected a device, use that; otherwise fall back to priority
-        val manualId = selectedOutputDeviceId
-        val hasManualSelection = manualId != null && devices.any { it.id == manualId }
-
-        // Determine active output by priority: wired > BT A2DP > USB > speaker
-        val activeTypes: Set<Int> = when {
-            devices.any { it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES || it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET } ->
-                setOf(AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_WIRED_HEADSET)
-            devices.any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP } ->
-                setOf(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP)
-            devices.any { it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET } ->
-                setOf(AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET)
-            else -> setOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
-        }
-
-        // Deduplicate: prefer A2DP over SCO for same product name
-        val seen = mutableSetOf<String>()
-        return devices
-            .sortedBy { if (it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) 0 else 1 }
-            .filter { device ->
-                val key = device.productName?.toString()?.takeIf { it.isNotBlank() } ?: device.id.toString()
-                seen.add(key)
-            }
-            .map { device ->
-                val typeName = getOutputTypeName(device.type)
-                val name = device.productName?.toString()?.takeIf { it.isNotBlank() }
-                    ?: getOutputTypeLabel(device.type)
-                val isActive = if (hasManualSelection) device.id == manualId
-                               else device.type in activeTypes
-                mapOf(
-                    "id" to device.id,
-                    "name" to name,
-                    "typeName" to typeName,
-                    "isActive" to isActive
-                )
-            }
-    }
-
-    private fun isMediaOutputDevice(type: Int): Boolean {
-        return type in listOf(
-            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
-            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-            AudioDeviceInfo.TYPE_WIRED_HEADSET,
-            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-            AudioDeviceInfo.TYPE_USB_DEVICE,
-            AudioDeviceInfo.TYPE_USB_HEADSET,
-        )
-    }
-
-    private fun getOutputTypeName(type: Int): String {
-        return when (type) {
-            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
-            AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_WIRED_HEADSET -> "wired"
-            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "bluetooth"
-            AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET -> "usb"
-            else -> "unknown"
-        }
-    }
-
-    private fun getOutputTypeLabel(type: Int): String {
-        return when (type) {
-            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "This Phone"
-            AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired Headphones"
-            AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired Headset"
-            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth"
-            AudioDeviceInfo.TYPE_USB_DEVICE -> "USB Audio"
-            AudioDeviceInfo.TYPE_USB_HEADSET -> "USB Headset"
-            else -> "Audio Device"
-        }
-    }
-
-    private fun setAudioOutputDevice(deviceId: Int): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            val target = devices.firstOrNull { it.id == deviceId }
-            OutputDeviceController.setPreferredOutputDevice(target)
-            selectedOutputDeviceId = deviceId
-            return true
-        }
-        return false
-    }
-
-    private fun resetAudioOutput(): Boolean {
-        OutputDeviceController.setPreferredOutputDevice(null)
-        selectedOutputDeviceId = null
-        return true
     }
 
     private fun releaseEffects() {

@@ -7,7 +7,6 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 import 'api_service.dart';
 import 'download_service.dart';
 import 'playback_history_service.dart' hide PlaybackEvent;
@@ -999,52 +998,8 @@ class AudioPlayerService extends ChangeNotifier {
   /// starting new playback to avoid blasting audio on the phone speaker.
   static bool get wasNoisyPause => _noisyPause;
 
-  static bool _audioFocusDisabled = false;
-
   static Future<void> _configureAudioSession() async {
-    _audioFocusDisabled = await PlayerSettings.getDisableAudioFocus();
     final session = await AudioSession.instance;
-
-    if (_audioFocusDisabled) {
-      // Allow mixing with other audio - don't request exclusive focus
-      await session.configure(const AudioSessionConfiguration(
-        avAudioSessionCategory: AVAudioSessionCategory.playback,
-        avAudioSessionMode: AVAudioSessionMode.defaultMode,
-        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.mixWithOthers,
-        androidAudioAttributes: AndroidAudioAttributes(
-          contentType: AndroidAudioContentType.music,
-          usage: AndroidAudioUsage.media,
-        ),
-        androidAudioFocusGainType: AndroidAudioFocusGainType.gainTransientMayDuck,
-      ));
-      debugPrint('[AudioSession] Audio focus disabled - mixing with other apps');
-
-      // Ignore all interruption events - can't distinguish Spotify from
-      // phone calls, so disable everything when user opts out of audio focus
-      _interruptSub?.cancel();
-      _interruptSub = null;
-
-      // Still pause when headphones/BT disconnect
-      _noisySub?.cancel();
-      _noisySub = session.becomingNoisyEventStream.listen((_) async {
-        try {
-          final service = _instance;
-          debugPrint('[AudioSession] Becoming noisy - pausing');
-          _noisyPause = true;
-          service._wasPlayingBeforeInterrupt = false;
-          _handler?.cancelPendingClick();
-          if (service.isPlaying) {
-            await service.pause();
-          }
-        } catch (e) {
-          debugPrint('[AudioSession] Noisy handler error: $e');
-        }
-      }, onError: (e) {
-        debugPrint('[AudioSession] Noisy stream error - re-subscribing: $e');
-        _configureAudioSession();
-      });
-      return;
-    }
 
     await session.configure(AudioSessionConfiguration(
       // iOS: playback category — no duckOthers so iOS properly recognises this
@@ -1158,9 +1113,7 @@ class AudioPlayerService extends ChangeNotifier {
     if (!service.hasBook) return;
     debugPrint('[MediaSession] Foregrounded - refreshing (playing=${service.isPlaying}, session=${service._playbackSessionId != null}, item=${service._currentItemId})');
     // Re-activate audio session to get a fresh system token
-    if (!_audioFocusDisabled) {
-      try { (await AudioSession.instance).setActive(true); } catch (_) {}
-    }
+    try { (await AudioSession.instance).setActive(true); } catch (_) {}
     // Re-push playback state so the system re-registers the MediaSession
     _handler?.refreshPlaybackState();
     // Re-push media item so notification metadata is fresh
@@ -1529,9 +1482,7 @@ class AudioPlayerService extends ChangeNotifier {
       // reaches the audio_service iOS plugin with an active session.
       // Without this, iOS ignores the MPNowPlayingInfoCenter update and
       // lock screen / Control Center / AirPod controls never appear.
-      if (!_audioFocusDisabled) {
-        try { (await AudioSession.instance).setActive(true); } catch (_) {}
-      }
+      try { (await AudioSession.instance).setActive(true); } catch (_) {}
       _player!.play();
       notifyListeners();
       _setupSync();
@@ -1683,9 +1634,7 @@ class AudioPlayerService extends ChangeNotifier {
       await _player!.setSpeed(speed);
       debugPrint('[Player] Starting stream playback at ${speed}x');
       // Re-activate audio session before play (see local playback comment above)
-      if (!_audioFocusDisabled) {
-        try { (await AudioSession.instance).setActive(true); } catch (_) {}
-      }
+      try { (await AudioSession.instance).setActive(true); } catch (_) {}
       _player!.play();
       notifyListeners();
       _setupSync();
@@ -1756,9 +1705,7 @@ class AudioPlayerService extends ChangeNotifier {
               final speed = bookSpeed ?? await PlayerSettings.getDefaultSpeed();
               await _player!.setSpeed(speed);
               debugPrint('[Player] Transcoded playback starting at ${speed}x');
-              if (!_audioFocusDisabled) {
-                try { (await AudioSession.instance).setActive(true); } catch (_) {}
-              }
+              try { (await AudioSession.instance).setActive(true); } catch (_) {}
               _player!.play();
               notifyListeners();
               _setupSync();
@@ -1847,14 +1794,6 @@ class AudioPlayerService extends ChangeNotifier {
     ));
   }
 
-  void _updateWakeLock(bool playing) {
-    if (PlayerSettings.keepScreenAwake && playing) {
-      debugPrint('[Battery] WakeLock ENABLED');
-      WakelockPlus.enable();
-    } else {
-      WakelockPlus.disable();
-    }
-  }
 
   void _clearState() {
     _currentItemId = null;
@@ -2524,13 +2463,11 @@ class AudioPlayerService extends ChangeNotifier {
       }
     }
     // Re-activate audio session (needed after stop() releases it)
-    if (!_audioFocusDisabled) {
-      try { (await AudioSession.instance).setActive(true); } catch (_) {}
-    }
+    try { (await AudioSession.instance).setActive(true); } catch (_) {}
     _player?.play();
     _logEvent(PlaybackEventType.play);
     _onPlaybackStateChangedCallback?.call(true);
-    _updateWakeLock(true);
+
     // Restart safety-net save timer (stopped on pause to avoid background wakes)
     if (_bgSaveTimer == null || !_bgSaveTimer!.isActive) {
       _bgSaveTimer?.cancel();
@@ -2571,7 +2508,7 @@ class AudioPlayerService extends ChangeNotifier {
     await _player?.pause();
     _logEvent(PlaybackEventType.pause);
     _onPlaybackStateChangedCallback?.call(false);
-    _updateWakeLock(false);
+
     notifyListeners();
     final pos = position;
     debugPrint('[Player] Saving on pause: ${(pos.inMilliseconds / 1000.0).toStringAsFixed(1)}s');
@@ -2607,10 +2544,8 @@ class AudioPlayerService extends ChangeNotifier {
         _playbackSessionId = null;
       }
       // Release audio focus so other apps can use it
-      if (!_audioFocusDisabled) {
-        debugPrint('[Battery] AudioSession DEACTIVATED (pause timeout)');
-        try { (await AudioSession.instance).setActive(false); } catch (_) {}
-      }
+      debugPrint('[Battery] AudioSession DEACTIVATED (pause timeout)');
+      try { (await AudioSession.instance).setActive(false); } catch (_) {}
       // Cancel sleep timer
       if (SleepTimerService().isActive) {
         SleepTimerService().cancel();
@@ -2787,7 +2722,7 @@ class AudioPlayerService extends ChangeNotifier {
 
     await _player?.stop();
     _onPlaybackStateChangedCallback?.call(false);
-    _updateWakeLock(false);
+
     _clearState();
     _chapters = [];
     _handler?.updateChaptersQueue(const []);
@@ -2797,7 +2732,7 @@ class AudioPlayerService extends ChangeNotifier {
     }
     // Release audio focus so other apps can use it - but not during casting,
     // because deactivating the session can interfere with cast playback.
-    if (!_audioFocusDisabled && !ChromecastService().isCasting) {
+    if (!ChromecastService().isCasting) {
       debugPrint('[Battery] AudioSession DEACTIVATED (stop)');
       try { (await AudioSession.instance).setActive(false); } catch (_) {}
     }

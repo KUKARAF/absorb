@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 import 'api_service.dart';
 import 'audio_player_service.dart';
 import 'progress_sync_service.dart';
@@ -181,7 +180,7 @@ class ChromecastService extends ChangeNotifier {
     _syncTimer?.cancel();
     _idleDebounceTimer?.cancel();
     _disconnectDebounceTimer?.cancel();
-    _updateWakeLock(false);
+
 
     _onPlaybackStateChangedCallback?.call(false);
     notifyListeners();
@@ -277,7 +276,7 @@ class ChromecastService extends ChangeNotifier {
           _idleDebounceTimer = Timer(_idleGrace, () {
             debugPrint('[Cast] Idle grace expired - applying idle state');
             _playbackState = CastPlaybackState.idle;
-            _updateWakeLock(false);
+        
             _onPlaybackStateChangedCallback?.call(false);
             notifyListeners();
           });
@@ -297,7 +296,6 @@ class ChromecastService extends ChangeNotifier {
       final nowPlaying = _playbackState == CastPlaybackState.playing || _playbackState == CastPlaybackState.buffering;
       if (wasPlaying != nowPlaying) {
         _onPlaybackStateChangedCallback?.call(nowPlaying);
-        _updateWakeLock(nowPlaying);
       }
 
       // Detect playback completion: was playing/buffering → now idle
@@ -777,7 +775,7 @@ class ChromecastService extends ChangeNotifier {
     _castingDuration = 0; _castingChapters = [];
     _fallbackTracks = null; _fallbackOffsets = null; _fallbackTrackIdx = -1;
     _idleDebounceTimer?.cancel();
-    _updateWakeLock(false);
+
     _onPlaybackStateChangedCallback?.call(false);
     notifyListeners();
   }
@@ -916,15 +914,6 @@ class ChromecastService extends ChangeNotifier {
 
   // ── Wake Lock ──
 
-  void _updateWakeLock(bool active) {
-    if (active) {
-      WakelockPlus.enable();
-      debugPrint('[Cast] Wake lock enabled');
-    } else {
-      WakelockPlus.disable();
-      debugPrint('[Cast] Wake lock disabled');
-    }
-  }
 
   @override
   void dispose() {

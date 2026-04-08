@@ -61,7 +61,6 @@ class BackupService {
       'seriesSortAsc': await PlayerSettings.getSeriesSortAsc(),
       'authorSort': await PlayerSettings.getAuthorSort(),
       'authorSortAsc': await PlayerSettings.getAuthorSortAsc(),
-      'disableAudioFocus': await PlayerSettings.getDisableAudioFocus(),
       'trustAllCerts': await PlayerSettings.getTrustAllCerts(),
       'localServerEnabled': await PlayerSettings.getLocalServerEnabled(),
       'localServerUrl': await PlayerSettings.getLocalServerUrl(),
@@ -266,7 +265,6 @@ class BackupService {
     if (s['seriesSortAsc'] != null) PlayerSettings.setSeriesSortAsc(s['seriesSortAsc'] as bool);
     if (s['authorSort'] != null) PlayerSettings.setAuthorSort(s['authorSort'] as String);
     if (s['authorSortAsc'] != null) PlayerSettings.setAuthorSortAsc(s['authorSortAsc'] as bool);
-    if (s['disableAudioFocus'] != null) PlayerSettings.setDisableAudioFocus(s['disableAudioFocus'] as bool);
     if (s['trustAllCerts'] != null) PlayerSettings.setTrustAllCerts(s['trustAllCerts'] as bool);
     if (s['localServerEnabled'] != null) PlayerSettings.setLocalServerEnabled(s['localServerEnabled'] as bool);
     if (s['localServerUrl'] != null) PlayerSettings.setLocalServerUrl(s['localServerUrl'] as String);
