@@ -607,18 +607,26 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                   children: [
                                     Padding(
                                       padding: const EdgeInsets.only(bottom: 4),
-                                      child: Opacity(
-                                        opacity: isDownloaded ? 1.0 : 0.0,
-                                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                          Icon(Icons.download_done_rounded, size: 11,
-                                            color: isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700.withValues(alpha: 0.7)),
-                                          const SizedBox(width: 3),
-                                          Text('Saved', style: TextStyle(
-                                            fontSize: 10, fontWeight: FontWeight.w500,
-                                            color: isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700.withValues(alpha: 0.7),
-                                          )),
-                                        ]),
-                                      ),
+                                      child: () {
+                                        final showStreaming = !isDownloaded && _isActive;
+                                        final showSaved = isDownloaded;
+                                        final visible = showSaved || showStreaming;
+                                        final streamColor = isDark ? Colors.white.withValues(alpha: 0.5) : cs.onSurface.withValues(alpha: 0.6);
+                                        final savedColor = isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700.withValues(alpha: 0.7);
+                                        return Opacity(
+                                          opacity: visible ? 1.0 : 0.0,
+                                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                            Icon(
+                                              showSaved ? Icons.download_done_rounded : Icons.cell_tower_rounded,
+                                              size: 11, color: showSaved ? savedColor : streamColor),
+                                            const SizedBox(width: 3),
+                                            Text(showSaved ? 'Saved' : 'Streaming', style: TextStyle(
+                                              fontSize: 10, fontWeight: FontWeight.w500,
+                                              color: showSaved ? savedColor : streamColor,
+                                            )),
+                                          ]),
+                                        );
+                                      }(),
                                     ),
                                     GestureDetector(
                                   onTap: _coverPlayButton ? () {
