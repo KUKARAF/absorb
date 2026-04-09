@@ -602,7 +602,25 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                 final isCastingThis = castService.isCasting && castService.castingItemId == _itemId;
                                 final coverPlaying = isCastingThis ? castService.isPlaying : (_isActive && widget.player.isPlaying);
                                 final coverLoading = _isStarting || (_isActive && widget.player.isLoadingOrBuffering);
-                                return Center(child: GestureDetector(
+                                return Center(child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: Opacity(
+                                        opacity: isDownloaded ? 1.0 : 0.0,
+                                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                          Icon(Icons.download_done_rounded, size: 11,
+                                            color: isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700.withValues(alpha: 0.7)),
+                                          const SizedBox(width: 3),
+                                          Text('Saved', style: TextStyle(
+                                            fontSize: 10, fontWeight: FontWeight.w500,
+                                            color: isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700.withValues(alpha: 0.7),
+                                          )),
+                                        ]),
+                                      ),
+                                    ),
+                                    GestureDetector(
                                   onTap: _coverPlayButton ? () {
                                     if (isCastingThis) {
                                       castService.togglePlayPause();
@@ -645,26 +663,6 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                                         errorWidget: (_, __, ___) => const SizedBox.shrink()),
                                                       enabled: !_rectangleCovers)
                                               : const CoverPlaceholder(),
-                                          // Downloaded badge
-                                          if (isDownloaded)
-                                            Positioned(
-                                              top: 8, right: 8,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black.withValues(alpha: 0.6),
-                                                  borderRadius: BorderRadius.circular(10),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(Icons.download_done_rounded, size: 13, color: accent.withValues(alpha: 0.9)),
-                                                    const SizedBox(width: 4),
-                                                    Text('Downloaded', style: TextStyle(color: accent.withValues(alpha: 0.9), fontSize: 10, fontWeight: FontWeight.w600)),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
                                           // Play/pause overlay
                                           if (_coverPlayButton && !isCastingThis && !isFinished)
                                             Positioned.fill(
@@ -740,7 +738,9 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                       ),
                                     ),
                                   ),
-                                )));
+                                )),
+                                  ],
+                                ));
                               },
                             ),
                           ),
