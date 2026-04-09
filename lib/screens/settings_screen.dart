@@ -732,7 +732,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             segments: const [
                               ButtonSegment(value: 'off', icon: Icon(Icons.stop_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text('Off'))),
                               ButtonSegment(value: 'manual', icon: Icon(Icons.queue_music_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text('Manual'))),
-                              ButtonSegment(value: 'auto_next', icon: Icon(Icons.skip_next_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text('Series'))),
+                              ButtonSegment(value: 'auto_next', icon: Icon(Icons.skip_next_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text('Auto'))),
                             ],
                             selected: {_mergedQueueMode},
                             onSelectionChanged: _loaded ? (s) {
@@ -772,9 +772,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             SizedBox(width: double.infinity, child: SegmentedButton<String>(
                               showSelectedIcon: false,
                               segments: const [
-                                ButtonSegment(value: 'off', icon: Icon(Icons.stop_rounded), label: Text('Off')),
-                                ButtonSegment(value: 'manual', icon: Icon(Icons.queue_music_rounded), label: Text('Manual')),
-                                ButtonSegment(value: 'auto_next', icon: Icon(Icons.skip_next_rounded), label: Text('Auto')),
+                                ButtonSegment(value: 'off', icon: Icon(Icons.stop_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text('Off'))),
+                                ButtonSegment(value: 'manual', icon: Icon(Icons.queue_music_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text('Manual'))),
+                                ButtonSegment(value: 'auto_next', icon: Icon(Icons.skip_next_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text('Show'))),
                               ],
                               selected: {_podcastQueueMode},
                               onSelectionChanged: _loaded ? (s) {
