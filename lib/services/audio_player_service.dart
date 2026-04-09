@@ -29,9 +29,9 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     useProxyForRequestHeaders: false,
     audioLoadConfiguration: const AudioLoadConfiguration(
       androidLoadControl: AndroidLoadControl(
-        bufferForPlaybackDuration: Duration(milliseconds: 500),
-        bufferForPlaybackAfterRebufferDuration: Duration(seconds: 2),
-        targetBufferBytes: 1 * 1024 * 1024, // 1 MB hard cap
+        bufferForPlaybackDuration: Duration(seconds: 2),
+        bufferForPlaybackAfterRebufferDuration: Duration(seconds: 5),
+        targetBufferBytes: 5 * 1024 * 1024, // 5 MB buffer
       ),
     ),
   );
@@ -2479,51 +2479,7 @@ class AudioPlayerService extends ChangeNotifier {
     // Reset server sync clock so the first sync after resume doesn't
     // include pause duration as timeListened
     _lastServerSync = DateTime.now();
-    // Re-create server session if it was closed (e.g. pause timeout)
-    // and check if server progress is ahead (e.g. user listened on another client)
-    if (_api != null && _currentItemId != null) {
-      final manualOffline = (_prefs ?? await SharedPreferences.getInstance())
-          .getBool('manual_offline_mode') ?? false;
-      if (manualOffline || _isOfflineMode) {
-        debugPrint('[Player] Skipping session re-create on resume (manualOffline=$manualOffline, isOffline=$_isOfflineMode)');
-      } else {
-        try {
-          if (_playbackSessionId == null) {
-            // Session expired — re-create it
-            final sessionData = _currentEpisodeId != null
-                ? await _api!.startEpisodePlaybackSession(_currentItemId!, _currentEpisodeId!)
-                : await _api!.startPlaybackSession(_currentItemId!);
-            if (sessionData != null) {
-              _playbackSessionId = sessionData['id'] as String?;
-              debugPrint('[Player] Re-created session on resume: $_playbackSessionId');
-              final serverPos = (sessionData['currentTime'] as num?)?.toDouble() ?? 0;
-              final localPos = position.inMilliseconds / 1000.0;
-              if (serverPos > localPos + 5.0) {
-                debugPrint('[Player] Server is ahead on resume: server=${serverPos}s vs local=${localPos}s — seeking');
-                await _seekAbsolute(serverPos);
-              }
-            }
-          } else {
-            // Session still active — check server progress in case another client advanced
-            final pKey = _currentEpisodeId != null
-                ? '$_currentItemId-$_currentEpisodeId'
-                : _currentItemId!;
-            final serverProgress = await _api!.getItemProgress(pKey);
-            if (serverProgress != null) {
-              final serverPos = (serverProgress['currentTime'] as num?)?.toDouble() ?? 0;
-              final localPos = position.inMilliseconds / 1000.0;
-              if (serverPos > localPos + 5.0) {
-                debugPrint('[Player] Server is ahead on resume: server=${serverPos}s vs local=${localPos}s — seeking');
-                await _seekAbsolute(serverPos);
-              }
-            }
-          }
-        } catch (e) {
-          debugPrint('[Player] Failed to check server progress on resume: $e');
-        }
-      }
-    }
-    // Re-activate audio session (needed after stop() releases it)
+    // Re-activate audio session (needed after pause timeout releases it)
     try { (await AudioSession.instance).setActive(true); } catch (_) {}
     // If the player is idle (source was disposed), we need to fully re-initialize
     // playback instead of just calling play() on an empty player.
@@ -2542,9 +2498,13 @@ class AudioPlayerService extends ChangeNotifier {
       );
       return;
     }
+    // Start playback immediately — don't wait for server calls
     _player?.play();
     _logEvent(PlaybackEventType.play);
     _onPlaybackStateChangedCallback?.call(true);
+    // Re-create server session and check progress in the background
+    // so resume is instant instead of waiting for network round-trips
+    _resumeServerSync();
 
     // Restart safety-net save timer (stopped on pause to avoid background wakes)
     if (_bgSaveTimer == null || !_bgSaveTimer!.isActive) {
@@ -2567,6 +2527,52 @@ class AudioPlayerService extends ChangeNotifier {
     // Check auto sleep on every resume — catches window entry between pauses
     SleepTimerService().checkAutoSleep();
     notifyListeners();
+  }
+
+  /// Re-create server session and check if server progress is ahead.
+  /// Runs in the background so play() returns instantly.
+  void _resumeServerSync() async {
+    if (_api == null || _currentItemId == null) return;
+    final manualOffline = (_prefs ?? await SharedPreferences.getInstance())
+        .getBool('manual_offline_mode') ?? false;
+    if (manualOffline || _isOfflineMode) {
+      debugPrint('[Player] Skipping session re-create on resume (manualOffline=$manualOffline, isOffline=$_isOfflineMode)');
+      return;
+    }
+    try {
+      if (_playbackSessionId == null) {
+        // Session expired - re-create it
+        final sessionData = _currentEpisodeId != null
+            ? await _api!.startEpisodePlaybackSession(_currentItemId!, _currentEpisodeId!)
+            : await _api!.startPlaybackSession(_currentItemId!);
+        if (sessionData != null) {
+          _playbackSessionId = sessionData['id'] as String?;
+          debugPrint('[Player] Re-created session on resume: $_playbackSessionId');
+          final serverPos = (sessionData['currentTime'] as num?)?.toDouble() ?? 0;
+          final localPos = position.inMilliseconds / 1000.0;
+          if (serverPos > localPos + 5.0) {
+            debugPrint('[Player] Server is ahead on resume: server=${serverPos}s vs local=${localPos}s - seeking');
+            await _seekAbsolute(serverPos);
+          }
+        }
+      } else {
+        // Session still active - check server progress in case another client advanced
+        final pKey = _currentEpisodeId != null
+            ? '$_currentItemId-$_currentEpisodeId'
+            : _currentItemId!;
+        final serverProgress = await _api!.getItemProgress(pKey);
+        if (serverProgress != null) {
+          final serverPos = (serverProgress['currentTime'] as num?)?.toDouble() ?? 0;
+          final localPos = position.inMilliseconds / 1000.0;
+          if (serverPos > localPos + 5.0) {
+            debugPrint('[Player] Server is ahead on resume: server=${serverPos}s vs local=${localPos}s - seeking');
+            await _seekAbsolute(serverPos);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[Player] Failed to check server progress on resume: $e');
+    }
   }
 
   Future<void> pause() async {

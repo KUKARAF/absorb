@@ -234,7 +234,7 @@ class PlayerSettings {
   // ── Streaming cache ──
 
   /// 0 = disabled, > 0 = cache size in MB (LRU eviction)
-  static Future<int> getStreamingCacheSizeMb() => _get('streamingCacheSizeMb', 0);
+  static Future<int> getStreamingCacheSizeMb() => _get('streamingCacheSizeMb', 256);
   static Future<void> setStreamingCacheSizeMb(int value) async {
     debugPrint('[Settings] Streaming cache set to: $value MB');
     await _set('streamingCacheSizeMb', value);

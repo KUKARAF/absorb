@@ -607,7 +607,9 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                         if (_queueMode != 'off') ...[
                           const SizedBox(width: 4),
                           Text(
-                            _queueMode == 'auto_next' ? 'Auto' : 'Manual',
+                            _queueMode == 'auto_next'
+                                ? (_mergeLibraries ? 'Auto' : lib.isPodcastLibrary ? 'Show' : 'Series')
+                                : 'Manual',
                             style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cs.primary),
                           ),
                         ],
@@ -742,6 +744,8 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
           lib: lib,
           absorbingKeyFn: _absorbingKey,
           queueMode: _queueMode,
+          isMerged: _mergeLibraries,
+          isPodcast: lib.isPodcastLibrary,
           onQueueModeChanged: (mode) async {
             setState(() => _queueMode = mode);
             if (_mergeLibraries) {
@@ -828,6 +832,8 @@ class _ReorderAbsorbingSheet extends StatefulWidget {
   final LibraryProvider lib;
   final String Function(Map<String, dynamic>) absorbingKeyFn;
   final String queueMode;
+  final bool isMerged;
+  final bool isPodcast;
   final ValueChanged<String> onQueueModeChanged;
 
   const _ReorderAbsorbingSheet({
@@ -836,6 +842,8 @@ class _ReorderAbsorbingSheet extends StatefulWidget {
     required this.lib,
     required this.absorbingKeyFn,
     required this.queueMode,
+    required this.isMerged,
+    required this.isPodcast,
     required this.onQueueModeChanged,
   });
 
@@ -898,10 +906,11 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'off', icon: Icon(Icons.stop_rounded, size: 16), label: Text('Off')),
-              ButtonSegment(value: 'manual', icon: Icon(Icons.queue_music_rounded, size: 16), label: Text('Manual')),
-              ButtonSegment(value: 'auto_next', icon: Icon(Icons.skip_next_rounded, size: 16), label: Text('Auto')),
+            segments: [
+              const ButtonSegment(value: 'off', icon: Icon(Icons.stop_rounded, size: 16), label: Text('Off')),
+              const ButtonSegment(value: 'manual', icon: Icon(Icons.queue_music_rounded, size: 16), label: Text('Manual')),
+              ButtonSegment(value: 'auto_next', icon: const Icon(Icons.skip_next_rounded, size: 16),
+                label: Text(widget.isMerged ? 'Auto' : widget.isPodcast ? 'Show' : 'Series')),
             ],
             selected: {_queueMode},
             onSelectionChanged: (v) {

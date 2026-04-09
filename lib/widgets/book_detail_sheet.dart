@@ -402,7 +402,10 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
 
             return FilledButton.icon(
               onPressed: showAbsorbingState
-                  ? () {}
+                  ? () {
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                      AppShell.goToAbsorbingGlobal();
+                    }
                   : () {
                       setState(() => _isAbsorbing = true);
                       _startAbsorb(
