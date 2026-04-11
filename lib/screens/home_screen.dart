@@ -123,8 +123,12 @@ class HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  List<dynamic> _filterEbookOnly(List<dynamic> items) {
+  List<dynamic> _filterEbookOnly(List<dynamic> items, {String? sectionType}) {
     if (!_hideEbookOnly) return items;
+    // Only book shelves can contain ebook-only entries. Series/author/
+    // episode/playlist/collection shelves hold aggregate objects that have
+    // no audio metadata and would all be incorrectly filtered out.
+    if (sectionType != null && sectionType != 'book') return items;
     return items.where((e) {
       if (e is! Map<String, dynamic>) return true;
       // Personalized view entities may nest the item under 'libraryItem'
@@ -165,8 +169,9 @@ class HomeScreenState extends State<HomeScreen> {
     List<dynamic> clItems = [];
     for (final section in sections) {
       if (section['id'] == 'continue-listening') {
-        clItems =
-            _filterEbookOnly((section['entities'] as List<dynamic>?) ?? []);
+        clItems = _filterEbookOnly(
+            (section['entities'] as List<dynamic>?) ?? [],
+            sectionType: section['type'] as String?);
         break;
       }
     }
@@ -603,7 +608,8 @@ class HomeScreenState extends State<HomeScreen> {
                         _sectionLabels[id] ??
                         _titleCase(id);
                     final entities = _filterEbookOnly(
-                        (section['entities'] as List<dynamic>?) ?? []);
+                        (section['entities'] as List<dynamic>?) ?? [],
+                        sectionType: section['type'] as String?);
                     final type = isPlaylist ? 'playlist'
                         : isCollection ? 'collection'
                         : (section['type'] ?? 'book');

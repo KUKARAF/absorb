@@ -179,9 +179,13 @@ class SleepTimerService extends ChangeNotifier {
 
   void _scheduleNextTick() {
     _timer?.cancel();
-    // Tick every 1s during fade period, every 5s otherwise
+    // Tick every 1s when the app is foregrounded (so the UI countdown looks
+    // smooth) or during the fade period (volume ramp needs per-second resolution).
+    // Only slow down to 5s when backgrounded and far from the fade - no UI to
+    // update, so we save a handful of wake-ups.
     final nearFade = _timeRemaining <= _fadeThreshold + const Duration(seconds: 5);
-    _tickIntervalSeconds = nearFade ? 1 : 5;
+    final fastTick = nearFade || !_player.isBackgrounded;
+    _tickIntervalSeconds = fastTick ? 1 : 5;
     _timer = Timer.periodic(Duration(seconds: _tickIntervalSeconds), _onTimerTick);
   }
 
@@ -599,6 +603,10 @@ class SleepTimerService extends ChangeNotifier {
       _accelSub = null;
       debugPrint('[SleepTimer] Paused shake detection (backgrounded, not playing)');
     }
+    // Switch the countdown to 5s ticks - no UI to update while backgrounded.
+    if (_mode == SleepTimerMode.time && (_timer?.isActive ?? false)) {
+      _scheduleNextTick();
+    }
   }
 
   /// Resume operations when app is foregrounded.
@@ -606,6 +614,10 @@ class SleepTimerService extends ChangeNotifier {
     if (isActive && _accelSub == null) {
       _startShakeDetection();
       debugPrint('[SleepTimer] Resumed shake detection (foregrounded)');
+    }
+    // Switch the countdown back to 1s ticks so the UI countdown is smooth.
+    if (_mode == SleepTimerMode.time && (_timer?.isActive ?? false)) {
+      _scheduleNextTick();
     }
   }
 
