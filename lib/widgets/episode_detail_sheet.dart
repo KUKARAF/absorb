@@ -113,6 +113,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
       author: _showTitle,
       coverUrl: api.getCoverUrl(_itemId),
       episodeId: _episodeId,
+      libraryId: context.read<LibraryProvider>().selectedLibraryId,
     );
     if (error != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));

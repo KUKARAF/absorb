@@ -1546,6 +1546,7 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
         author: metadata['title'] as String? ?? '',
         coverUrl: getCoverUrl(podcastId),
         episodeId: epId,
+        libraryId: _selectedLibraryId,
       );
       downloaded++;
     }
@@ -1712,6 +1713,7 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
           author: title,
           coverUrl: getCoverUrl(showId),
           episodeId: epId,
+          libraryId: _selectedLibraryId,
         );
       } else {
         dl.downloadItem(
@@ -1720,6 +1722,7 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
           title: title,
           author: author,
           coverUrl: getCoverUrl(key),
+          libraryId: _selectedLibraryId,
         );
       }
       queued++;
@@ -1766,6 +1769,7 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
       author: player.currentAuthor ?? '',
       coverUrl: player.currentCoverUrl,
       episodeId: player.currentEpisodeId,
+      libraryId: _selectedLibraryId,
     );
   }
 
@@ -1804,6 +1808,7 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
         title: md['title'] as String? ?? '',
         author: md['authorName'] as String? ?? '',
         coverUrl: getCoverUrl(bookId),
+        libraryId: _selectedLibraryId,
       );
       newDownloads++;
     }
@@ -1843,6 +1848,7 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
         title: metadata['title'] as String? ?? '',
         author: metadata['authorName'] as String? ?? '',
         coverUrl: getCoverUrl(id),
+        libraryId: _selectedLibraryId,
       );
       queued++;
       newDownloads++;
@@ -1893,6 +1899,7 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
         author: metadata['title'] as String? ?? '',
         coverUrl: getCoverUrl(showId),
         episodeId: episodeId,
+        libraryId: _selectedLibraryId,
       );
       newDownloads++;
     }
@@ -1917,6 +1924,7 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
         author: metadata['title'] as String? ?? '',
         coverUrl: getCoverUrl(showId),
         episodeId: epId,
+        libraryId: _selectedLibraryId,
       );
       queued++;
       newDownloads++;

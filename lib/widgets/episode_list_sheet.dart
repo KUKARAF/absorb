@@ -308,6 +308,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
       author: _title,
       coverUrl: coverUrl,
       episodeId: episodeId,
+      libraryId: context.read<LibraryProvider>().selectedLibraryId,
     );
 
     if (error != null && mounted) {
@@ -355,6 +356,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
         author: _title,
         coverUrl: api.getCoverUrl(_itemId),
         episodeId: episodeId,
+        libraryId: context.read<LibraryProvider>().selectedLibraryId,
       );
     }
 

@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/library_provider.dart';
+import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
 import '../widgets/absorb_page_header.dart';
 
@@ -18,6 +19,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   Map<String, int> _fileSizes = {};
   bool _selecting = false;
   final Set<String> _selected = {};
+  bool _mergeLibraries = false;
 
   @override
   void initState() {
@@ -31,10 +33,12 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     for (final item in items) {
       sizes[item.itemId] = DownloadService().getItemFileSize(item.itemId);
     }
+    final merge = await PlayerSettings.getMergeAbsorbingLibraries();
     if (mounted) {
       setState(() {
         _items = items;
         _fileSizes = sizes;
+        _mergeLibraries = merge;
         _loading = false;
       });
     }
@@ -200,9 +204,18 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                       listenable: DownloadService(),
                       builder: (ctx, _) {
                         final ds = DownloadService();
-                        final active = ds.activeDownloads;
-                        final queued = ds.queuedDownloads;
-                        final completed = ds.downloadedItems;
+                        final lib = context.watch<LibraryProvider>();
+                        final activeLibId = lib.selectedLibraryId;
+                        final shouldFilter = !lib.isOffline && !_mergeLibraries && activeLibId != null;
+
+                        List<DownloadInfo> filterByLibrary(List<DownloadInfo> items) {
+                          if (!shouldFilter) return items;
+                          return items.where((d) => d.libraryId == null || d.libraryId == activeLibId).toList();
+                        }
+
+                        final active = filterByLibrary(ds.activeDownloads);
+                        final queued = filterByLibrary(ds.queuedDownloads);
+                        final completed = filterByLibrary(ds.downloadedItems);
                         final hasAny = active.isNotEmpty || queued.isNotEmpty || completed.isNotEmpty;
 
                         if (!hasAny) {

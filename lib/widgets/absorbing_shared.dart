@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/library_provider.dart';
 import '../services/download_service.dart';
 import '../services/playback_history_service.dart';
 
@@ -201,7 +202,7 @@ class _DownloadWideButtonState extends State<DownloadWideButton> {
     } else if (_dl.isDownloading(widget.itemId)) {
       _dl.cancelDownload(widget.itemId);
     } else {
-      _dl.downloadItem(api: api, itemId: widget.itemId, title: widget.title, author: widget.author, coverUrl: widget.coverUrl);
+      _dl.downloadItem(api: api, itemId: widget.itemId, title: widget.title, author: widget.author, coverUrl: widget.coverUrl, libraryId: context.read<LibraryProvider>().selectedLibraryId);
     }
   }
 }

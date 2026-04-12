@@ -25,6 +25,7 @@ class DownloadInfo {
   final String? coverUrl;
   final String? localCoverPath;
   final String? localDirPath;
+  final String? libraryId;
 
   DownloadInfo({
     required this.itemId,
@@ -37,6 +38,7 @@ class DownloadInfo {
     this.coverUrl,
     this.localCoverPath,
     this.localDirPath,
+    this.libraryId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -49,6 +51,7 @@ class DownloadInfo {
         'coverUrl': coverUrl,
         'localCoverPath': localCoverPath,
         if (localDirPath != null) 'localDirPath': localDirPath,
+        if (libraryId != null) 'libraryId': libraryId,
       };
 
   factory DownloadInfo.fromJson(Map<String, dynamic> json) {
@@ -93,6 +96,7 @@ class DownloadInfo {
       coverUrl: coverUrl,
       localCoverPath: json['localCoverPath'] as String?,
       localDirPath: json['localDirPath'] as String?,
+      libraryId: json['libraryId'] as String?,
     );
   }
 }
@@ -104,6 +108,7 @@ class _QueuedDownload {
   final String? author;
   final String? coverUrl;
   final String? episodeId;
+  final String? libraryId;
 
   _QueuedDownload({
     required this.api,
@@ -112,6 +117,7 @@ class _QueuedDownload {
     this.author,
     this.coverUrl,
     this.episodeId,
+    this.libraryId,
   });
 }
 
@@ -371,6 +377,7 @@ class DownloadService extends ChangeNotifier {
           coverUrl: info.coverUrl,
           localCoverPath: newCoverPath,
           localDirPath: newDirPath,
+          libraryId: info.libraryId,
         );
         changed = true;
       }
@@ -530,6 +537,7 @@ class DownloadService extends ChangeNotifier {
           author: author ?? info.author,
           coverUrl: coverUrl ?? info.coverUrl,
           localCoverPath: localCoverPath,
+          libraryId: info.libraryId,
         );
         changed = true;
       }
@@ -596,6 +604,7 @@ class DownloadService extends ChangeNotifier {
     String? author,
     String? coverUrl,
     String? episodeId,
+    String? libraryId,
   }) async {
     if (_activeDownloadIds.contains(itemId)) return null;
     if (isDownloaded(itemId)) return null;
@@ -622,6 +631,7 @@ class DownloadService extends ChangeNotifier {
         author: author,
         coverUrl: coverUrl,
         episodeId: episodeId,
+        libraryId: libraryId,
       ));
       _downloads[itemId] = DownloadInfo(
         itemId: itemId,
@@ -630,6 +640,7 @@ class DownloadService extends ChangeNotifier {
         title: title,
         author: author,
         coverUrl: coverUrl,
+        libraryId: libraryId,
       );
       notifyListeners();
       return null;
@@ -643,6 +654,7 @@ class DownloadService extends ChangeNotifier {
       author: author,
       coverUrl: coverUrl,
       episodeId: episodeId,
+      libraryId: libraryId,
     ));
     return null;
   }
@@ -658,6 +670,7 @@ class DownloadService extends ChangeNotifier {
       unawaited(_executeDownload(
         api: next.api, itemId: next.itemId, title: next.title,
         author: next.author, coverUrl: next.coverUrl, episodeId: next.episodeId,
+        libraryId: next.libraryId,
       ));
     }
   }
@@ -682,6 +695,7 @@ class DownloadService extends ChangeNotifier {
     String? author,
     String? coverUrl,
     String? episodeId,
+    String? libraryId,
   }) async {
     _activeDownloadIds.add(itemId);
     _cancelledIds.remove(itemId);
@@ -696,6 +710,7 @@ class DownloadService extends ChangeNotifier {
       title: title,
       author: author,
       coverUrl: coverUrl,
+      libraryId: libraryId,
     );
     notifyListeners();
 
@@ -787,6 +802,7 @@ class DownloadService extends ChangeNotifier {
             title: title,
             author: author,
             coverUrl: coverUrl,
+            libraryId: libraryId,
           );
           notifyListeners();
         }
@@ -877,6 +893,7 @@ class DownloadService extends ChangeNotifier {
         title: title,
         author: author,
         coverUrl: coverUrl,
+        libraryId: libraryId,
       );
       notifyListeners();
 
@@ -907,6 +924,7 @@ class DownloadService extends ChangeNotifier {
         coverUrl: coverUrl,
         localCoverPath: localCoverPath,
         localDirPath: bookDir.path,
+        libraryId: libraryId,
       );
       await _save();
       notifyListeners();
