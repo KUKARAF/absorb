@@ -63,6 +63,10 @@ Internal testing matches GitHub pre-releases. Open testing and production releas
 
 Public TestFlight matches GitHub full releases. [Join the TestFlight](https://testflight.apple.com/join/GgUbDbve). Core functionality works, but some features are still Android-only or in progress.
 
+### iOS Alpha (Sideload)
+
+Alpha `.ipa` files are included in GitHub pre-releases alongside the Android APK. If you know how to sideload IPAs (via AltStore, Sideloadly, etc.), you can grab the latest alpha build from the [releases page](../../releases). Otherwise, stick with the TestFlight build for automatic updates and easier installation.
+
 ## Android Auto
 
 Absorb supports Android Auto for browsing and listening from your car. To use it, you'll need to enable unknown sources in Android Auto:
