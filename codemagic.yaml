@@ -94,6 +94,8 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.barnabas.absorb
+      groups:
+        - github_credentials
       flutter: stable
       xcode: latest
     scripts:
@@ -101,6 +103,21 @@ workflows:
         script: xcode-project use-profiles
       - name: Build IPA
         script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+      - name: Publish IPA to GitHub Draft Release
+        script: |
+          VERSION="v$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)"
+          if gh release view "$VERSION" --repo "$CM_REPO_SLUG" &>/dev/null; then
+            gh release upload "$VERSION" \
+              build/ios/ipa/*.ipa \
+              --clobber \
+              --repo "$CM_REPO_SLUG"
+          else
+            gh release create "$VERSION" \
+              build/ios/ipa/*.ipa \
+              --draft \
+              --title "$VERSION" \
+              --repo "$CM_REPO_SLUG"
+          fi
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
