@@ -52,7 +52,7 @@ class LogService {
       }
     }
 
-    if (shouldClear || !_logFile!.existsSync()) {
+    if (shouldClear || !_logFile!.existsSync() || !createdAtFile.existsSync()) {
       // Start fresh - write device/server info header
       final header = StringBuffer()
         ..writeln('=== Absorb Log ===')
@@ -142,12 +142,23 @@ class LogService {
 
   Future<void> clearLogs() async {
     if (_logFile != null && await _logFile!.exists()) {
-      await _logFile!.writeAsString('');
-      // Reset creation timestamp so next init writes a fresh header
+      // Write a fresh header immediately so logs shared in the same session
+      // still have device info (don't wait for next init/restart).
+      final header = StringBuffer()
+        ..writeln('=== Absorb Log ===')
+        ..writeln('App Version: ${ApiService.appVersion}')
+        ..writeln('Device: ${ApiService.deviceManufacturer} ${ApiService.deviceModel}')
+        ..writeln('OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}')
+        ..writeln('Created: ${DateTime.now().toIso8601String()}')
+        ..writeln('==================')
+        ..writeln();
+      await _logFile!.writeAsString(header.toString());
+      // Reset creation timestamp
       try {
         final dir = _logFile!.parent;
         final createdAtFile = File('${dir.path}/$_createdAtKey');
-        if (createdAtFile.existsSync()) createdAtFile.deleteSync();
+        createdAtFile.writeAsStringSync(
+            DateTime.now().millisecondsSinceEpoch.toString());
       } catch (_) {}
     }
   }

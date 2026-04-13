@@ -361,7 +361,23 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _initServices() async {
-    // Initialize log service FIRST so all debugPrint calls are captured in the
+    // Load device info before log service so the log header has the real
+    // app version and device model instead of fallback values.
+    await ApiService.initVersion();
+    try {
+      if (Platform.isAndroid) {
+        final info = await DeviceInfoPlugin().androidInfo;
+        ApiService.deviceManufacturer = info.manufacturer;
+        ApiService.deviceModel = info.model;
+        ApiService.deviceSdkInt = info.version.sdkInt;
+      } else if (Platform.isIOS) {
+        final info = await DeviceInfoPlugin().iosInfo;
+        ApiService.deviceManufacturer = 'Apple';
+        ApiService.deviceModel = info.utsname.machine;
+      }
+    } catch (_) {}
+
+    // Initialize log service early so all debugPrint calls are captured in the
     // log file. This is critical for diagnosing startup freezes in production.
     try {
       final loggingEnabled = await PlayerSettings.getLoggingEnabled();
@@ -409,22 +425,9 @@ class _AuthGateState extends State<AuthGate> {
     // Migrate unified queueMode → per-type book/podcast modes (one-time)
     await PlayerSettings.migrateBookPodcastQueueMode();
 
-    // Load device info for server identification
-    debugPrint('[Init] device info... (${sw.elapsedMilliseconds}ms)');
+    // Generate persistent device ID for server identification
+    debugPrint('[Init] device ID... (${sw.elapsedMilliseconds}ms)');
     await ApiService.initDeviceId();
-    await ApiService.initVersion();
-    try {
-      if (Platform.isAndroid) {
-        final info = await DeviceInfoPlugin().androidInfo;
-        ApiService.deviceManufacturer = info.manufacturer;
-        ApiService.deviceModel = info.model;
-        ApiService.deviceSdkInt = info.version.sdkInt;
-      } else if (Platform.isIOS) {
-        final info = await DeviceInfoPlugin().iosInfo;
-        ApiService.deviceManufacturer = 'Apple';
-        ApiService.deviceModel = info.utsname.machine;
-      }
-    } catch (_) {}
 
     // Downloads must be loaded before the audio handler so getChildren()
     // can serve the Android Auto browse tree immediately.
