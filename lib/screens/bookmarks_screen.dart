@@ -359,17 +359,8 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                         )
                       else ...[
                         if (_allBookmarks.isNotEmpty) ...[
-                          IconButton(
-                            icon: Icon(
-                              _sort == 'newest' ? Icons.schedule_rounded
-                                  : _sort == 'position' ? Icons.arrow_upward_rounded
-                                  : Icons.arrow_downward_rounded,
-                              color: cs.onSurfaceVariant,
-                            ),
-                            tooltip: _sort == 'newest' ? 'Sorted by newest'
-                                : _sort == 'position' ? 'Sorted by position'
-                                : 'Sorted by position (reversed)',
-                            onPressed: () {
+                          GestureDetector(
+                            onTap: () {
                               final next = _sort == 'newest' ? 'position'
                                   : _sort == 'position' ? 'position_desc'
                                   : 'newest';
@@ -377,6 +368,29 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                               PlayerSettings.setBookmarkSort(next);
                               _load();
                             },
+                            child: Container(
+                              height: 32,
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              decoration: BoxDecoration(
+                                color: cs.onSurface.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(
+                                  _sort == 'newest' ? Icons.schedule_rounded
+                                      : _sort == 'position' ? Icons.arrow_upward_rounded
+                                      : Icons.arrow_downward_rounded,
+                                  color: cs.onSurfaceVariant, size: 16,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _sort == 'newest' ? 'Newest'
+                                      : _sort == 'position' ? 'Position'
+                                      : 'Position',
+                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                                ),
+                              ]),
+                            ),
                           ),
                           IconButton(
                             icon: Icon(Icons.checklist_rounded, color: cs.onSurfaceVariant),

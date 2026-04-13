@@ -19,6 +19,7 @@ import 'episode_detail_sheet.dart';
 import 'episode_list_sheet.dart';
 import 'equalizer_sheet.dart';
 import 'notes_sheet.dart';
+import 'overlay_toast.dart';
 import 'sleep_timer_sheet.dart';
 
 /// Wrapper that gives any child a press-down opacity+scale effect.
@@ -69,13 +70,7 @@ void showInactiveToast(BuildContext context) {
 
 /// Show an error message to the user.
 void showErrorSnackBar(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-    ..clearSnackBars()
-    ..showSnackBar(SnackBar(
-      content: Text(message),
-      duration: const Duration(seconds: 4),
-      behavior: SnackBarBehavior.floating,
-    ));
+  showOverlayToast(context, message, icon: Icons.error_outline_rounded);
 }
 
 // ─── WIDE GLASS BUTTON (for 2-column grid) ─────────────────
@@ -596,14 +591,19 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
               PlayerSettings.setBookmarkSort(next);
               _load();
             },
-            child: Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10)),
-              child: Icon(
-                _sort == 'newest' ? Icons.schedule_rounded
-                    : _sort == 'position' ? Icons.arrow_upward_rounded
-                    : Icons.arrow_downward_rounded,
-                color: cs.onSurfaceVariant, size: 20,
+            child: Tooltip(
+              message: _sort == 'newest' ? 'Sorted by newest'
+                  : _sort == 'position' ? 'Sorted by position'
+                  : 'Sorted by position (reversed)',
+              child: Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10)),
+                child: Icon(
+                  _sort == 'newest' ? Icons.schedule_rounded
+                      : _sort == 'position' ? Icons.arrow_upward_rounded
+                      : Icons.arrow_downward_rounded,
+                  color: cs.onSurfaceVariant, size: 20,
+                ),
               ),
             ),
           ),
