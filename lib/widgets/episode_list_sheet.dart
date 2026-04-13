@@ -312,7 +312,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     );
 
     if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      showOverlayToast(context, error, icon: Icons.error_outline_rounded);
     }
   }
 
