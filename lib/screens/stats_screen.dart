@@ -1,13 +1,17 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import '../services/audio_player_service.dart';
 import '../widgets/absorb_page_header.dart';
 import '../widgets/absorb_wave_icon.dart';
+import '../widgets/card_buttons.dart';
 import '../main.dart' show oledNotifier;
+import 'app_shell.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -24,6 +28,12 @@ class _StatsScreenState extends State<StatsScreen>
   late AnimationController _animController;
   late Animation<double> _animValue;
 
+  static const int _sessionsPerPage = 10;
+  int _sessionsPage = 0;
+  bool _hasMoreSessions = true;
+  bool _isLoadingMoreSessions = false;
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -31,13 +41,44 @@ class _StatsScreenState extends State<StatsScreen>
         vsync: this, duration: const Duration(milliseconds: 1200));
     _animValue =
         CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic);
+    _scrollController.addListener(_onScroll);
     _loadStats();
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _animController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    if (pos.pixels >= pos.maxScrollExtent - 300) {
+      _loadMoreSessions();
+    }
+  }
+
+  Future<void> _loadMoreSessions() async {
+    if (_isLoadingMoreSessions || !_hasMoreSessions) return;
+    final api = context.read<AuthProvider>().apiService;
+    if (api == null) return;
+    setState(() => _isLoadingMoreSessions = true);
+    final nextPage = _sessionsPage + 1;
+    final data = await api.getListeningSessions(
+        page: nextPage, itemsPerPage: _sessionsPerPage);
+    if (!mounted) return;
+    final fetched = data?['sessions'] as List<dynamic>? ?? [];
+    setState(() {
+      if (fetched.isNotEmpty) {
+        _sessions = [..._sessions, ...fetched];
+        _sessionsPage = nextPage;
+      }
+      if (fetched.length < _sessionsPerPage) _hasMoreSessions = false;
+      _isLoadingMoreSessions = false;
+    });
   }
 
   static const _kStats = 'cached_stats';
@@ -97,7 +138,8 @@ class _StatsScreenState extends State<StatsScreen>
     }
 
     // Phase 2: load heavier sessions list in background and cache.
-    final sessionsData = await api.getListeningSessions(itemsPerPage: 15);
+    final sessionsData =
+        await api.getListeningSessions(page: 0, itemsPerPage: _sessionsPerPage);
     final sessions = sessionsData?['sessions'] as List<dynamic>? ?? [];
     if (sessions.isNotEmpty) {
       prefs.setString(_kSessions, jsonEncode(sessions));
@@ -105,6 +147,9 @@ class _StatsScreenState extends State<StatsScreen>
     if (mounted) {
       setState(() {
         if (sessions.isNotEmpty) _sessions = sessions;
+        _sessionsPage = 0;
+        _hasMoreSessions = sessions.length >= _sessionsPerPage;
+        _isLoadingMoreSessions = false;
       });
     }
   }
@@ -188,6 +233,7 @@ class _StatsScreenState extends State<StatsScreen>
     final topItems = _topItems();
 
     return ListView(
+      controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
       children: [
         const AbsorbPageHeader(
@@ -261,6 +307,19 @@ class _StatsScreenState extends State<StatsScreen>
           _sectionTitle(tt, cs, 'Recent Sessions'),
           const SizedBox(height: 10),
           ..._buildSessions(tt, cs),
+          if (_isLoadingMoreSessions)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: cs.onSurface.withValues(alpha: 0.24)),
+                ),
+              ),
+            ),
         ],
       ],
     );
@@ -563,7 +622,7 @@ class _StatsScreenState extends State<StatsScreen>
   // --- SESSIONS ---
 
   List<Widget> _buildSessions(TextTheme tt, ColorScheme cs) {
-    return _sessions.take(10).map((s) {
+    return _sessions.map((s) {
       if (s is! Map<String, dynamic>) return const SizedBox.shrink();
       final rawTitle = s['displayTitle'] as String?;
       final rawAuthor = s['displayAuthor'] as String?;
@@ -587,33 +646,38 @@ class _StatsScreenState extends State<StatsScreen>
 
       return Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: cs.onSurface.withValues(alpha: 0.03),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _showSessionDetails(s),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: cs.onSurface.withValues(alpha: 0.05)),
-          ),
-          child: Row(children: [
+            child: Ink(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.onSurface.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+              ),
+              child: Row(children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: (isAbsorb ? Colors.tealAccent : cs.onSurfaceVariant)
-                    .withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+                    .withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(9),
               ),
               child: Center(
                 child: isAbsorb
                     ? AbsorbWaveIcon(
-                        size: 16,
-                        color: Colors.tealAccent.withValues(alpha: 0.7))
+                        size: 18,
+                        color: Colors.tealAccent.withValues(alpha: 0.9))
                     : Icon(_clientIcon(clientName),
-                        size: 15,
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+                        size: 17,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.85)),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -621,35 +685,50 @@ class _StatsScreenState extends State<StatsScreen>
                   Text(title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: tt.bodySmall?.copyWith(
-                          color: cs.onSurface.withValues(alpha: 0.7),
+                      style: tt.bodyMedium?.copyWith(
+                          color: cs.onSurface,
                           fontWeight: FontWeight.w600,
-                          fontSize: 12)),
-                  if (author.isNotEmpty)
+                          fontSize: 14)),
+                  if (author.isNotEmpty) ...[
+                    const SizedBox(height: 2),
                     Text(author,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            color: cs.onSurface.withValues(alpha: 0.25),
-                            fontSize: 10)),
+                            color: cs.onSurface.withValues(alpha: 0.6),
+                            fontSize: 12)),
+                  ],
                 ])),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(_formatDuration(duration),
-                  style: tt.labelSmall?.copyWith(
-                      color: cs.onSurface.withValues(alpha: 0.4),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11)),
-              if (updatedAt != null)
+                  style: tt.labelMedium?.copyWith(
+                      color: cs.onSurface.withValues(alpha: 0.85),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13)),
+              if (updatedAt != null) ...[
+                const SizedBox(height: 2),
                 Text(_relativeDate(updatedAt),
                     style: TextStyle(
-                        color: cs.onSurface.withValues(alpha: 0.18),
-                        fontSize: 9)),
+                        color: cs.onSurface.withValues(alpha: 0.5),
+                        fontSize: 11)),
+              ],
             ]),
           ]),
+            ),
+          ),
         ),
       );
     }).toList();
+  }
+
+  void _showSessionDetails(Map<String, dynamic> s) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SessionDetailsSheet(session: s),
+    );
   }
 
   IconData _clientIcon(String clientName) {
@@ -834,4 +913,390 @@ class _TopItem {
       required this.author,
       required this.totalSeconds,
       required this.sessionCount});
+}
+
+class _SessionDetailsSheet extends StatefulWidget {
+  final Map<String, dynamic> session;
+  const _SessionDetailsSheet({required this.session});
+
+  @override
+  State<_SessionDetailsSheet> createState() => _SessionDetailsSheetState();
+}
+
+class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
+  bool _jumping = false;
+
+  static double _n(dynamic v) => v is num ? v.toDouble() : 0;
+
+  String _fmtPos(double seconds) {
+    final s = seconds.round();
+    final h = s ~/ 3600;
+    final m = (s % 3600) ~/ 60;
+    final sec = s % 60;
+    if (h > 0) {
+      return '$h:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+    }
+    return '$m:${sec.toString().padLeft(2, '0')}';
+  }
+
+  String _fmtDuration(double seconds) {
+    final h = (seconds / 3600).floor();
+    final m = ((seconds % 3600) / 60).floor();
+    if (h > 0) return '${h}h ${m}m';
+    if (m > 0) return '${m}m';
+    if (seconds > 0) return '<1m';
+    return '0m';
+  }
+
+  String _fmtDate(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    final months = [
+      'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'
+    ];
+    final hour12 = d.hour == 0 ? 12 : (d.hour > 12 ? d.hour - 12 : d.hour);
+    final ampm = d.hour >= 12 ? 'PM' : 'AM';
+    final min = d.minute.toString().padLeft(2, '0');
+    return '${months[d.month - 1]} ${d.day}, ${d.year} at $hour12:$min $ampm';
+  }
+
+  Future<void> _jumpToStart() async {
+    if (_jumping) return;
+    final s = widget.session;
+    final itemId = s['libraryItemId'] as String?;
+    if (itemId == null) return;
+    final episodeId = s['episodeId'] as String?;
+    final startTime = _n(s['startTime']);
+
+    setState(() => _jumping = true);
+
+    final lib = context.read<LibraryProvider>();
+    final api = context.read<AuthProvider>().apiService;
+    final player = AudioPlayerService();
+
+    if (player.currentItemId == itemId &&
+        player.currentEpisodeId == episodeId) {
+      await player.seekTo(Duration(seconds: startTime.round()));
+      if (!player.isPlaying) player.play();
+      if (mounted) Navigator.pop(context);
+      AppShell.goToAbsorbingGlobal();
+      return;
+    }
+
+    if (api == null) {
+      if (mounted) {
+        setState(() => _jumping = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Not connected to server'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+      return;
+    }
+
+    // Switch library selection if session is from a different library.
+    // selectLibrary stops playback itself, so call it BEFORE playItem.
+    final sessionLibraryId = s['libraryId'] as String?;
+    if (sessionLibraryId != null &&
+        sessionLibraryId != lib.selectedLibraryId) {
+      await lib.selectLibrary(sessionLibraryId);
+    }
+
+    final fullItem = await api.getLibraryItem(itemId);
+    if (fullItem == null) {
+      if (mounted) {
+        setState(() => _jumping = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not load item'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+      return;
+    }
+
+    final media = fullItem['media'] as Map<String, dynamic>? ?? {};
+    final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+    final coverUrl = lib.getCoverUrl(itemId);
+
+    String title;
+    String author;
+    double duration;
+    List<dynamic> chapters;
+    String? episodeTitle;
+
+    if (episodeId != null) {
+      final episodes = (media['episodes'] as List<dynamic>?) ?? [];
+      final episode = episodes.firstWhere(
+        (e) => e is Map<String, dynamic> && e['id'] == episodeId,
+        orElse: () => null,
+      );
+      if (episode is! Map<String, dynamic>) {
+        if (mounted) {
+          setState(() => _jumping = false);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not find episode'),
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+        return;
+      }
+      episodeTitle = episode['title'] as String? ?? '';
+      title = episodeTitle;
+      author = metadata['title'] as String? ??
+          metadata['author'] as String? ??
+          '';
+      duration = (episode['duration'] is num)
+          ? (episode['duration'] as num).toDouble()
+          : 0.0;
+      chapters = (episode['chapters'] as List<dynamic>?) ?? [];
+    } else {
+      title = metadata['title'] as String? ?? '';
+      author = metadata['authorName'] as String? ?? '';
+      duration = (media['duration'] is num)
+          ? (media['duration'] as num).toDouble()
+          : 0.0;
+      chapters = (media['chapters'] as List<dynamic>?) ?? [];
+    }
+
+    final error = await player.playItem(
+      api: api,
+      itemId: itemId,
+      title: title,
+      author: author,
+      coverUrl: coverUrl,
+      totalDuration: duration,
+      chapters: chapters,
+      startTime: startTime,
+      forceStartTime: true,
+      episodeId: episodeId,
+      episodeTitle: episodeTitle,
+    );
+
+    if (!mounted) return;
+    if (error != null) {
+      setState(() => _jumping = false);
+      showErrorSnackBar(context, error);
+      return;
+    }
+    Navigator.pop(context);
+    AppShell.goToAbsorbingGlobal();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final s = widget.session;
+
+    final meta = s['mediaMetadata'] as Map<String, dynamic>? ?? {};
+    final rawTitle = s['displayTitle'] as String?;
+    final rawAuthor = s['displayAuthor'] as String?;
+    final idPattern = RegExp(
+      r'^([a-z]{2,4}_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
+    bool looksLikeId(String v) => idPattern.hasMatch(v);
+    final title = (rawTitle != null && !looksLikeId(rawTitle))
+        ? rawTitle
+        : meta['title'] as String? ?? 'Unknown';
+    final author = (rawAuthor != null && !looksLikeId(rawAuthor))
+        ? rawAuthor
+        : meta['authorName'] as String? ?? '';
+    final narrator = meta['narratorName'] as String? ?? '';
+    final subtitle = meta['subtitle'] as String? ?? '';
+
+    final itemId = s['libraryItemId'] as String?;
+    final timeListening = _n(s['timeListening']);
+    final startTime = _n(s['startTime']);
+    final currentTime = _n(s['currentTime']);
+    final totalDuration = _n(s['duration']);
+
+    final deviceInfo = s['deviceInfo'] as Map<String, dynamic>? ?? {};
+    final clientName = deviceInfo['clientName'] as String? ?? '';
+    final clientVersion = deviceInfo['clientVersion'] as String? ?? '';
+    final deviceModel = deviceInfo['model'] as String? ??
+        deviceInfo['manufacturer'] as String? ??
+        deviceInfo['deviceName'] as String? ??
+        '';
+    final osName = deviceInfo['osName'] as String? ?? '';
+    final osVersion = deviceInfo['osVersion'] as String? ?? '';
+    final playMethod = s['playMethod'];
+    final startedAt = s['startedAt'];
+    final updatedAt = s['updatedAt'];
+
+    final lib = context.read<LibraryProvider>();
+    final coverUrl = itemId != null ? lib.getCoverUrl(itemId) : null;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (_, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 4),
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.onSurface.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                children: [
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 88,
+                        height: 88,
+                        color: cs.onSurface.withValues(alpha: 0.06),
+                        child: coverUrl != null
+                            ? CachedNetworkImage(
+                                imageUrl: coverUrl,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => Icon(
+                                    Icons.menu_book_rounded,
+                                    color: cs.onSurface.withValues(alpha: 0.3)),
+                              )
+                            : Icon(Icons.menu_book_rounded,
+                                color: cs.onSurface.withValues(alpha: 0.3)),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                          Text(title,
+                              style: tt.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.onSurface)),
+                          if (subtitle.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(subtitle,
+                                style: tt.bodySmall?.copyWith(
+                                    color: cs.onSurface
+                                        .withValues(alpha: 0.7))),
+                          ],
+                          if (author.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text('by $author',
+                                style: tt.bodySmall?.copyWith(
+                                    color: cs.onSurface
+                                        .withValues(alpha: 0.6))),
+                          ],
+                          if (narrator.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text('Narrated by $narrator',
+                                style: tt.bodySmall?.copyWith(
+                                    color: cs.onSurface
+                                        .withValues(alpha: 0.5))),
+                          ],
+                        ])),
+                  ]),
+                  const SizedBox(height: 20),
+                  _infoRow(cs, tt, 'Listened', _fmtDuration(timeListening)),
+                  _infoRow(cs, tt, 'Started at position', _fmtPos(startTime)),
+                  _infoRow(cs, tt, 'Ended at position', _fmtPos(currentTime)),
+                  if (totalDuration > 0)
+                    _infoRow(cs, tt, 'Total duration',
+                        _fmtPos(totalDuration)),
+                  const SizedBox(height: 16),
+                  if (startedAt is num)
+                    _infoRow(cs, tt, 'Started', _fmtDate(startedAt.toInt())),
+                  if (updatedAt is num)
+                    _infoRow(cs, tt, 'Updated', _fmtDate(updatedAt.toInt())),
+                  const SizedBox(height: 16),
+                  if (clientName.isNotEmpty)
+                    _infoRow(
+                        cs,
+                        tt,
+                        'Client',
+                        clientVersion.isNotEmpty
+                            ? '$clientName $clientVersion'
+                            : clientName),
+                  if (deviceModel.isNotEmpty)
+                    _infoRow(cs, tt, 'Device', deviceModel),
+                  if (osName.isNotEmpty)
+                    _infoRow(
+                        cs,
+                        tt,
+                        'OS',
+                        osVersion.isNotEmpty
+                            ? '$osName $osVersion'
+                            : osName),
+                  if (playMethod != null)
+                    _infoRow(cs, tt, 'Play method',
+                        _playMethodLabel(playMethod)),
+                  const SizedBox(height: 24),
+                  if (itemId != null)
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _jumping ? null : _jumpToStart,
+                        icon: _jumping
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2))
+                            : const Icon(Icons.replay_rounded),
+                        label: Text(_jumping
+                            ? 'Loading...'
+                            : 'Jump to session start (${_fmtPos(startTime)})'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ]),
+        );
+      },
+    );
+  }
+
+  Widget _infoRow(ColorScheme cs, TextTheme tt, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        Expanded(
+            child: Text(label,
+                style: tt.bodyMedium?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.55)))),
+        Text(value,
+            style: tt.bodyMedium?.copyWith(
+                color: cs.onSurface, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+
+  String _playMethodLabel(dynamic m) {
+    final i = m is num ? m.toInt() : -1;
+    switch (i) {
+      case 0:
+        return 'Direct play';
+      case 1:
+        return 'Direct stream';
+      case 2:
+        return 'Transcode';
+      case 3:
+        return 'Local';
+      default:
+        return m.toString();
+    }
+  }
 }
