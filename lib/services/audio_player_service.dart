@@ -1522,7 +1522,11 @@ class AudioPlayerService extends ChangeNotifier {
       _subscribeTrackIndex();
       final initChapter = _initChapterInfo(startTime);
       _pushMediaItem(itemId, title, author, coverUrl, totalDuration, chapter: initChapter);
-      final bookSpeed = await PlayerSettings.getBookSpeed(itemId);
+      // Use _currentItemId for speed lookup — itemId here is the progressKey
+      // (compound "$showId-$episodeId" for podcasts) but speed is saved under
+      // the raw show/book ID via _currentItemId in setSpeed().
+      final speedKey = _currentItemId ?? itemId;
+      final bookSpeed = await PlayerSettings.getBookSpeed(speedKey);
       final speed = bookSpeed ?? await PlayerSettings.getDefaultSpeed();
       await _player!.setSpeed(speed);
       debugPrint('[Player] Starting local playback at ${speed}x');
@@ -2616,6 +2620,7 @@ class AudioPlayerService extends ChangeNotifier {
   }
 
   DateTime? _lastPauseTime;
+  double _lastAutoRewindAmount = 0;
   bool _wasPlayingBeforeInterrupt = false;
 
   /// Auto-rewind calculation using linear scaling.
@@ -2671,6 +2676,7 @@ class AudioPlayerService extends ChangeNotifier {
     _pauseStopTimer = null;
     _noisyPause = false; // User explicitly resumed — allow interrupt-resume again
     _handler?._noisyPauseAt = null; // Clear noisy suppression window
+    _lastAutoRewindAmount = 0;
     // Auto-rewind on resume if enabled
     if (_lastPauseTime != null && _player != null) {
       final settings = await AutoRewindSettings.load();
@@ -2697,6 +2703,7 @@ class AudioPlayerService extends ChangeNotifier {
           await _seekAbsolute(newPosSeconds);
           _logEvent(PlaybackEventType.autoRewind,
               detail: '${rewindSeconds.toStringAsFixed(1)}s rewind');
+          _lastAutoRewindAmount = rewindSeconds;
           debugPrint(
               '[Player] Auto-rewind ${rewindSeconds.toStringAsFixed(1)}s '
               '(paused ${pauseDuration.inSeconds}s)');
@@ -2778,7 +2785,7 @@ class AudioPlayerService extends ChangeNotifier {
           debugPrint('[Player] Re-created session on resume: $_playbackSessionId');
           final serverPos = (sessionData['currentTime'] as num?)?.toDouble() ?? 0;
           final localPos = position.inMilliseconds / 1000.0;
-          if (serverPos > localPos + 5.0) {
+          if (serverPos > localPos + _lastAutoRewindAmount + 5.0) {
             debugPrint('[Player] Server is ahead on resume: server=${serverPos}s vs local=${localPos}s - seeking');
             await _seekAbsolute(serverPos);
           }
@@ -2792,12 +2799,13 @@ class AudioPlayerService extends ChangeNotifier {
         if (serverProgress != null) {
           final serverPos = (serverProgress['currentTime'] as num?)?.toDouble() ?? 0;
           final localPos = position.inMilliseconds / 1000.0;
-          if (serverPos > localPos + 5.0) {
+          if (serverPos > localPos + _lastAutoRewindAmount + 5.0) {
             debugPrint('[Player] Server is ahead on resume: server=${serverPos}s vs local=${localPos}s - seeking');
             await _seekAbsolute(serverPos);
           }
         }
       }
+      _lastAutoRewindAmount = 0;
     } catch (e) {
       debugPrint('[Player] Failed to check server progress on resume: $e');
     }
