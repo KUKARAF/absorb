@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:vibration/vibration.dart';
@@ -216,10 +215,6 @@ class SleepTimerService extends ChangeNotifier {
     // Only count down when playing
     if (isPlaying) {
       _timeRemaining -= Duration(seconds: _tickIntervalSeconds);
-      if (_timeRemaining.inSeconds % 30 == 0) {
-
-      }
-
       // Switch to fast ticks when approaching fade threshold
       if (_tickIntervalSeconds > 1 &&
           _timeRemaining <= _fadeThreshold + const Duration(seconds: 5)) {
@@ -378,7 +373,7 @@ class SleepTimerService extends ChangeNotifier {
     _timer = null;
     _positionSub?.cancel();
     _positionSub = null;
-    if (_accelSub != null) debugPrint('[Battery] Accelerometer stream STOPPED');
+    if (_accelSub != null) debugPrint('[SleepTimer] Accelerometer stream stopped');
     _accelSub?.cancel();
     _accelSub = null;
     _mode = SleepTimerMode.off;

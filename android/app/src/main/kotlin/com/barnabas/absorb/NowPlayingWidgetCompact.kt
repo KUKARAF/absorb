@@ -142,7 +142,10 @@ class NowPlayingWidgetCompact : AppWidgetProvider() {
                         val options = BitmapFactory.Options().apply { inSampleSize = 2 }
                         val bitmap = BitmapFactory.decodeFile(file.absolutePath, options)
                         if (bitmap != null) {
-                            views.setImageViewBitmap(R.id.widget_cover, roundBitmap(bitmap, 24f, context))
+                            val rounded = roundBitmap(bitmap, 24f, context)
+                            views.setImageViewBitmap(R.id.widget_cover, rounded)
+                            bitmap.recycle()
+                            rounded.recycle()
                         } else {
                             views.setImageViewResource(R.id.widget_cover, R.mipmap.ic_launcher)
                         }
