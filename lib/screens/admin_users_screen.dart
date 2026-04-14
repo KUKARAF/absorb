@@ -1,6 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/library_provider.dart';
 import '../widgets/absorb_page_header.dart';
 import '../widgets/absorb_wave_icon.dart';
 
@@ -74,7 +76,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       if (oId.isNotEmpty && oId == userId) return true;
       final oName = o['username'] as String? ?? '';
       return oName.isNotEmpty && oName == username;
-    });
+    }) || _isRecentlyActive(user);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -118,6 +120,19 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     );
   }
 
+  static bool _isRecentlyActive(dynamic user) {
+    if (user is! Map<String, dynamic>) return false;
+    final progress = user['mediaProgress'] as List<dynamic>?;
+    if (progress == null) return false;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final p in progress) {
+      if (p is! Map<String, dynamic>) continue;
+      final lastUpdate = p['lastUpdate'] as num? ?? 0;
+      if ((now - lastUpdate) < 300000) return true; // 5 minutes
+    }
+    return false;
+  }
+
   void _showUserDetail(Map<String, dynamic> user) {
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => _UserDetailScreen(user: user, libraries: widget.libraries, onChanged: _reload),
@@ -149,7 +164,11 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
   final Map<String, Map<String, dynamic>> _itemCache = {};
   List<dynamic> _sessions = [];
   bool _loadingSessions = false;
+  bool _loadingMoreSessions = false;
   bool _sessionsExpanded = false;
+  int _sessionsPage = 0;
+  int _sessionsTotal = 0;
+  static const _sessionsPerPage = 10;
   int _visibleCount = 25;
   bool _fetchingMore = false;
 
@@ -227,11 +246,29 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     final userId = widget.user['id'] as String? ?? '';
     if (userId.isEmpty) return;
-    setState(() => _loadingSessions = true);
-    final data = await api.getUserListeningSessions(userId, itemsPerPage: 10);
+    setState(() { _loadingSessions = true; _sessionsPage = 0; });
+    final data = await api.getUserListeningSessions(userId, itemsPerPage: _sessionsPerPage);
     if (mounted) setState(() {
       _sessions = (data?['sessions'] as List<dynamic>?) ?? [];
+      _sessionsTotal = (data?['total'] as num?)?.toInt() ?? _sessions.length;
       _loadingSessions = false;
+    });
+  }
+
+  Future<void> _loadMoreSessions() async {
+    if (_loadingMoreSessions) return;
+    final api = context.read<AuthProvider>().apiService; if (api == null) return;
+    final userId = widget.user['id'] as String? ?? '';
+    if (userId.isEmpty) return;
+    setState(() => _loadingMoreSessions = true);
+    final nextPage = _sessionsPage + 1;
+    final data = await api.getUserListeningSessions(userId, page: nextPage, itemsPerPage: _sessionsPerPage);
+    if (mounted) setState(() {
+      final more = (data?['sessions'] as List<dynamic>?) ?? [];
+      _sessions.addAll(more);
+      _sessionsPage = nextPage;
+      _sessionsTotal = (data?['total'] as num?)?.toInt() ?? _sessions.length;
+      _loadingMoreSessions = false;
     });
   }
 
@@ -244,7 +281,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final p in _progressItems) {
       final lastUpdate = p['lastUpdate'] as num? ?? 0;
-      if ((now - lastUpdate) < 120000) return true; // 2 minutes
+      if ((now - lastUpdate) < 300000) return true; // 5 minutes
     }
     return false;
   }
@@ -377,7 +414,32 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
                                   child: Text('Recent Sessions', style: tt.titleSmall?.copyWith(
                                     color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
                                 ),
-                                ..._sessions.take(10).map((s) => _sessionTile(cs, tt, s)),
+                                ..._sessions.map((s) => _sessionTile(cs, tt, s)),
+                                if (_sessions.length < _sessionsTotal)
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                                    child: GestureDetector(
+                                      onTap: _loadingMoreSessions ? null : _loadMoreSessions,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        decoration: BoxDecoration(
+                                          color: cs.surfaceContainerHigh,
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                          if (_loadingMoreSessions)
+                                            SizedBox(width: 12, height: 12,
+                                              child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurface.withValues(alpha: 0.3)))
+                                          else
+                                            Icon(Icons.expand_more_rounded, size: 14, color: cs.onSurface.withValues(alpha: 0.4)),
+                                          const SizedBox(width: 6),
+                                          Text(_loadingMoreSessions ? 'Loading...' : 'Load more sessions',
+                                            style: tt.bodySmall?.copyWith(
+                                              color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600)),
+                                        ]),
+                                      ),
+                                    ),
+                                  ),
                                 const SizedBox(height: 16),
                               ] else ...[
                                 Padding(
@@ -558,10 +620,15 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(14)),
-        child: Row(children: [
+      child: Material(
+        color: cs.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _showSessionDetails(s),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(children: [
           Container(
             width: 32, height: 32,
             decoration: BoxDecoration(
@@ -591,6 +658,16 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
           ]),
         ]),
       ),
+    )),
+    );
+  }
+
+  void _showSessionDetails(Map<String, dynamic> session) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AdminSessionDetailsSheet(session: session),
     );
   }
 
@@ -846,4 +923,237 @@ class _UserEditorSheetState extends State<_UserEditorSheet> {
 
   void _snk(String s) => ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(
     SnackBar(content: Text(s), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Admin Session Details Sheet
+// ═══════════════════════════════════════════════════════════════
+
+class _AdminSessionDetailsSheet extends StatelessWidget {
+  final Map<String, dynamic> session;
+  const _AdminSessionDetailsSheet({required this.session});
+
+  static double _n(dynamic v) => v is num ? v.toDouble() : 0;
+
+  String _fmtPos(double seconds) {
+    final s = seconds.round();
+    final h = s ~/ 3600;
+    final m = (s % 3600) ~/ 60;
+    final sec = s % 60;
+    if (h > 0) {
+      return '$h:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+    }
+    return '$m:${sec.toString().padLeft(2, '0')}';
+  }
+
+  String _fmtDuration(double seconds) {
+    final h = (seconds / 3600).floor();
+    final m = ((seconds % 3600) / 60).floor();
+    if (h > 0) return '${h}h ${m}m';
+    if (m > 0) return '${m}m';
+    if (seconds > 0) return '<1m';
+    return '0m';
+  }
+
+  String _fmtDate(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    final months = [
+      'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'
+    ];
+    final hour12 = d.hour == 0 ? 12 : (d.hour > 12 ? d.hour - 12 : d.hour);
+    final ampm = d.hour >= 12 ? 'PM' : 'AM';
+    final min = d.minute.toString().padLeft(2, '0');
+    return '${months[d.month - 1]} ${d.day}, ${d.year} at $hour12:$min $ampm';
+  }
+
+  String _playMethodLabel(dynamic m) {
+    final i = m is num ? m.toInt() : -1;
+    switch (i) {
+      case 0: return 'Direct play';
+      case 1: return 'Direct stream';
+      case 2: return 'Transcode';
+      case 3: return 'Local';
+      default: return m.toString();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final s = session;
+
+    final meta = s['mediaMetadata'] as Map<String, dynamic>? ?? {};
+    final rawTitle = s['displayTitle'] as String?;
+    final rawAuthor = s['displayAuthor'] as String?;
+    final idPattern = RegExp(
+      r'^([a-z]{2,4}_)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
+    bool looksLikeId(String v) => idPattern.hasMatch(v);
+    final title = (rawTitle != null && !looksLikeId(rawTitle))
+        ? rawTitle
+        : meta['title'] as String? ?? 'Unknown';
+    final author = (rawAuthor != null && !looksLikeId(rawAuthor))
+        ? rawAuthor
+        : meta['authorName'] as String? ?? '';
+    final narrator = meta['narratorName'] as String? ?? '';
+    final subtitle = meta['subtitle'] as String? ?? '';
+
+    final itemId = s['libraryItemId'] as String?;
+    final timeListening = _n(s['timeListening']);
+    final startTime = _n(s['startTime']);
+    final currentTime = _n(s['currentTime']);
+    final totalDuration = _n(s['duration']);
+
+    final deviceInfo = s['deviceInfo'] as Map<String, dynamic>? ?? {};
+    final clientName = deviceInfo['clientName'] as String? ?? '';
+    final clientVersion = deviceInfo['clientVersion'] as String? ?? '';
+    final deviceModel = deviceInfo['model'] as String? ??
+        deviceInfo['manufacturer'] as String? ??
+        deviceInfo['deviceName'] as String? ??
+        '';
+    final osName = deviceInfo['osName'] as String? ?? '';
+    final osVersion = deviceInfo['osVersion'] as String? ?? '';
+    final playMethod = s['playMethod'];
+    final startedAt = s['startedAt'];
+    final updatedAt = s['updatedAt'];
+
+    final lib = context.read<LibraryProvider>();
+    final coverUrl = itemId != null ? lib.getCoverUrl(itemId) : null;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (_, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 4),
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.onSurface.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                children: [
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 88,
+                        height: 88,
+                        color: cs.onSurface.withValues(alpha: 0.06),
+                        child: coverUrl != null
+                            ? CachedNetworkImage(
+                                imageUrl: coverUrl,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => Icon(
+                                    Icons.menu_book_rounded,
+                                    color: cs.onSurface.withValues(alpha: 0.3)),
+                              )
+                            : Icon(Icons.menu_book_rounded,
+                                color: cs.onSurface.withValues(alpha: 0.3)),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                          Text(title,
+                              style: tt.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: cs.onSurface)),
+                          if (subtitle.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(subtitle,
+                                style: tt.bodySmall?.copyWith(
+                                    color: cs.onSurface
+                                        .withValues(alpha: 0.7))),
+                          ],
+                          if (author.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text('by $author',
+                                style: tt.bodySmall?.copyWith(
+                                    color: cs.onSurface
+                                        .withValues(alpha: 0.6))),
+                          ],
+                          if (narrator.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text('Narrated by $narrator',
+                                style: tt.bodySmall?.copyWith(
+                                    color: cs.onSurface
+                                        .withValues(alpha: 0.5))),
+                          ],
+                        ])),
+                  ]),
+                  const SizedBox(height: 20),
+                  _infoRow(cs, tt, 'Listened', _fmtDuration(timeListening)),
+                  _infoRow(cs, tt, 'Started at position', _fmtPos(startTime)),
+                  _infoRow(cs, tt, 'Ended at position', _fmtPos(currentTime)),
+                  if (totalDuration > 0)
+                    _infoRow(cs, tt, 'Total duration', _fmtPos(totalDuration)),
+                  const SizedBox(height: 16),
+                  if (startedAt is num)
+                    _infoRow(cs, tt, 'Started', _fmtDate(startedAt.toInt())),
+                  if (updatedAt is num)
+                    _infoRow(cs, tt, 'Updated', _fmtDate(updatedAt.toInt())),
+                  const SizedBox(height: 16),
+                  if (clientName.isNotEmpty)
+                    _infoRow(
+                        cs,
+                        tt,
+                        'Client',
+                        clientVersion.isNotEmpty
+                            ? '$clientName $clientVersion'
+                            : clientName),
+                  if (deviceModel.isNotEmpty)
+                    _infoRow(cs, tt, 'Device', deviceModel),
+                  if (osName.isNotEmpty)
+                    _infoRow(
+                        cs,
+                        tt,
+                        'OS',
+                        osVersion.isNotEmpty
+                            ? '$osName $osVersion'
+                            : osName),
+                  if (playMethod != null)
+                    _infoRow(cs, tt, 'Play method', _playMethodLabel(playMethod)),
+                ],
+              ),
+            ),
+          ]),
+        );
+      },
+    );
+  }
+
+  Widget _infoRow(ColorScheme cs, TextTheme tt, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        Expanded(
+            child: Text(label,
+                style: tt.bodyMedium?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.55)))),
+        Text(value,
+            style: tt.bodyMedium?.copyWith(
+                color: cs.onSurface, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
 }

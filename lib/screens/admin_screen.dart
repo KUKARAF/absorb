@@ -53,6 +53,30 @@ class _AdminScreenState extends State<AdminScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
+  int get _onlineCount {
+    final socketIds = <String>{};
+    for (final o in _onlineUsers) {
+      if (o is Map) {
+        final id = o['id'] as String? ?? '';
+        if (id.isNotEmpty) socketIds.add(id);
+      }
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final u in _users) {
+      if (u is! Map<String, dynamic>) continue;
+      final id = u['id'] as String? ?? '';
+      if (socketIds.contains(id)) continue;
+      final progress = u['mediaProgress'] as List<dynamic>?;
+      if (progress == null) continue;
+      for (final p in progress) {
+        if (p is! Map<String, dynamic>) continue;
+        final lastUpdate = p['lastUpdate'] as num? ?? 0;
+        if ((now - lastUpdate) < 300000) { socketIds.add(id); break; }
+      }
+    }
+    return socketIds.length;
+  }
+
   bool get _hasPodcastLibrary => _libraries.any((l) => l['mediaType'] == 'podcast');
 
   List<dynamic> get _activeSessions => _sessions.where((s) {
@@ -96,7 +120,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         child: Row(children: [
                           _stat(tt, cs, Icons.dns_rounded, _serverVersion ?? '–', 'Version'),
                           _stat(tt, cs, Icons.people_rounded, '${_users.length}', 'Users'),
-                          _stat(tt, cs, Icons.wifi_rounded, '${_onlineUsers.length}', 'Online'),
+                          _stat(tt, cs, Icons.wifi_rounded, '$_onlineCount', 'Online'),
                           _stat(tt, cs, Icons.backup_rounded, '${_backups.length}', 'Backups'),
                         ]),
                       ),
@@ -120,7 +144,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         _navButton(cs, tt,
                           icon: Icons.people_rounded,
                           label: 'Users',
-                          subtitle: '${_users.length} accounts · ${_onlineUsers.length} online',
+                          subtitle: '${_users.length} accounts · $_onlineCount online',
                           onTap: () async {
                             await Navigator.push(context, MaterialPageRoute(
                               builder: (_) => AdminUsersScreen(users: _users, onlineUsers: _onlineUsers, libraries: _libraries)));
