@@ -978,6 +978,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           minRewind: _rewindSettings.minRewind,
                           maxRewind: _rewindSettings.maxRewind,
                           activationDelay: _rewindSettings.activationDelay,
+                          chapterBarrier: _rewindSettings.chapterBarrier,
+                          sessionStartRewind: _rewindSettings.sessionStartRewind,
                         ),
                       ) : null,
                     ),
@@ -1000,6 +1002,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onChanged: (v) => _saveRewind(AutoRewindSettings(
                           enabled: true, minRewind: v.start, maxRewind: v.end,
                           activationDelay: _rewindSettings.activationDelay,
+                          chapterBarrier: _rewindSettings.chapterBarrier,
+                          sessionStartRewind: _rewindSettings.sessionStartRewind,
                         )),
                       ),
                       const Divider(height: 1, indent: 16, endIndent: 16),
@@ -1023,6 +1027,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onChanged: (v) => _saveRewind(AutoRewindSettings(
                             enabled: true, minRewind: _rewindSettings.minRewind,
                             maxRewind: _rewindSettings.maxRewind, activationDelay: v,
+                            chapterBarrier: _rewindSettings.chapterBarrier,
+                            sessionStartRewind: _rewindSettings.sessionStartRewind,
                           )),
                         ),
                       ),
@@ -1047,6 +1053,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           maxRewind: _rewindSettings.maxRewind,
                           activationDelay: _rewindSettings.activationDelay,
                           chapterBarrier: v,
+                          sessionStartRewind: _rewindSettings.sessionStartRewind,
+                        )),
+                      ),
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                      SwitchListTile(
+                        title: Row(children: [
+                          const Expanded(child: Text('Rewind on session start')),
+                          GestureDetector(
+                            onTap: () => showDialog(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text('Rewind on session start'),
+                                content: const Text('Normal auto-rewind triggers when you resume from a pause within an active session. This setting adds a rewind when starting a completely new session - for example after the app was closed, playback was stopped, or you open the app fresh.\n\nWhen enabled, playback rewinds by the full max rewind amount at the start of every new session so you can re-hear where you left off.'),
+                                actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Got it'))],
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(Icons.info_outline_rounded, size: 18, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+                            ),
+                          ),
+                        ]),
+                        subtitle: Text(
+                          _rewindSettings.sessionStartRewind
+                              ? 'On - rewinds ${_rewindSettings.maxRewind.round()}s when starting a new session'
+                              : 'Off',
+                          style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        value: _rewindSettings.sessionStartRewind,
+                        onChanged: (v) => _saveRewind(AutoRewindSettings(
+                          enabled: true,
+                          minRewind: _rewindSettings.minRewind,
+                          maxRewind: _rewindSettings.maxRewind,
+                          activationDelay: _rewindSettings.activationDelay,
+                          chapterBarrier: _rewindSettings.chapterBarrier,
+                          sessionStartRewind: v,
                         )),
                       ),
                       const Divider(height: 1, indent: 16, endIndent: 16),

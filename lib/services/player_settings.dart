@@ -12,6 +12,7 @@ class AutoRewindSettings {
   final double maxRewind;
   final double activationDelay; // seconds — how long pause must be before rewind kicks in
   final bool chapterBarrier; // don't rewind past the start of the current chapter
+  final bool sessionStartRewind; // rewind by maxRewind when starting a new session
 
   const AutoRewindSettings({
     this.enabled = true,
@@ -19,6 +20,7 @@ class AutoRewindSettings {
     this.maxRewind = 30.0,
     this.activationDelay = 0.0, // 0 = always rewind on resume
     this.chapterBarrier = false,
+    this.sessionStartRewind = false,
   });
 
   static Future<AutoRewindSettings> load() async {
@@ -28,6 +30,7 @@ class AutoRewindSettings {
       maxRewind: await ScopedPrefs.getDouble('autoRewind_max') ?? 30.0,
       activationDelay: await ScopedPrefs.getDouble('autoRewind_delay') ?? 0.0,
       chapterBarrier: await ScopedPrefs.getBool('autoRewind_chapterBarrier') ?? false,
+      sessionStartRewind: await ScopedPrefs.getBool('autoRewind_sessionStart') ?? false,
     );
   }
 
@@ -37,6 +40,7 @@ class AutoRewindSettings {
     await ScopedPrefs.setDouble('autoRewind_max', maxRewind);
     await ScopedPrefs.setDouble('autoRewind_delay', activationDelay);
     await ScopedPrefs.setBool('autoRewind_chapterBarrier', chapterBarrier);
+    await ScopedPrefs.setBool('autoRewind_sessionStart', sessionStartRewind);
   }
 }
 

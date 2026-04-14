@@ -87,6 +87,7 @@ class BackupService {
       'max': rewind.maxRewind,
       'delay': rewind.activationDelay,
       'chapterBarrier': rewind.chapterBarrier,
+      'sessionStartRewind': rewind.sessionStartRewind,
     };
 
     // AutoSleep (scoped)
@@ -293,6 +294,7 @@ class BackupService {
         maxRewind: (r['max'] as num?)?.toDouble() ?? 30.0,
         activationDelay: (r['delay'] as num?)?.toDouble() ?? 0.0,
         chapterBarrier: r['chapterBarrier'] as bool? ?? false,
+        sessionStartRewind: r['sessionStartRewind'] as bool? ?? false,
       ).save();
     }
 

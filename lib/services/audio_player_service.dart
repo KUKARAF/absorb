@@ -1294,6 +1294,35 @@ class AudioPlayerService extends ChangeNotifier {
     _isLoadingNewItem = false;
     notifyListeners();
 
+    // Session-start rewind: rewind by maxRewind when starting a new session
+    if (result == null && !forceStartTime) {
+      final rewindSettings = await AutoRewindSettings.load();
+      if (rewindSettings.enabled && rewindSettings.sessionStartRewind) {
+        final rewindSeconds = rewindSettings.maxRewind;
+        if (rewindSeconds > 0.5 && _player != null) {
+          final currentAbsolutePos = position.inMilliseconds / 1000.0;
+          var newPosSeconds = currentAbsolutePos - rewindSeconds;
+          if (newPosSeconds < 0) newPosSeconds = 0;
+          if (rewindSettings.chapterBarrier && _chapters.isNotEmpty) {
+            for (final ch in _chapters) {
+              final start = (ch['start'] as num?)?.toDouble() ?? 0;
+              final end = (ch['end'] as num?)?.toDouble() ?? 0;
+              if (currentAbsolutePos >= start && currentAbsolutePos < end) {
+                if (newPosSeconds < start) newPosSeconds = start;
+                break;
+              }
+            }
+          }
+          await _seekAbsolute(newPosSeconds);
+          _lastAutoRewindAmount = rewindSeconds;
+          _logEvent(PlaybackEventType.autoRewind,
+              detail: '${rewindSeconds.toStringAsFixed(1)}s session-start rewind');
+          debugPrint(
+              '[Player] Session-start rewind ${rewindSeconds.toStringAsFixed(1)}s');
+        }
+      }
+    }
+
     // Auto-navigate to Absorbing tab when an episode starts playing
     if (result == null && episodeId != null) {
       _onEpisodePlayStartedCallback?.call();
