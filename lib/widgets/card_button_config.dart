@@ -23,6 +23,7 @@ const _allCardButtons = [
   CardButtonDef('remove', 'Remove from Absorbing', Icons.remove_circle_outline_rounded),
   CardButtonDef('car', 'Car Mode', Icons.directions_car_rounded),
   CardButtonDef('notes', 'Notes', Icons.note_rounded),
+  CardButtonDef('download', 'Download', Icons.download_outlined),
 ];
 
 /// Card buttons filtered for the current platform.

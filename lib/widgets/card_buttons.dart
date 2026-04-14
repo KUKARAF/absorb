@@ -7,6 +7,7 @@ import '../screens/car_mode_screen.dart';
 import '../services/audio_player_service.dart';
 import '../services/bookmark_service.dart';
 import '../services/chromecast_service.dart';
+import '../services/download_service.dart';
 import '../services/playback_history_service.dart';
 import '../services/sleep_timer_service.dart';
 import 'absorb_slider.dart';
@@ -249,6 +250,121 @@ class CardSleepButtonInline extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// Download button as wide card
+class CardDownloadButtonInline extends StatelessWidget {
+  final String itemId;
+  final String title;
+  final String? author;
+  final String? coverUrl;
+  final Color accent;
+  final bool large;
+  final bool compact;
+  const CardDownloadButtonInline({super.key, required this.itemId, required this.title, this.author, this.coverUrl, required this.accent, this.large = false, this.compact = false});
+
+  @override Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: DownloadService(),
+      builder: (_, __) {
+        final cs = Theme.of(context).colorScheme;
+        final dl = DownloadService();
+        final downloading = dl.isDownloading(itemId);
+        final downloaded = dl.isDownloaded(itemId);
+        final progress = dl.downloadProgress(itemId);
+
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final dlGreen = isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700;
+
+        final IconData icon;
+        final String label;
+        final Color color;
+        if (downloaded) {
+          icon = Icons.download_done_rounded;
+          label = 'Saved';
+          color = dlGreen;
+        } else if (downloading) {
+          icon = Icons.downloading_rounded;
+          label = '${(progress * 100).toStringAsFixed(0)}%';
+          color = accent;
+        } else {
+          icon = Icons.download_outlined;
+          label = 'Download';
+          color = cs.onSurfaceVariant;
+        }
+
+        final h = compact ? 30.0 : (large ? 48.0 : 36.0);
+        final iconSz = compact ? 13.0 : (large ? 20.0 : 16.0);
+        final fontSize = compact ? 10.0 : (large ? 14.0 : 12.0);
+        final radius = compact ? 10.0 : (large ? 16.0 : 14.0);
+
+        return Pressable(
+          onTap: () => _handleTap(context, dl),
+          child: Container(
+            height: h,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: downloaded ? dlGreen.withValues(alpha: 0.1) : cs.onSurface.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(radius),
+              border: Border.all(color: downloaded ? dlGreen.withValues(alpha: 0.3) : cs.onSurface.withValues(alpha: 0.08)),
+            ),
+            child: Stack(children: [
+              if (downloading)
+                FractionallySizedBox(
+                  widthFactor: progress.clamp(0.0, 1.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(radius - 1),
+                    ),
+                  ),
+                ),
+              Center(child: compact && !downloaded && !downloading
+                ? Icon(icon, size: iconSz, color: color)
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(icon, size: iconSz, color: color),
+                      SizedBox(width: compact ? 4 : 8),
+                      Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: TextStyle(
+                        color: color, fontSize: fontSize,
+                        fontWeight: downloaded || downloading ? FontWeight.w700 : FontWeight.w500,
+                      ))),
+                    ],
+                  )),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+
+  void _handleTap(BuildContext context, DownloadService dl) async {
+    if (dl.isDownloaded(itemId)) {
+      showDialog(context: context, builder: (ctx) => AlertDialog(
+        title: const Text('Remove download?'),
+        content: const Text('This will be removed from your device.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () {
+            dl.deleteDownload(itemId);
+            Navigator.pop(ctx);
+            showOverlayToast(context, 'Download removed', icon: Icons.delete_outline_rounded);
+          }, child: const Text('Remove', style: TextStyle(color: Colors.redAccent))),
+        ],
+      ));
+    } else if (dl.isDownloading(itemId)) {
+      dl.cancelDownload(itemId);
+    } else {
+      final auth = context.read<AuthProvider>();
+      final api = auth.apiService;
+      if (api == null) return;
+      final error = await dl.downloadItem(api: api, itemId: itemId, title: title, author: author, coverUrl: coverUrl, libraryId: context.read<LibraryProvider>().selectedLibraryId);
+      if (error != null && context.mounted) {
+        showOverlayToast(context, error, icon: Icons.error_outline_rounded);
+      }
+    }
   }
 }
 
@@ -1173,6 +1289,15 @@ class CardActionDelegate {
           accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact,
           onTap: () => showNotes(context, accent),
         );
+      case 'download':
+        return CardWideButton(
+          icon: Icons.download_outlined, label: 'Download',
+          accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact,
+          child: CardDownloadButtonInline(
+            itemId: itemId, title: title, author: author, coverUrl: coverUrl,
+            accent: accent, large: large, compact: compact,
+          ),
+        );
       default:
         return const SizedBox.shrink();
     }
@@ -1272,6 +1397,60 @@ class CardActionDelegate {
         return MoreMenuItem(
           icon: Icons.note_rounded, label: 'Notes', accent: accent,
           onTap: () { Navigator.pop(ctx); showNotes(context, accent); },
+        );
+      case 'download':
+        return ListenableBuilder(
+          listenable: DownloadService(),
+          builder: (_, __) {
+            final dl = DownloadService();
+            final downloaded = dl.isDownloaded(itemId);
+            final downloading = dl.isDownloading(itemId);
+            final progress = dl.downloadProgress(itemId);
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final dlGreen = isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700;
+            final String dlLabel;
+            final IconData dlIcon;
+            final Color dlAccent;
+            if (downloaded) {
+              dlIcon = Icons.download_done_rounded; dlLabel = 'Saved'; dlAccent = dlGreen;
+            } else if (downloading) {
+              dlIcon = Icons.downloading_rounded; dlLabel = '${(progress * 100).toStringAsFixed(0)}%'; dlAccent = accent;
+            } else {
+              dlIcon = Icons.download_outlined; dlLabel = 'Download'; dlAccent = accent;
+            }
+            return MoreMenuItem(
+              icon: dlIcon, label: dlLabel, accent: dlAccent,
+              onTap: () {
+                Navigator.pop(ctx);
+                final dl = DownloadService();
+                if (dl.isDownloaded(itemId)) {
+                  showDialog(context: context, builder: (dCtx) => AlertDialog(
+                    title: const Text('Remove download?'),
+                    content: const Text('This will be removed from your device.'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
+                      TextButton(onPressed: () {
+                        dl.deleteDownload(itemId);
+                        Navigator.pop(dCtx);
+                        showOverlayToast(context, 'Download removed', icon: Icons.delete_outline_rounded);
+                      }, child: const Text('Remove', style: TextStyle(color: Colors.redAccent))),
+                    ],
+                  ));
+                } else if (dl.isDownloading(itemId)) {
+                  dl.cancelDownload(itemId);
+                } else {
+                  final auth = context.read<AuthProvider>();
+                  final api = auth.apiService;
+                  if (api == null) return;
+                  dl.downloadItem(api: api, itemId: itemId, title: title, author: author, coverUrl: coverUrl, libraryId: context.read<LibraryProvider>().selectedLibraryId).then((error) {
+                    if (error != null && context.mounted) {
+                      showOverlayToast(context, error, icon: Icons.error_outline_rounded);
+                    }
+                  });
+                }
+              },
+            );
+          },
         );
       default:
         return const SizedBox.shrink();
