@@ -8,6 +8,8 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  private var widgetChannel: FlutterMethodChannel?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -55,22 +57,21 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
       CFNotificationCenterAddObserver(
         center, observer,
         { (_, observer, name, _, _) in
-          guard let name = name?.rawValue as String? else { return }
+          guard let observer = observer,
+                let rawName = name?.rawValue as String? else { return }
+          let appDelegate = Unmanaged<AppDelegate>.fromOpaque(observer).takeUnretainedValue()
+          let action: String
+          switch rawName {
+          case "com.barnabas.absorb.widget.playPause":   action = "playPause"
+          case "com.barnabas.absorb.widget.skipBack":    action = "skipBack"
+          case "com.barnabas.absorb.widget.skipForward": action = "skipForward"
+          default: return
+          }
           DispatchQueue.main.async {
-            let cmd = MPRemoteCommandCenter.shared()
-            switch name {
-            case "com.barnabas.absorb.widget.playPause":
-              cmd.togglePlayPauseCommand.send()
-            case "com.barnabas.absorb.widget.skipBack":
-              cmd.skipBackwardCommand.send()
-            case "com.barnabas.absorb.widget.skipForward":
-              cmd.skipForwardCommand.send()
-            default:
-              break
-            }
+            appDelegate.widgetChannel?.invokeMethod("widgetAction", arguments: ["action": action])
           }
         },
-        CFNotificationName(name as CFString),
+        name as CFString,
         nil,
         .deliverImmediately
       )
@@ -80,20 +81,17 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
   private func registerPlatformChannels() {
     let messenger = flutterEngine.binaryMessenger
 
+    // iOS audio output device switching is not implemented yet — iOS routes
+    // through the system's MPVolumeView/AVRoutePicker rather than letting apps
+    // pick output devices directly. Stub these so the channel responds.
     let channel = FlutterMethodChannel(name: "com.absorb.audio_output",
                                        binaryMessenger: messenger)
-    channel.setMethodCallHandler { [weak self] (call, result) in
+    channel.setMethodCallHandler { (call, result) in
       switch call.method {
       case "getAudioOutputDevices":
-        result(self?.getAudioOutputDevices() ?? [])
-      case "setAudioOutputDevice":
-        if let args = call.arguments as? [String: Any], let id = args["id"] as? Int {
-          result(self?.setAudioOutputDevice(portIndex: id) ?? false)
-        } else {
-          result(false)
-        }
-      case "resetAudioOutput":
-        result(self?.resetAudioOutput() ?? false)
+        result([])
+      case "setAudioOutputDevice", "resetAudioOutput":
+        result(false)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -118,6 +116,7 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
 
     let widgetChannel = FlutterMethodChannel(name: "com.absorb.widget",
                                                binaryMessenger: messenger)
+    self.widgetChannel = widgetChannel
     widgetChannel.setMethodCallHandler { (call, result) in
       switch call.method {
       case "getGroupContainerPath":

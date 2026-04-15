@@ -48,6 +48,25 @@ class HomeWidgetService {
       } catch (e) {
         debugPrint('[HomeWidget] Failed to get group container path: $e');
       }
+
+      // Receive widget AppIntent actions forwarded from AppDelegate.
+      _widgetChannel.setMethodCallHandler((call) async {
+        if (call.method == 'widgetAction') {
+          final action = (call.arguments as Map?)?['action'] as String?;
+          switch (action) {
+            case 'playPause':
+              await _handlePlayPause();
+              break;
+            case 'skipBack':
+              _handleSkipBack();
+              break;
+            case 'skipForward':
+              _handleSkipForward();
+              break;
+          }
+        }
+        return null;
+      });
     }
 
     final player = AudioPlayerService();
