@@ -324,7 +324,7 @@ static void tapProcess(MTAudioProcessingTapRef tap,
 
     MTAudioProcessingTapRef tap = NULL;
     OSStatus status = MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks,
-                                                  kMTAudioProcessingTapCreationFlag_PostMix,
+                                                  kMTAudioProcessingTapCreationFlag_PostEffects,
                                                   &tap);
     if (status != noErr || !tap) {
         NSLog(@"[AudioEQProcessor] Failed to create tap: %d", (int)status);
