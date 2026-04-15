@@ -174,32 +174,44 @@ struct SmallWidgetView: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 16) {
+            HStack(spacing: 18) {
                 if entry.appAlive {
                     Button(intent: SkipBackIntent()) {
                         Image(systemName: "backward.fill")
-                            .font(.caption)
+                            .font(.title3)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                     Button(intent: PlayPauseIntent()) {
                         Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.caption)
+                            .font(.title2)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
                     }
                     Button(intent: SkipForwardIntent()) {
                         Image(systemName: "forward.fill")
-                            .font(.caption)
+                            .font(.title3)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                 } else {
                     Link(destination: skipBackURL) {
                         Image(systemName: "backward.fill")
-                            .font(.caption)
+                            .font(.title3)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                     Link(destination: playPauseURL) {
                         Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.caption)
+                            .font(.title2)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
                     }
                     Link(destination: skipForwardURL) {
                         Image(systemName: "forward.fill")
-                            .font(.caption)
+                            .font(.title3)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                 }
             }

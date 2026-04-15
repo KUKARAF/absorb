@@ -13,5 +13,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     controller.loadDefaultSplashScreenView()
     window?.rootViewController = controller
     window?.makeKeyAndVisible()
+
+    // Forward any cold-launch URL (e.g. from a home screen widget tap) to the
+    // AppDelegate so registered Flutter plugins like home_widget can receive it.
+    if let url = connectionOptions.urlContexts.first?.url {
+      _ = UIApplication.shared.delegate?.application?(UIApplication.shared, open: url, options: [:])
+    }
+  }
+
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    guard let url = URLContexts.first?.url else { return }
+    _ = UIApplication.shared.delegate?.application?(UIApplication.shared, open: url, options: [:])
   }
 }
