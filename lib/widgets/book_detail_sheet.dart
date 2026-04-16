@@ -222,14 +222,23 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       setState(() => _coverScheme = ColorScheme.fromSeed(
         seedColor: seedColor, brightness: brightness));
     }).catchError((_) {
-      // Reset so a retry can re-derive if the image wasn't available yet.
-      _coverSchemeUrl = null;
+      if (!mounted) return;
+      setState(() {
+        _coverSchemeUrl = null;
+        _coverScheme = ColorScheme.fromSeed(
+          seedColor: Theme.of(context).colorScheme.primary,
+          brightness: brightness,
+        );
+      });
     });
   }
 
   String? get _coverUrl {
     final localCover = _item?['_localCoverUrl'] as String?;
     if (localCover != null && localCover.isNotEmpty) return localCover;
+    final media = _item?['media'] as Map<String, dynamic>?;
+    final coverPath = media?['coverPath'] as String?;
+    if (coverPath == null || coverPath.isEmpty) return null;
     return context.read<LibraryProvider>().getCoverUrl(widget.itemId, width: 800);
   }
 
@@ -237,6 +246,9 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   String? get _fullResCoverUrl {
     final localCover = _item?['_localCoverUrl'] as String?;
     if (localCover != null && localCover.isNotEmpty) return localCover;
+    final media = _item?['media'] as Map<String, dynamic>?;
+    final coverPath = media?['coverPath'] as String?;
+    if (coverPath == null || coverPath.isEmpty) return null;
     return context.read<LibraryProvider>().getCoverUrl(widget.itemId, width: 4000);
   }
 

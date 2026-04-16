@@ -108,6 +108,10 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
             final id = book['id'] as String?;
             final bts = book['updatedAt'] as num?;
             if (id != null && bts != null) lib.registerUpdatedAt(id, bts.toInt());
+            if (id != null) {
+              final coverPath = (book['media'] as Map<String, dynamic>?)?['coverPath'] as String?;
+              lib.registerHasCover(id, coverPath != null && coverPath.isNotEmpty);
+            }
           }
         }
         _isLoading = false;

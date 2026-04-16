@@ -723,6 +723,10 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
     final id = data['id'] as String?;
     final ts = data['updatedAt'] as num?;
     if (id != null && ts != null) _itemUpdatedAt[id] = ts.toInt();
+    if (id != null) {
+      final coverPath = (data['media'] as Map<String, dynamic>?)?['coverPath'] as String?;
+      registerHasCover(id, coverPath != null && coverPath.isNotEmpty);
+    }
     // Invalidate cached session metadata - track URLs may have changed
     if (id != null) SessionCache.clear(itemId: id);
     loadPersonalizedView(force: true);
@@ -852,6 +856,10 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
             final id = e['id'] as String?;
             final ts = e['updatedAt'] as num?;
             if (id != null && ts != null) _itemUpdatedAt[id] = ts.toInt();
+            if (id != null) {
+              final coverPath = (e['media'] as Map<String, dynamic>?)?['coverPath'] as String?;
+              registerHasCover(id, coverPath != null && coverPath.isNotEmpty);
+            }
           }
         }
       }

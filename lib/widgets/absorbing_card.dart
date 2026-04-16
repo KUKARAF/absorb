@@ -641,19 +641,19 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                                 _coverUrl != null
                                     ? _isLocalCover
                                         ? BlurPaddedCover(child: Image.file(File(_coverUrl!), fit: _rectangleCovers ? BoxFit.cover : BoxFit.contain,
-                                            errorBuilder: (_, __, ___) => const CoverPlaceholder()),
+                                            errorBuilder: (_, __, ___) => CoverPlaceholder(title: _title, author: _author)),
                                             blurChild: Image.file(File(_coverUrl!), fit: BoxFit.cover,
                                             errorBuilder: (_, __, ___) => const SizedBox.shrink()),
                                             enabled: !_rectangleCovers)
                                         : BlurPaddedCover(child: CachedNetworkImage(imageUrl: _coverUrl!, fit: _rectangleCovers ? BoxFit.cover : BoxFit.contain,
                                               httpHeaders: mediaHeaders,
-                                              placeholder: (_, __) => const CoverPlaceholder(),
-                                              errorWidget: (_, __, ___) => const CoverPlaceholder()),
+                                              placeholder: (_, __) => CoverPlaceholder(title: _title, author: _author),
+                                              errorWidget: (_, __, ___) => CoverPlaceholder(title: _title, author: _author)),
                                             blurChild: CachedNetworkImage(imageUrl: _coverUrl!, fit: BoxFit.cover,
                                               httpHeaders: mediaHeaders,
                                               errorWidget: (_, __, ___) => const SizedBox.shrink()),
                                             enabled: !_rectangleCovers)
-                                    : const CoverPlaceholder(),
+                                    : CoverPlaceholder(title: _title, author: _author),
                                                 // Casting overlay
                                 if (isCastingThis) ...[
                                   Positioned.fill(

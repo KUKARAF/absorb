@@ -56,14 +56,50 @@ IconData historyIcon(PlaybackEventType type) {
 }
 
 class CoverPlaceholder extends StatelessWidget {
-  const CoverPlaceholder({super.key});
+  final String? title;
+  final String? author;
+  const CoverPlaceholder({super.key, this.title, this.author});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final hasText = title != null && title!.isNotEmpty;
     return Container(
-      color: cs.onSurface.withValues(alpha: 0.05),
-      child: Center(child: Icon(Icons.headphones_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.15))),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.primaryContainer,
+            cs.surfaceContainerHighest,
+          ],
+        ),
+      ),
+      child: hasText
+          ? Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.auto_stories_rounded, size: 28,
+                      color: cs.onPrimaryContainer.withValues(alpha: 0.4)),
+                  const SizedBox(height: 8),
+                  Text(title!, textAlign: TextAlign.center, maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                          height: 1.2, color: cs.onPrimaryContainer)),
+                  if (author != null && author!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(author!, textAlign: TextAlign.center, maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11,
+                            color: cs.onPrimaryContainer.withValues(alpha: 0.7))),
+                  ],
+                ],
+              ),
+            )
+          : Center(child: Icon(Icons.auto_stories_rounded, size: 48,
+              color: cs.onPrimaryContainer.withValues(alpha: 0.3))),
     );
   }
 }

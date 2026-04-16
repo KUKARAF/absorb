@@ -294,23 +294,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     }
 
     final brightness = Theme.of(context).brightness;
-    debugPrint('[CoverScheme] Extracting from $coverUrl for item $itemId');
     PaletteGenerator.fromImageProvider(provider, maximumColorCount: 16)
         .then((palette) {
       final seedColor = palette.vibrantColor?.color
           ?? palette.dominantColor?.color
           ?? palette.colors.firstOrNull;
       if (seedColor == null) {
-        debugPrint('[CoverScheme] No colors extracted');
         _lastCoverItemId = null;
         return;
       }
-      debugPrint('[CoverScheme] Extracted seed: $seedColor (vibrant=${palette.vibrantColor?.color}, dominant=${palette.dominantColor?.color})');
       final scheme = ColorScheme.fromSeed(seedColor: seedColor, brightness: brightness);
       coverSchemeNotifier.value = scheme;
       PlayerSettings.setCoverSeedColor(seedColor.toARGB32());
-    }).catchError((e) {
-      debugPrint('[CoverScheme] Extraction failed: $e');
+    }).catchError((_) {
       _lastCoverItemId = null;
     });
     return true; // cover URL found, image load in progress

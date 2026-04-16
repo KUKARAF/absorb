@@ -177,11 +177,19 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
         final id = item['id'] as String?;
         final ts = item['updatedAt'] as num?;
         if (id != null && ts != null && lib != null) lib.registerUpdatedAt(id, ts.toInt());
+        if (id != null && lib != null) {
+          final coverPath = (item['media'] as Map<String, dynamic>?)?['coverPath'] as String?;
+          lib.registerHasCover(id, coverPath != null && coverPath.isNotEmpty);
+        }
         result.add(item);
       } else {
         final id = b['id'] as String?;
         final ts = b['updatedAt'] as num?;
         if (id != null && ts != null && lib != null) lib.registerUpdatedAt(id, ts.toInt());
+        if (id != null && lib != null) {
+          final coverPath = (b['media'] as Map<String, dynamic>?)?['coverPath'] as String?;
+          lib.registerHasCover(id, coverPath != null && coverPath.isNotEmpty);
+        }
         result.add(Map<String, dynamic>.from(b));
       }
     }

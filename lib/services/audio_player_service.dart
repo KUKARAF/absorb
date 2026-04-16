@@ -109,6 +109,13 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
           Future.delayed(const Duration(seconds: 1), _subscribePlaybackEvents);
         } else {
           debugPrint('[Player] playbackEvent error - too many rapid failures, stopping re-subscribe: $e');
+          final errStr = e.toString();
+          if (errStr.contains('MediaCodecAudioRenderer') ||
+              errStr.contains('AudioTrack') ||
+              errStr.contains('Decoder') ||
+              errStr.contains('format_supported')) {
+            AudioPlayerService()._retryWithTranscode();
+          }
         }
       },
       onDone: () {
@@ -1766,6 +1773,49 @@ class AudioPlayerService extends ChangeNotifier {
       return 'No audio files found - this item may be missing on the server';
     }
 
+    // Detect Dolby Atmos / EAC-3 / AC-3 tracks. Samsung has a hardware Dolby
+    // decoder and iOS AVPlayer handles EAC3 natively, so only force transcode
+    // on other Android devices where the software codec often fails or outputs silence.
+    if (!forceStartTime && Platform.isAndroid &&
+        !ApiService.deviceManufacturer.toLowerCase().contains('samsung')) {
+      final needsTranscode = audioTracks.any((t) {
+        final mime = ((t as Map<String, dynamic>)['mimeType'] as String? ?? '').toLowerCase();
+        final codec = (t['codec'] as String? ?? '').toLowerCase();
+        return mime.contains('eac3') || mime.contains('ac3') || mime.contains('ac4') ||
+            mime.contains('atmos') || codec.contains('eac3') || codec.contains('ac3') ||
+            codec.contains('ac4') || codec.contains('atmos');
+      });
+      if (needsTranscode) {
+        debugPrint('[Player] Dolby/EAC3 track detected - restarting with server transcoding');
+        try { await api.closePlaybackSession(_playbackSessionId!); } catch (_) {}
+        _playbackSessionId = null;
+        final retrySession = _currentEpisodeId != null
+            ? await api.startEpisodePlaybackSession(_currentItemId!, _currentEpisodeId!, forceTranscode: true)
+            : await api.startPlaybackSession(itemId, forceTranscode: true);
+        if (retrySession == null) {
+          _clearState();
+          return 'Could not start transcoded playback';
+        }
+        _playbackSessionId = retrySession['id'] as String?;
+        audioTracks = retrySession['audioTracks'] as List<dynamic>? ?? [];
+        if (audioTracks.isEmpty) {
+          _clearState();
+          return 'No audio files in transcoded session';
+        }
+        final sessionChapters = retrySession['chapters'] as List<dynamic>? ?? [];
+        if (sessionChapters.isNotEmpty) {
+          chapters = sessionChapters;
+          _chapters = sessionChapters;
+          _handler?.updateChaptersQueue(sessionChapters);
+        }
+        final sessionDur = (retrySession['duration'] as num?)?.toDouble() ?? 0;
+        if (sessionDur > 0) {
+          totalDuration = sessionDur;
+          _totalDuration = sessionDur;
+        }
+      }
+    }
+
     // Pick up chapters from session (e.g. podcast episodes with embedded chapters)
     if (chapters.isEmpty) {
       final sessionChapters = sessionData['chapters'] as List<dynamic>? ?? [];
@@ -1987,6 +2037,97 @@ class AudioPlayerService extends ChangeNotifier {
 
       _clearState();
       return 'Playback failed: ${e.toString().split('\n').first}';
+    }
+  }
+
+  bool _transcodeRetryInFlight = false;
+
+  Future<void> _retryWithTranscode() async {
+    if (_transcodeRetryInFlight) return;
+    _transcodeRetryInFlight = true;
+    try {
+      final api = _api;
+      if (api == null || _currentItemId == null) return;
+      debugPrint('[Player] Codec error in playback stream - retrying with server transcoding');
+      final itemId = _currentItemId!;
+      final retryEpId = _currentEpisodeId;
+      final retryEpTitle = _currentEpisodeTitle;
+      final retryTitle = _currentTitle ?? '';
+      final retryAuthor = _currentAuthor ?? '';
+      final retryCover = _currentCoverUrl;
+      final startTime = (_player?.position.inMilliseconds ?? 0) / 1000.0;
+      _clearState();
+      _currentItemId = itemId;
+      _currentEpisodeId = retryEpId;
+      _currentEpisodeTitle = retryEpTitle;
+      _currentTitle = retryTitle;
+      _currentAuthor = retryAuthor;
+      _currentCoverUrl = retryCover;
+      if (_playbackSessionId != null) {
+        try { await api.closePlaybackSession(_playbackSessionId!); } catch (_) {}
+        _playbackSessionId = null;
+      }
+      final retrySession = retryEpId != null
+          ? await api.startEpisodePlaybackSession(itemId, retryEpId, forceTranscode: true)
+          : await api.startPlaybackSession(itemId, forceTranscode: true);
+      if (retrySession == null) return;
+      _playbackSessionId = retrySession['id'] as String?;
+      _lastServerSync = DateTime.now();
+      final retryTracks = retrySession['audioTracks'] as List<dynamic>?;
+      final totalDuration = (retrySession['duration'] as num?)?.toDouble() ?? _totalDuration;
+      final chapters = retrySession['chapters'] as List<dynamic>? ?? _chapters;
+      _chapters = chapters;
+      _totalDuration = totalDuration;
+      if (retryTracks == null || retryTracks.isEmpty) return;
+      _currentTrackIndex = 0;
+      _buildTrackOffsets(retryTracks);
+      AudioSource retrySource;
+      final audioHeaders = api.mediaHeaders;
+      if (retryTracks.length == 1) {
+        final track = retryTracks.first as Map<String, dynamic>;
+        final contentUrl = track['contentUrl'] as String? ?? '';
+        retrySource = AudioSource.uri(Uri.parse(api.buildTrackUrl(contentUrl)), headers: audioHeaders);
+      } else {
+        final sources = <AudioSource>[];
+        for (final t in retryTracks) {
+          final track = t as Map<String, dynamic>;
+          final contentUrl = track['contentUrl'] as String? ?? '';
+          sources.add(AudioSource.uri(Uri.parse(api.buildTrackUrl(contentUrl)), headers: audioHeaders));
+        }
+        retrySource = ConcatenatingAudioSource(children: sources);
+      }
+      await _player!.setAudioSource(retrySource);
+      if (startTime > 0) await _seekAbsolute(startTime);
+      clearSeekTarget();
+      _subscribeTrackIndex();
+      final initChapter = _initChapterInfo(startTime);
+      _pushMediaItem(itemId, retryTitle, retryAuthor, retryCover, totalDuration, chapter: initChapter);
+      final bookSpeed = await PlayerSettings.getBookSpeed(itemId);
+      final speed = bookSpeed ?? await PlayerSettings.getDefaultSpeed();
+      await _player!.setSpeed(speed);
+      await EqualizerService().switchItem(itemId);
+      debugPrint('[Player] Transcoded playback starting at ${speed}x');
+      try { (await AudioSession.instance).setActive(true); } catch (_) {}
+      _player!.play();
+      notifyListeners();
+      _setupSync();
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _handler?.refreshPlaybackState();
+      });
+      final sleepTimer = SleepTimerService();
+      sleepTimer.resetDismiss();
+      sleepTimer.checkAutoSleep();
+      SessionCache.save(
+        itemId: itemId,
+        episodeId: retryEpId,
+        audioTracks: retryTracks,
+        chapters: chapters,
+        totalDuration: totalDuration,
+      );
+    } catch (e) {
+      debugPrint('[Player] Transcode retry failed: $e');
+    } finally {
+      _transcodeRetryInFlight = false;
     }
   }
 

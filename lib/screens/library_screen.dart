@@ -540,6 +540,10 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
             final id = r['id'] as String?;
             final ts = r['updatedAt'] as num?;
             if (id != null && ts != null) lib.registerUpdatedAt(id, ts.toInt());
+            if (id != null) {
+              final coverPath = (r['media'] as Map<String, dynamic>?)?['coverPath'] as String?;
+              lib.registerHasCover(id, coverPath != null && coverPath.isNotEmpty);
+            }
             if (useClientFilter && !DownloadService().isDownloaded(id ?? '')) continue;
             if (_hideEbookOnly && PlayerSettings.isEbookOnly(r)) continue;
             _items.add(r);
@@ -577,6 +581,10 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
               final id = r['id'] as String?;
               final ts = r['updatedAt'] as num?;
               if (id != null && ts != null) lib.registerUpdatedAt(id, ts.toInt());
+              if (id != null) {
+                final coverPath = (r['media'] as Map<String, dynamic>?)?['coverPath'] as String?;
+                lib.registerHasCover(id, coverPath != null && coverPath.isNotEmpty);
+              }
               if (_hideEbookOnly && PlayerSettings.isEbookOnly(r)) continue;
               _items.add(r);
             }

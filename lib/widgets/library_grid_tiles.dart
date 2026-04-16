@@ -86,8 +86,8 @@ class _GridBookTileState extends State<GridBookTile> {
                 children: [
                   // Cover image
                   coverUrl != null
-                      ? _blurCover(coverUrl, lib.mediaHeaders, cs, widget.coverAspectRatio)
-                      : _placeholder(cs),
+                      ? _blurCover(coverUrl, lib.mediaHeaders, cs, widget.coverAspectRatio, title, author)
+                      : CoverPlaceholder(title: title, author: author),
 
                   // Progress bar at bottom of cover
                   if (progress > 0 && !isFinished)
@@ -230,42 +230,32 @@ class _GridBookTileState extends State<GridBookTile> {
     );
   }
 
-  Widget _blurCover(String coverUrl, Map<String, String> headers, ColorScheme cs, double aspectRatio) {
+  Widget _blurCover(String coverUrl, Map<String, String> headers, ColorScheme cs, double aspectRatio, String title, String author) {
+    final placeholder = CoverPlaceholder(title: title, author: author);
     final isSquare = (aspectRatio - 1.0).abs() < 0.01;
-    // Skip blur overhead for rectangular covers - they fill the space naturally
     if (!isSquare) {
       if (coverUrl.startsWith('/')) {
         return Image.file(File(coverUrl), fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _placeholder(cs));
+            errorBuilder: (_, __, ___) => placeholder);
       }
       return CachedNetworkImage(imageUrl: coverUrl, fit: BoxFit.cover,
-          httpHeaders: headers, placeholder: (_, __) => _placeholder(cs),
-          errorWidget: (_, __, ___) => _placeholder(cs));
+          httpHeaders: headers, placeholder: (_, __) => placeholder,
+          errorWidget: (_, __, ___) => placeholder);
     }
     if (coverUrl.startsWith('/')) {
       return BlurPaddedCover(
         child: Image.file(File(coverUrl), fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => _placeholder(cs)),
+            errorBuilder: (_, __, ___) => placeholder),
         blurChild: Image.file(File(coverUrl), fit: BoxFit.cover,
             errorBuilder: (_, __ ,___) => const SizedBox.shrink()),
       );
     }
     return BlurPaddedCover(
       child: CachedNetworkImage(imageUrl: coverUrl, fit: BoxFit.contain,
-          httpHeaders: headers, placeholder: (_, __) => _placeholder(cs),
-          errorWidget: (_, __, ___) => _placeholder(cs)),
+          httpHeaders: headers, placeholder: (_, __) => placeholder,
+          errorWidget: (_, __, ___) => placeholder),
       blurChild: CachedNetworkImage(imageUrl: coverUrl, fit: BoxFit.cover,
           httpHeaders: headers, errorWidget: (_, __, ___) => const SizedBox.shrink()),
-    );
-  }
-
-  Widget _placeholder(ColorScheme cs) {
-    return Container(
-      color: cs.surfaceContainerHighest,
-      child: Center(
-        child: Icon(Icons.headphones_rounded,
-            size: 24, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
-      ),
     );
   }
 }

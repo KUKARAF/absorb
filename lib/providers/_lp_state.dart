@@ -13,6 +13,7 @@ mixin _StateMixin on ChangeNotifier {
   String? _errorMessage;
 
   final Map<String, int> _itemUpdatedAt = {};
+  final Set<String> _itemsWithoutCover = {};
 
   Future<void>? _personalizedInFlight;
   Future<void>? _progressShelvesInFlight;
@@ -157,6 +158,14 @@ mixin _StateMixin on ChangeNotifier {
 
   void registerUpdatedAt(String id, int ts) => _itemUpdatedAt[id] = ts;
 
+  void registerHasCover(String id, bool hasCover) {
+    if (hasCover) {
+      _itemsWithoutCover.remove(id);
+    } else {
+      _itemsWithoutCover.add(id);
+    }
+  }
+
   bool _isLikelyNetworkError(Object error) {
     return error is SocketException ||
         error is TimeoutException ||
@@ -246,6 +255,8 @@ mixin _StateMixin on ChangeNotifier {
 
     final isCompositeKey = itemId.length > 36;
     final apiItemId = isCompositeKey ? itemId.substring(0, 36) : itemId;
+
+    if (_itemsWithoutCover.contains(apiItemId)) return null;
 
     if (_api != null && !isOffline) {
       final ts = _itemUpdatedAt[apiItemId];
