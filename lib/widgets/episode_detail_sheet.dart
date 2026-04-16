@@ -95,14 +95,18 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
     // collapsed after tab transition races with sheet pop animations.
     final rootNav = Navigator.of(context, rootNavigator: true);
     final rootContext = rootNav.context;
+    debugPrint('[PodcastPlay] Popping stacked sheets before playItem (item=$_itemId episode=$_episodeId)');
     rootNav.popUntil((route) => route.isFirst);
+    debugPrint('[PodcastPlay] Sheets popped, calling playItem');
 
+    final t0 = DateTime.now();
     final error = await AudioPlayerService().playItem(
       api: api, itemId: _itemId, title: _episodeTitle, author: _showTitle,
       coverUrl: api.getCoverUrl(_itemId), totalDuration: _duration, chapters: _chapters,
       episodeId: _episodeId,
       episodeTitle: _episodeTitle,
     );
+    debugPrint('[PodcastPlay] playItem returned in ${DateTime.now().difference(t0).inMilliseconds}ms (error=${error ?? 'none'})');
     if (error != null && rootContext.mounted) {
       showErrorSnackBar(rootContext, error);
     }

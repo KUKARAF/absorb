@@ -480,6 +480,8 @@ class SleepTimerService extends ChangeNotifier {
   }
 
   void _onSettingsUpdated() {
+    final s = _autoSleepSettings;
+    debugPrint('[SleepTimer] _onSettingsUpdated enabled=${s?.enabled} window=${s?.startLabel}-${s?.endLabel} mode=${s?.useEndOfChapter == true ? "chapter" : "${s?.durationMinutes}m"} autoStarted=$_autoStarted isActive=$isActive');
     // Cancel stale boundary timer — it was for the old window
     _windowBoundaryTimer?.cancel();
     _windowBoundaryTimer = null;
@@ -517,9 +519,13 @@ class SleepTimerService extends ChangeNotifier {
   Future<void> checkAutoSleep() async {
     if (_autoSleepSettings == null) await loadAutoSleepSettings();
     final settings = _autoSleepSettings;
-    if (settings == null || !settings.enabled) return;
+    if (settings == null || !settings.enabled) {
+      debugPrint('[SleepTimer] checkAutoSleep: disabled or no settings');
+      return;
+    }
 
     final inWindow = settings.isInWindow();
+    debugPrint('[SleepTimer] checkAutoSleep: inWindow=$inWindow isActive=$isActive dismissed=$_autoSleepDismissed autoStarted=$_autoStarted');
 
     // If we just left the window, reset the dismiss flag for next entry
     if (!inWindow && _wasInWindow) {

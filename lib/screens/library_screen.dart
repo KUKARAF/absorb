@@ -594,6 +594,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
           // Client-side filters (e.g. hide-ebook-only) reduce _items below total,
           // which would leave _hasMore permanently true and the loader spinning.
           _hasMore = results.length >= _pageSize;
+          debugPrint('[LibPage] page=${_page - 1} results=${results.length} pageSize=$_pageSize filtered=${_items.length} total=$total hideEbook=$_hideEbookOnly hasMore=$_hasMore');
           _isLoadingPage = false;
         });
       } else if (mounted && gen == _loadGeneration) {

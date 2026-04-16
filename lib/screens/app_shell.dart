@@ -113,6 +113,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
   /// Subscribe to the active screen's barsVisibleNotifier when on Home or
   /// Library tab, and ensure the nav bar is visible on all other tabs.
   void _syncNavBarListener(int index) {
+    debugPrint('[NavBar] _syncNavBarListener(index=$index) ctrl=${_navBarAnimController.value.toStringAsFixed(2)}');
     _detachNavBarListener();
     ValueNotifier<bool>? notifier;
     if (index == 0) {
@@ -131,11 +132,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
       };
       notifier.addListener(_navBarListener!);
       _navBarListener!();
+      debugPrint('[NavBar] Attached listener to tab=$index notifier.value=${notifier.value} ctrl=${_navBarAnimController.value.toStringAsFixed(2)}');
     } else {
       // Not a scroll-hide tab - force nav bar visible immediately.
       // Use .value to snap instead of animate, avoiding races where
       // the controller gets stuck mid-animation.
       _navBarAnimController.value = 1.0;
+      debugPrint('[NavBar] Snap to 1.0 for non-scroll tab=$index');
     }
   }
 

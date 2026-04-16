@@ -92,6 +92,8 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
   }
 
   Future<void> _loadItem() async {
+    debugPrint('[BookDetail] _loadItem start item=${widget.itemId}');
+    final loadStart = DateTime.now();
     // Force re-derivation of cover scheme on reload (cover may have changed).
     _coverSchemeUrl = null;
     final auth = context.read<AuthProvider>();
@@ -102,6 +104,7 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     if (api != null && !lib.isOffline) {
       try {
         final item = await api.getLibraryItem(widget.itemId);
+        debugPrint('[BookDetail] server fetch done in ${DateTime.now().difference(loadStart).inMilliseconds}ms (item=${item != null ? "ok" : "null"})');
         if (item != null && mounted) {
           // Apply local metadata overrides
           final overrideService = MetadataOverrideService();
@@ -201,9 +204,15 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
 
   void _deriveCoverScheme() {
     final url = _coverUrl;
-    if (url == null) return;
+    if (url == null) {
+      debugPrint('[BookDetail] _deriveCoverScheme skipped (no cover url)');
+      return;
+    }
     // Skip if the scheme was already derived from this exact URL.
-    if (url == _coverSchemeUrl) return;
+    if (url == _coverSchemeUrl) {
+      debugPrint('[BookDetail] _deriveCoverScheme skipped (cached for this url)');
+      return;
+    }
     _coverSchemeUrl = url;
     final brightness = Theme.of(context).brightness;
     final ImageProvider provider;
@@ -213,15 +222,19 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       final lib = context.read<LibraryProvider>();
       provider = CachedNetworkImageProvider(url, headers: lib.mediaHeaders);
     }
+    final t0 = DateTime.now();
+    debugPrint('[BookDetail] _deriveCoverScheme start url=$url');
     PaletteGenerator.fromImageProvider(provider, maximumColorCount: 16)
         .then((palette) {
+      debugPrint('[BookDetail] PaletteGenerator ok in ${DateTime.now().difference(t0).inMilliseconds}ms');
       final seedColor = palette.vibrantColor?.color
           ?? palette.dominantColor?.color
           ?? palette.colors.firstOrNull;
       if (seedColor == null || !mounted) return;
       setState(() => _coverScheme = ColorScheme.fromSeed(
         seedColor: seedColor, brightness: brightness));
-    }).catchError((_) {
+    }).catchError((e) {
+      debugPrint('[BookDetail] PaletteGenerator error after ${DateTime.now().difference(t0).inMilliseconds}ms: $e');
       if (!mounted) return;
       setState(() {
         _coverSchemeUrl = null;
