@@ -2893,15 +2893,18 @@ class AudioPlayerService extends ChangeNotifier {
             }
           }
           await _seekAbsolute(newPosSeconds);
-          _logEvent(PlaybackEventType.autoRewind,
-              detail: '${rewindSeconds.toStringAsFixed(1)}s rewind');
           // Store the actual book-time position delta, not raw rewindSeconds.
           // At speed>1.0 the delta is larger (rewindSeconds * speed), and the
           // chapter barrier above may cap it smaller. The "server ahead on
           // resume" check compares serverPos vs localPos+_lastAutoRewindAmount;
           // using raw seconds at 1.4x makes it misread a legitimate auto-rewind
           // gap as the server being ahead and seeks forward, erasing the rewind.
-          _lastAutoRewindAmount = currentAbsolutePos - newPosSeconds;
+          final actualDelta = currentAbsolutePos - newPosSeconds;
+          _lastAutoRewindAmount = actualDelta;
+          final rewindDetail = currentSpeed == 1.0
+              ? '${rewindSeconds.toStringAsFixed(1)}s rewind'
+              : '${rewindSeconds.toStringAsFixed(1)}s rewind (${actualDelta.toStringAsFixed(1)}s at ${currentSpeed.toStringAsFixed(2)}x)';
+          _logEvent(PlaybackEventType.autoRewind, detail: rewindDetail);
           debugPrint(
               '[Player] Auto-rewind ${rewindSeconds.toStringAsFixed(1)}s '
               '(paused ${pauseDuration.inSeconds}s)');
