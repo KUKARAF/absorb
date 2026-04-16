@@ -590,7 +590,10 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
             }
           }
           _page++;
-          _hasMore = _items.length < total;
+          // Compare raw server results to page size, not filtered _items to total.
+          // Client-side filters (e.g. hide-ebook-only) reduce _items below total,
+          // which would leave _hasMore permanently true and the loader spinning.
+          _hasMore = results.length >= _pageSize;
           _isLoadingPage = false;
         });
       } else if (mounted && gen == _loadGeneration) {
