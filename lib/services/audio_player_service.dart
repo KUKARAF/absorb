@@ -2500,6 +2500,11 @@ class AudioPlayerService extends ChangeNotifier {
                 ? '$_currentItemId-$_currentEpisodeId'
                 : _currentItemId!;
             _progressSync.addOfflineListeningTime(progressKey, sinceLastSync.clamp(0, 300));
+            // Reset the sync clock so the next tick waits a full interval
+            // before accumulating again. Without this, every subsequent tick
+            // (every 3-5s of position time) passes the threshold and tacks
+            // on another 300s, inflating offline listening by 10-20x.
+            _lastServerSync = DateTime.now();
           }
 
           if (manualOffline) {
