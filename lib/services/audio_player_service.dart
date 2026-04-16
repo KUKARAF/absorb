@@ -1334,7 +1334,7 @@ class AudioPlayerService extends ChangeNotifier {
           // Use actual book-time delta so chapter barrier caps are reflected.
           _lastAutoRewindAmount = currentAbsolutePos - newPosSeconds;
           _logEvent(PlaybackEventType.autoRewind,
-              detail: '${rewindSeconds.toStringAsFixed(1)}s session-start rewind');
+              detail: '${rewindSeconds.toStringAsFixed(1)}s (session start)');
           debugPrint(
               '[Player] Session-start rewind ${rewindSeconds.toStringAsFixed(1)}s');
         }
@@ -2902,8 +2902,8 @@ class AudioPlayerService extends ChangeNotifier {
           final actualDelta = currentAbsolutePos - newPosSeconds;
           _lastAutoRewindAmount = actualDelta;
           final rewindDetail = currentSpeed == 1.0
-              ? '${rewindSeconds.toStringAsFixed(1)}s rewind'
-              : '${rewindSeconds.toStringAsFixed(1)}s rewind (${actualDelta.toStringAsFixed(1)}s at ${currentSpeed.toStringAsFixed(2)}x)';
+              ? '${rewindSeconds.toStringAsFixed(1)}s'
+              : '${rewindSeconds.toStringAsFixed(1)}s (${actualDelta.toStringAsFixed(1)}s at ${currentSpeed.toStringAsFixed(2)}x)';
           _logEvent(PlaybackEventType.autoRewind, detail: rewindDetail);
           debugPrint(
               '[Player] Auto-rewind ${rewindSeconds.toStringAsFixed(1)}s '
