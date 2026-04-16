@@ -90,15 +90,21 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
       return;
     }
 
+    // Close sheets BEFORE starting playback so the callback-driven tab switch
+    // inside playItem() lands on a clean nav stack. Fixes iOS nav bar stuck
+    // collapsed after tab transition races with sheet pop animations.
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    final rootContext = rootNav.context;
+    rootNav.popUntil((route) => route.isFirst);
+
     final error = await AudioPlayerService().playItem(
       api: api, itemId: _itemId, title: _episodeTitle, author: _showTitle,
       coverUrl: api.getCoverUrl(_itemId), totalDuration: _duration, chapters: _chapters,
       episodeId: _episodeId,
       episodeTitle: _episodeTitle,
     );
-    if (mounted) {
-      if (error != null) showErrorSnackBar(context, error);
-      Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+    if (error != null && rootContext.mounted) {
+      showErrorSnackBar(rootContext, error);
     }
   }
 
