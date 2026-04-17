@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
@@ -55,6 +56,24 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     _onSearchChanged('');
     _focusNode.unfocus();
     _showBars();
+  }
+
+  /// Give focus to the search bar (used by the app-icon "Search" shortcut).
+  void focusSearch() {
+    if (!mounted) return;
+    _showBars();
+    FocusScope.of(context).requestFocus(_focusNode);
+    // Delay the explicit keyboard-show so focus has time to attach to the
+    // text field and any in-flight navigation (popping Downloads/Bookmarks,
+    // fading into the Library tab) can settle. Without this delay the IME
+    // connection isn't ready yet and TextInput.show is a no-op.
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      if (!_focusNode.hasFocus) {
+        FocusScope.of(context).requestFocus(_focusNode);
+      }
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    });
   }
   List<dynamic> _searchBookResults = [];
   List<dynamic> _searchSeriesResults = [];

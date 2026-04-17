@@ -24,6 +24,7 @@ import 'services/android_auto_service.dart';
 import 'services/chromecast_service.dart';
 import 'services/home_widget_service.dart';
 import 'services/log_service.dart';
+import 'services/quick_actions_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/app_shell.dart';
 import 'widgets/absorb_wave_icon.dart';
@@ -72,6 +73,11 @@ void applyTrustAllCerts(bool enabled) {
 /// Global key so non-widget code (e.g. providers) can show snackbars.
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
+
+/// Global navigator key so non-widget code (e.g. app-icon shortcut handlers)
+/// can push routes without needing a BuildContext.
+final GlobalKey<NavigatorState> rootNavigatorKey =
+    GlobalKey<NavigatorState>();
 
 ThemeMode parseThemeMode(String value) {
   switch (value) {
@@ -220,6 +226,7 @@ class AbsorbApp extends StatelessWidget {
 
             return MaterialApp(
               scaffoldMessengerKey: scaffoldMessengerKey,
+              navigatorKey: rootNavigatorKey,
               title: 'Absorb',
               debugShowCheckedModeBanner: false,
               localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -487,6 +494,10 @@ class _AuthGateState extends State<AuthGate> {
         Future.microtask(() => AndroidAutoService().refresh());
         // Initialize homescreen widget
         await HomeWidgetService().init();
+        // App-icon long-press shortcuts (Continue Listening / Downloads).
+        // Depends on AudioPlayerService + HomeWidgetService so they're ready
+        // when the shortcut handler fires.
+        await QuickActionsService().init();
       }
     } catch (e) {
       debugPrint('[Init] Service init failed: $e');

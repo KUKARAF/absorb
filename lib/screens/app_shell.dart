@@ -11,7 +11,8 @@ import '../services/sleep_timer_service.dart';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:palette_generator/palette_generator.dart';
-import '../main.dart' show snappyTransitionsNotifier, coverSchemeNotifier;
+import '../main.dart'
+    show snappyTransitionsNotifier, coverSchemeNotifier, rootNavigatorKey;
 import '../l10n/app_localizations.dart';
 import '../services/android_auto_service.dart';
 import '../widgets/expanded_card.dart';
@@ -41,6 +42,16 @@ class AppShell extends StatefulWidget {
   /// Track when expanded card is opened/closed externally (e.g. chevron tap).
   static void setExpandedOpen(bool open) {
     _AppShellState._instance?._expandedIsOpen = open;
+  }
+
+  /// Switch to the Library tab and focus the search bar. Used by the
+  /// app-icon "Search" shortcut. Returns false when the shell isn't mounted
+  /// yet so callers can retry during cold start.
+  static bool openSearchGlobal() {
+    final inst = _AppShellState._instance;
+    if (inst == null) return false;
+    inst._openSearch();
+    return true;
   }
 
   @override
@@ -75,6 +86,33 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
   // Lazily build tabs so startup on Absorbing does not initialize Home/Library
   // work until the user actually visits those tabs.
   final List<Widget?> _pages = List<Widget?>.filled(5, null, growable: false);
+
+  void _openSearch() {
+    if (!mounted) return;
+    // If the user triggered Search while a pushed route (Downloads, Bookmarks,
+    // Settings pages, etc.) is on top of the shell, pop back so the shell's
+    // Library tab actually becomes visible.
+    final nav = rootNavigatorKey.currentState;
+    if (nav != null && nav.canPop()) {
+      nav.popUntil((r) => r.isFirst);
+    }
+    _navigateTo(1);
+    // Library tab may need a frame to mount its state before we can focus
+    // the search field. Retry up to a few frames to cover fade transitions.
+    int attempts = 0;
+    void tryFocus() {
+      if (!mounted) return;
+      final state = _libraryKey.currentState;
+      if (state != null) {
+        state.focusSearch();
+        return;
+      }
+      if (++attempts < 10) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => tryFocus());
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => tryFocus());
+  }
 
   void _switchToAbsorbing() {
     if (mounted) {
