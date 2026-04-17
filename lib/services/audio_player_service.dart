@@ -1150,6 +1150,7 @@ class AudioPlayerService extends ChangeNotifier {
   static Future<void> onAppForegrounded() async {
     final service = _instance;
     service._isBackgrounded = false;
+    service._positionSyncFailures = 0; // retry on foreground
     if (!service.hasBook) return;
     debugPrint('[MediaSession] Foregrounded - refreshing (playing=${service.isPlaying}, session=${service._playbackSessionId != null}, item=${service._currentItemId})');
     // Flush missed UI updates from background
@@ -2361,6 +2362,8 @@ class AudioPlayerService extends ChangeNotifier {
     _lastChapterCheckSec = -1;
     _lastKnownPositionSec = 0;
     _lastServerSync = DateTime.now();
+    _positionSyncInProgress = false;
+    _positionSyncFailures = 0;
     // Cache prefs in background - not needed synchronously here
     if (_prefs == null) {
       SharedPreferences.getInstance().then((p) => _prefs = p);
@@ -2499,44 +2502,56 @@ class AudioPlayerService extends ChangeNotifier {
         // Sync to server: 60s foreground, 300s background
         final syncInterval = _isBackgrounded ? 300 : 60;
         final sinceLastSync = DateTime.now().difference(_lastServerSync).inSeconds;
-        if (sinceLastSync >= syncInterval) {
-          final manualOffline = (_prefs ?? await SharedPreferences.getInstance())
-              .getBool('manual_offline_mode') ?? false;
+        if (sinceLastSync >= syncInterval && !_positionSyncInProgress) {
+          _positionSyncInProgress = true;
+          try {
+            final manualOffline = (_prefs ?? await SharedPreferences.getInstance())
+                .getBool('manual_offline_mode') ?? false;
 
-          if (manualOffline || _isOfflineMode || _playbackSessionId == null) {
-            // Offline or no session - accumulate listening time locally
-            final progressKey = _currentEpisodeId != null
-                ? '$_currentItemId-$_currentEpisodeId'
-                : _currentItemId!;
-            _progressSync.addOfflineListeningTime(progressKey, sinceLastSync.clamp(0, 300));
-            // Reset the sync clock so the next tick waits a full interval
-            // before accumulating again. Without this, every subsequent tick
-            // (every 3-5s of position time) passes the threshold and tacks
-            // on another 300s, inflating offline listening by 10-20x.
-            _lastServerSync = DateTime.now();
-          }
-
-          if (manualOffline) {
-            // Manual offline — local save only, no server sync
-          } else if (!_isOfflineMode && _playbackSessionId != null) {
-            // Streaming/local with session: sync via session
-            _syncToServer(absolutePos);
-          } else if (!_isOfflineMode && _api != null && _currentItemId != null) {
-            // No session but online — sync via progress update endpoint
-            try {
-              final syncKey = _currentEpisodeId != null
+            if (manualOffline || _isOfflineMode || _playbackSessionId == null) {
+              // Offline or no session - accumulate listening time locally
+              final progressKey = _currentEpisodeId != null
                   ? '$_currentItemId-$_currentEpisodeId'
                   : _currentItemId!;
-              final ok = await _progressSync.syncToServer(
-                  api: _api!, itemId: syncKey);
-              if (ok) {
-                debugPrint('[Player] No-session sync succeeded');
-              } else {
-                debugPrint('[Player] No-session sync returned false');
-              }
-            } catch (e) {
-              debugPrint('[Player] No-session sync error: $e');
+              _progressSync.addOfflineListeningTime(progressKey, sinceLastSync.clamp(0, 300));
+              // Reset the sync clock so the next tick waits a full interval
+              // before accumulating again.
+              _lastServerSync = DateTime.now();
             }
+
+            // Back off when the server is unreachable to avoid hammering
+            // every sync interval with requests that will just timeout.
+            if (_positionSyncFailures >= 3) {
+              // Skip server sync - will retry after connectivity change
+              // or app foreground resets the counter.
+              _lastServerSync = DateTime.now();
+            } else if (manualOffline) {
+              // Manual offline - local save only, no server sync
+            } else if (!_isOfflineMode && _playbackSessionId != null) {
+              // Streaming/local with session: sync via session
+              _syncToServer(absolutePos);
+            } else if (!_isOfflineMode && _api != null && _currentItemId != null) {
+              // No session but online - sync via progress update endpoint
+              try {
+                final syncKey = _currentEpisodeId != null
+                    ? '$_currentItemId-$_currentEpisodeId'
+                    : _currentItemId!;
+                final ok = await _progressSync.syncToServer(
+                    api: _api!, itemId: syncKey);
+                if (ok) {
+                  debugPrint('[Player] No-session sync succeeded');
+                  _positionSyncFailures = 0;
+                } else {
+                  _positionSyncFailures++;
+                  debugPrint('[Player] No-session sync returned false (failures=$_positionSyncFailures)');
+                }
+              } catch (e) {
+                _positionSyncFailures++;
+                debugPrint('[Player] No-session sync error (failures=$_positionSyncFailures): $e');
+              }
+            }
+          } finally {
+            _positionSyncInProgress = false;
           }
         }
       }
@@ -2764,6 +2779,8 @@ class AudioPlayerService extends ChangeNotifier {
 
   DateTime _lastServerSync = DateTime.now();
   bool _syncRecoveryInProgress = false;
+  bool _positionSyncInProgress = false;
+  int _positionSyncFailures = 0;
 
   Future<void> _syncToServer(Duration pos) async {
     if (_api == null || _playbackSessionId == null) return;

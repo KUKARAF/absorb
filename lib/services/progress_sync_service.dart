@@ -272,11 +272,11 @@ class ProgressSyncService {
             );
           }
           debugPrint('[Sync] Flushed $itemId via progress update: ${localTime}s');
-          // Decay backoff on success instead of resetting - avoids
-          // hammering when the server is intermittently reachable
+          // Reset backoff on success - a successful response proves
+          // the server is reachable, so resume normal sync behaviour.
           if (_consecutiveFailures > 0) {
-            _consecutiveFailures--;
-            debugPrint('[Sync] Backoff decayed to $_consecutiveFailures');
+            debugPrint('[Sync] Backoff reset (was $_consecutiveFailures)');
+            _consecutiveFailures = 0;
           }
 
           final updated = await ScopedPrefs.getStringList('pending_syncs');
