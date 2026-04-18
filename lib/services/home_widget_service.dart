@@ -52,7 +52,8 @@ class HomeWidgetService {
         debugPrint('[WidgetDebug] Failed to get group container path: $e');
       }
 
-      // Receive widget AppIntent actions forwarded from AppDelegate.
+      // Receive widget AppIntent actions (and bridged Swift log lines)
+      // forwarded from AppDelegate.
       _widgetChannel.setMethodCallHandler((call) async {
         if (call.method == 'widgetAction') {
           final action = (call.arguments as Map?)?['action'] as String?;
@@ -68,6 +69,9 @@ class HomeWidgetService {
               _handleSkipForward();
               break;
           }
+        } else if (call.method == 'log') {
+          final msg = (call.arguments as Map?)?['msg'] as String?;
+          if (msg != null) debugPrint('[WidgetDebug] $msg');
         }
         return null;
       });
