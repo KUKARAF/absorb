@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import AVFoundation
+import just_audio
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -52,9 +53,56 @@ import AVFoundation
     let eqChannel = FlutterMethodChannel(name: "com.absorb.equalizer",
                                           binaryMessenger: controller.binaryMessenger)
     eqChannel.setMethodCallHandler { [weak self] (call, result) in
+      let args = call.arguments as? [String: Any]
       switch call.method {
       case "isBluetoothAudioConnected":
         result(self?.isBluetoothAudioConnected() ?? false)
+
+      case "init":
+        // iOS has no system EQ, so we advertise a fixed 5-band layout that
+        // matches what AudioEQProcessor's biquad filters handle.
+        result([
+          "bands": 5,
+          "frequencies": [60, 230, 910, 3600, 14000],
+          "minLevel": -15.0,
+          "maxLevel": 15.0,
+        ] as [String: Any])
+
+      case "attachSession":
+        // No-op on iOS - the processing tap is attached per player item in
+        // UriAudioSource.m, not via a session ID like Android's EQ APIs.
+        result(true)
+
+      case "setEnabled":
+        let enabled = args?["enabled"] as? Bool ?? false
+        AudioEQProcessor.shared.setEnabled(enabled)
+        result(true)
+
+      case "setBand":
+        let band = args?["band"] as? Int ?? 0
+        let level = args?["level"] as? Int ?? 0
+        AudioEQProcessor.shared.setBandLevel(Int32(level), forBand: Int32(band))
+        result(true)
+
+      case "setBassBoost":
+        let strength = args?["strength"] as? Int ?? 0
+        AudioEQProcessor.shared.setBassBoostStrength(Int32(strength))
+        result(true)
+
+      case "setVirtualizer":
+        // No iOS equivalent of Android's Virtualizer effect.
+        result(true)
+
+      case "setLoudness":
+        let gain = args?["gain"] as? Int ?? 0
+        AudioEQProcessor.shared.setLoudnessGain(Int32(gain))
+        result(true)
+
+      case "setMono":
+        let enabled = args?["enabled"] as? Bool ?? false
+        AudioEQProcessor.shared.setMonoEnabled(enabled)
+        result(true)
+
       default:
         result(FlutterMethodNotImplemented)
       }

@@ -1,0 +1,397 @@
+#import "./include/just_audio/AudioEQProcessor.h"
+#import <MediaToolbox/MediaToolbox.h>
+#import <Accelerate/Accelerate.h>
+#import <stdatomic.h>
+#import <math.h>
+
+// ── Constants ──
+
+#define EQ_NUM_BANDS    5
+#define MAX_CHANNELS    2
+
+static const float kBandFrequencies[EQ_NUM_BANDS] = {60.0f, 230.0f, 910.0f, 3600.0f, 14000.0f};
+static const float kDefaultQ = 1.4f;  // Q factor for peaking EQ bands
+
+// ── Biquad filter coefficients (normalised: a0 = 1) ──
+
+typedef struct {
+    float b0, b1, b2, a1, a2;
+} BiquadCoeffs;
+
+// ── Per-channel delay line for one biquad section ──
+
+typedef struct {
+    float x1, x2;  // input delay
+    float y1, y2;  // output delay
+} BiquadDelay;
+
+// ── Shared atomic parameter block ──
+// Written from main thread, read from real-time audio thread.
+
+typedef struct {
+    _Atomic(int)  enabled;
+    _Atomic(int)  mono;
+    _Atomic(int)  loudnessGainMb;  // millibels
+    _Atomic(int)  bassBoostStrength; // 0-1000
+
+    // Band levels in millibels (-1500 to +1500)
+    _Atomic(int)  bandLevels[EQ_NUM_BANDS];
+
+    // Coefficient version counter - bumped whenever coefficients change.
+    _Atomic(int)  coeffVersion;
+} EQParams;
+
+// ── Per-tap context (allocated in tapInit, freed in tapFinalize) ──
+
+typedef struct {
+    BiquadDelay delays[EQ_NUM_BANDS][MAX_CHANNELS];
+    BiquadDelay bassDelay[MAX_CHANNELS];  // bass boost shelf filter
+    BiquadCoeffs coeffs[EQ_NUM_BANDS];
+    BiquadCoeffs bassCoeffs;
+    float sampleRate;
+    int numChannels;
+    int lastCoeffVersion;
+} TapContext;
+
+// ── Singleton storage ──
+
+static EQParams sParams;
+
+// ── Biquad coefficient calculation ──
+
+/// Peaking EQ filter coefficients (constant-Q).
+static BiquadCoeffs peakingEQ(float f0, float dBGain, float Q, float Fs) {
+    BiquadCoeffs c = {1, 0, 0, 0, 0};
+    if (Fs <= 0) return c;
+
+    float A     = powf(10.0f, dBGain / 40.0f);
+    float w0    = 2.0f * M_PI * f0 / Fs;
+    float sinw  = sinf(w0);
+    float cosw  = cosf(w0);
+    float alpha = sinw / (2.0f * Q);
+
+    float a0 = 1.0f + alpha / A;
+    c.b0 = (1.0f + alpha * A) / a0;
+    c.b1 = (-2.0f * cosw) / a0;
+    c.b2 = (1.0f - alpha * A) / a0;
+    c.a1 = (-2.0f * cosw) / a0;
+    c.a2 = (1.0f - alpha / A) / a0;
+    return c;
+}
+
+/// Low-shelf filter coefficients for bass boost.
+static BiquadCoeffs lowShelf(float f0, float dBGain, float Fs) {
+    BiquadCoeffs c = {1, 0, 0, 0, 0};
+    if (Fs <= 0) return c;
+
+    float A     = powf(10.0f, dBGain / 40.0f);
+    float w0    = 2.0f * M_PI * f0 / Fs;
+    float sinw  = sinf(w0);
+    float cosw  = cosf(w0);
+    float alpha = sinw / 2.0f * sqrtf((A + 1.0f / A) * (1.0f / 0.7071f - 1.0f) + 2.0f);
+    float sqrtA2alpha = 2.0f * sqrtf(A) * alpha;
+
+    float a0 = (A + 1.0f) + (A - 1.0f) * cosw + sqrtA2alpha;
+    c.b0 = (A * ((A + 1.0f) - (A - 1.0f) * cosw + sqrtA2alpha)) / a0;
+    c.b1 = (2.0f * A * ((A - 1.0f) - (A + 1.0f) * cosw)) / a0;
+    c.b2 = (A * ((A + 1.0f) - (A - 1.0f) * cosw - sqrtA2alpha)) / a0;
+    c.a1 = (-2.0f * ((A - 1.0f) + (A + 1.0f) * cosw)) / a0;
+    c.a2 = ((A + 1.0f) + (A - 1.0f) * cosw - sqrtA2alpha) / a0;
+    return c;
+}
+
+// ── Inline biquad processing ──
+
+static inline float processBiquad(BiquadCoeffs *c, BiquadDelay *d, float x) {
+    float y = c->b0 * x + c->b1 * d->x1 + c->b2 * d->x2
+                         - c->a1 * d->y1 - c->a2 * d->y2;
+    d->x2 = d->x1;
+    d->x1 = x;
+    d->y2 = d->y1;
+    d->y1 = y;
+    return y;
+}
+
+// ── Rebuild coefficients in tap context from current params ──
+
+static void rebuildCoefficients(TapContext *ctx) {
+    float Fs = ctx->sampleRate;
+    for (int i = 0; i < EQ_NUM_BANDS; i++) {
+        float dBGain = (float)atomic_load_explicit(&sParams.bandLevels[i], memory_order_relaxed) / 100.0f;
+        ctx->coeffs[i] = peakingEQ(kBandFrequencies[i], dBGain, kDefaultQ, Fs);
+    }
+
+    // Bass boost: low shelf at 120 Hz, gain 0-12 dB mapped from strength 0-1000
+    int bassStrength = atomic_load_explicit(&sParams.bassBoostStrength, memory_order_relaxed);
+    float bassdB = (float)bassStrength / 1000.0f * 12.0f;
+    ctx->bassCoeffs = lowShelf(120.0f, bassdB, Fs);
+
+    ctx->lastCoeffVersion = atomic_load_explicit(&sParams.coeffVersion, memory_order_relaxed);
+}
+
+// ── MTAudioProcessingTap C callbacks ──
+
+static void tapInit(MTAudioProcessingTapRef tap, void *clientInfo, void **tapStorageOut) {
+    // Allocate per-tap context
+    TapContext *ctx = (TapContext *)calloc(1, sizeof(TapContext));
+    *tapStorageOut = ctx;
+}
+
+static void tapFinalize(MTAudioProcessingTapRef tap) {
+    TapContext *ctx = (TapContext *)MTAudioProcessingTapGetStorage(tap);
+    if (ctx) free(ctx);
+}
+
+static void tapPrepare(MTAudioProcessingTapRef tap,
+                       CMItemCount maxFrames,
+                       const AudioStreamBasicDescription *processingFormat) {
+    TapContext *ctx = (TapContext *)MTAudioProcessingTapGetStorage(tap);
+    if (!ctx) return;
+
+    ctx->sampleRate = (float)processingFormat->mSampleRate;
+    ctx->numChannels = (int)processingFormat->mChannelsPerFrame;
+    if (ctx->numChannels > MAX_CHANNELS) ctx->numChannels = MAX_CHANNELS;
+
+    // Zero delay lines
+    memset(ctx->delays, 0, sizeof(ctx->delays));
+    memset(ctx->bassDelay, 0, sizeof(ctx->bassDelay));
+
+    // Build initial coefficients
+    rebuildCoefficients(ctx);
+}
+
+static void tapUnprepare(MTAudioProcessingTapRef tap) {
+    // Nothing to clean up beyond what tapFinalize handles
+}
+
+static void tapProcess(MTAudioProcessingTapRef tap,
+                       CMItemCount numberFrames,
+                       MTAudioProcessingTapFlags flags,
+                       AudioBufferList *bufferListInOut,
+                       CMItemCount *numberFramesOut,
+                       MTAudioProcessingTapFlags *flagsOut) {
+    // First, get the source audio into our buffers
+    OSStatus status = MTAudioProcessingTapGetSourceAudio(tap, numberFrames, bufferListInOut,
+                                                         flagsOut, NULL, numberFramesOut);
+    if (status != noErr) return;
+
+    // Check if EQ is enabled
+    if (!atomic_load_explicit(&sParams.enabled, memory_order_relaxed)) return;
+
+    TapContext *ctx = (TapContext *)MTAudioProcessingTapGetStorage(tap);
+    if (!ctx) return;
+
+    // Rebuild coefficients if they changed
+    int currentVersion = atomic_load_explicit(&sParams.coeffVersion, memory_order_relaxed);
+    if (currentVersion != ctx->lastCoeffVersion) {
+        rebuildCoefficients(ctx);
+    }
+
+    int mono = atomic_load_explicit(&sParams.mono, memory_order_relaxed);
+    int loudnessMb = atomic_load_explicit(&sParams.loudnessGainMb, memory_order_relaxed);
+    float loudnessGain = (loudnessMb > 0) ? powf(10.0f, (float)loudnessMb / 2000.0f) : 1.0f;
+    int hasBass = atomic_load_explicit(&sParams.bassBoostStrength, memory_order_relaxed) > 0;
+
+    UInt32 numBuffers = bufferListInOut->mNumberBuffers;
+    CMItemCount frames = *numberFramesOut;
+
+    // Detect layout: non-interleaved has 1 channel per buffer, interleaved has all in one buffer
+    BOOL nonInterleaved = (numBuffers > 1 && bufferListInOut->mBuffers[0].mNumberChannels == 1);
+
+    if (nonInterleaved) {
+        // ── Non-interleaved: each buffer = one channel ──
+        int totalChans = (int)numBuffers;
+        if (totalChans > MAX_CHANNELS) totalChans = MAX_CHANNELS;
+
+        for (int ch = 0; ch < totalChans; ch++) {
+            float *data = (float *)bufferListInOut->mBuffers[ch].mData;
+            if (!data) continue;
+
+            for (CMItemCount f = 0; f < frames; f++) {
+                float sample = data[f];
+
+                // Apply 5-band EQ
+                for (int band = 0; band < EQ_NUM_BANDS; band++) {
+                    sample = processBiquad(&ctx->coeffs[band], &ctx->delays[band][ch], sample);
+                }
+
+                // Apply bass boost shelf
+                if (hasBass) {
+                    sample = processBiquad(&ctx->bassCoeffs, &ctx->bassDelay[ch], sample);
+                }
+
+                // Apply loudness gain
+                if (loudnessMb > 0) {
+                    sample *= loudnessGain;
+                }
+
+                data[f] = sample;
+            }
+        }
+
+        // Mono downmix for non-interleaved stereo
+        if (mono && totalChans >= 2) {
+            float *L = (float *)bufferListInOut->mBuffers[0].mData;
+            float *R = (float *)bufferListInOut->mBuffers[1].mData;
+            if (L && R) {
+                for (CMItemCount f = 0; f < frames; f++) {
+                    float avg = (L[f] + R[f]) * 0.5f;
+                    L[f] = avg;
+                    R[f] = avg;
+                }
+            }
+        }
+    } else {
+        // ── Interleaved: all channels in one buffer ──
+        for (UInt32 buf = 0; buf < numBuffers; buf++) {
+            AudioBuffer *ab = &bufferListInOut->mBuffers[buf];
+            float *data = (float *)ab->mData;
+            if (!data) continue;
+
+            int chansInBuf = ab->mNumberChannels;
+
+            for (CMItemCount f = 0; f < frames; f++) {
+                for (int ch = 0; ch < chansInBuf && ch < MAX_CHANNELS; ch++) {
+                    float sample = data[f * chansInBuf + ch];
+
+                    for (int band = 0; band < EQ_NUM_BANDS; band++) {
+                        sample = processBiquad(&ctx->coeffs[band], &ctx->delays[band][ch], sample);
+                    }
+
+                    if (hasBass) {
+                        sample = processBiquad(&ctx->bassCoeffs, &ctx->bassDelay[ch], sample);
+                    }
+
+                    if (loudnessMb > 0) {
+                        sample *= loudnessGain;
+                    }
+
+                    data[f * chansInBuf + ch] = sample;
+                }
+
+                // Mono downmix
+                if (mono && chansInBuf >= 2) {
+                    float avg = (data[f * chansInBuf] + data[f * chansInBuf + 1]) * 0.5f;
+                    data[f * chansInBuf]     = avg;
+                    data[f * chansInBuf + 1] = avg;
+                }
+            }
+        }
+    }
+}
+
+// ── AudioEQProcessor Objective-C implementation ──
+
+@implementation AudioEQProcessor
+
++ (AudioEQProcessor *)shared {
+    static AudioEQProcessor *instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[AudioEQProcessor alloc] init];
+    });
+    return instance;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        // Initialise all atomic params to defaults
+        atomic_store(&sParams.enabled, 0);
+        atomic_store(&sParams.mono, 0);
+        atomic_store(&sParams.loudnessGainMb, 0);
+        atomic_store(&sParams.bassBoostStrength, 0);
+        atomic_store(&sParams.coeffVersion, 0);
+        for (int i = 0; i < EQ_NUM_BANDS; i++) {
+            atomic_store(&sParams.bandLevels[i], 0);
+        }
+    }
+    return self;
+}
+
+- (void)attachTapToPlayerItem:(AVPlayerItem *)item {
+    if (!item) return;
+
+    // Build tap callbacks struct
+    MTAudioProcessingTapCallbacks callbacks;
+    callbacks.version = kMTAudioProcessingTapCallbacksVersion_0;
+    callbacks.clientInfo = (__bridge void *)self;
+    callbacks.init = tapInit;
+    callbacks.finalize = tapFinalize;
+    callbacks.prepare = tapPrepare;
+    callbacks.unprepare = tapUnprepare;
+    callbacks.process = tapProcess;
+
+    MTAudioProcessingTapRef tap = NULL;
+    OSStatus status = MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks,
+                                                  kMTAudioProcessingTapCreationFlag_PostEffects,
+                                                  &tap);
+    if (status != noErr || !tap) {
+        NSLog(@"[AudioEQProcessor] Failed to create tap: %d", (int)status);
+        return;
+    }
+
+    // We need to wait for tracks to be available before attaching the tap.
+    // For local files this is immediate; for streaming it may be async.
+    AVAsset *asset = item.asset;
+    [asset loadValuesAsynchronouslyForKeys:@[@"tracks"] completionHandler:^{
+        NSError *error = nil;
+        AVKeyValueStatus trackStatus = [asset statusOfValueForKey:@"tracks" error:&error];
+        if (trackStatus != AVKeyValueStatusLoaded) {
+            NSLog(@"[AudioEQProcessor] Tracks not loaded: %@", error);
+            CFRelease(tap);
+            return;
+        }
+
+        NSArray<AVAssetTrack *> *audioTracks = [asset tracksWithMediaType:AVMediaTypeAudio];
+        if (audioTracks.count == 0) {
+            NSLog(@"[AudioEQProcessor] No audio tracks found");
+            CFRelease(tap);
+            return;
+        }
+
+        // Create audio mix with tap on every audio track
+        NSMutableArray<AVMutableAudioMixInputParameters *> *inputParams = [NSMutableArray array];
+        for (AVAssetTrack *track in audioTracks) {
+            AVMutableAudioMixInputParameters *params =
+                [AVMutableAudioMixInputParameters audioMixInputParametersWithTrack:track];
+            params.audioTapProcessor = tap;
+            [inputParams addObject:params];
+        }
+
+        AVMutableAudioMix *audioMix = [AVMutableAudioMix audioMix];
+        audioMix.inputParameters = inputParams;
+
+        // Must set audioMix on main thread (AVPlayerItem is not thread-safe)
+        dispatch_async(dispatch_get_main_queue(), ^{
+            item.audioMix = audioMix;
+        });
+
+        CFRelease(tap);
+    }];
+}
+
+- (void)setEnabled:(BOOL)enabled {
+    atomic_store_explicit(&sParams.enabled, enabled ? 1 : 0, memory_order_relaxed);
+}
+
+- (void)setBandLevel:(int)level forBand:(int)band {
+    if (band < 0 || band >= EQ_NUM_BANDS) return;
+    atomic_store_explicit(&sParams.bandLevels[band], level, memory_order_relaxed);
+    atomic_fetch_add_explicit(&sParams.coeffVersion, 1, memory_order_release);
+}
+
+- (void)setBassBoostStrength:(int)strength {
+    atomic_store_explicit(&sParams.bassBoostStrength, strength, memory_order_relaxed);
+    atomic_fetch_add_explicit(&sParams.coeffVersion, 1, memory_order_release);
+}
+
+- (void)setLoudnessGain:(int)gainMb {
+    atomic_store_explicit(&sParams.loudnessGainMb, gainMb, memory_order_relaxed);
+}
+
+- (void)setMonoEnabled:(BOOL)enabled {
+    atomic_store_explicit(&sParams.mono, enabled ? 1 : 0, memory_order_relaxed);
+}
+
+@end

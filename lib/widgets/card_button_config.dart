@@ -9,7 +9,7 @@ class CardButtonDef {
 }
 
 /// Button IDs that are hidden on iOS (features not yet supported).
-final Set<String> _iosHiddenButtons = Platform.isIOS ? const {'cast', 'equalizer'} : const {};
+final Set<String> _iosHiddenButtons = Platform.isIOS ? const {'cast'} : const {};
 
 const _allCardButtons = [
   CardButtonDef('chapters', 'Chapters', Icons.list_rounded),
