@@ -4,12 +4,11 @@ import SwiftUI
 
 private let appGroup = "group.com.barnabas.absorb"
 
-// Deep-link URLs for when the app is not running and we need to launch it.
-// Must use the registered URL scheme (audiobookshelf://) and include ?homeWidget
-// so the home_widget Flutter plugin intercepts the URL on launch.
+// Deep-link URL used only by the play button when no session is loaded, so
+// the app launches and can cold-resume the last-played item. Must use the
+// registered URL scheme (audiobookshelf://) and include ?homeWidget so the
+// home_widget Flutter plugin intercepts the URL on launch.
 private let playPauseURL = URL(string: "audiobookshelf://widget/play_pause?homeWidget")!
-private let skipBackURL = URL(string: "audiobookshelf://widget/skip_back?homeWidget")!
-private let skipForwardURL = URL(string: "audiobookshelf://widget/skip_forward?homeWidget")!
 
 // MARK: - Darwin Notification Helper
 
@@ -24,6 +23,9 @@ private func postDarwinNotification(_ name: String) {
 struct SkipBackIntent: AppIntent {
     static var title: LocalizedStringResource = "Skip Back"
     static var description = IntentDescription("Skip backward in the current audiobook.")
+    // Run the intent in the widget extension process; do not bring the app UI
+    // to the foreground.
+    static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
         postDarwinNotification("com.barnabas.absorb.widget.skipBack")
@@ -34,6 +36,7 @@ struct SkipBackIntent: AppIntent {
 struct PlayPauseIntent: AppIntent {
     static var title: LocalizedStringResource = "Play or Pause"
     static var description = IntentDescription("Toggle audiobook playback.")
+    static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
         // Optimistic UI: flip the stored state so the widget redraws immediately.
@@ -50,6 +53,7 @@ struct PlayPauseIntent: AppIntent {
 struct SkipForwardIntent: AppIntent {
     static var title: LocalizedStringResource = "Skip Forward"
     static var description = IntentDescription("Skip forward in the current audiobook.")
+    static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
         postDarwinNotification("com.barnabas.absorb.widget.skipForward")
@@ -69,7 +73,6 @@ struct NowPlayingEntry: TimelineEntry {
     let coverImage: UIImage?
     let skipBack: Int
     let skipForward: Int
-    let appAlive: Bool
 }
 
 // MARK: - Provider
@@ -79,7 +82,7 @@ struct NowPlayingProvider: TimelineProvider {
         NowPlayingEntry(
             date: .now, hasBook: true, title: "Audiobook Title",
             author: "Author Name", isPlaying: false, progress: 0.35,
-            coverImage: nil, skipBack: 10, skipForward: 30, appAlive: false
+            coverImage: nil, skipBack: 10, skipForward: 30
         )
     }
 
@@ -107,11 +110,6 @@ struct NowPlayingProvider: TimelineProvider {
             cover = UIImage(contentsOfFile: path)
         }
 
-        // Check if the app process is alive by comparing a heartbeat timestamp.
-        // The Flutter app writes this on every widget data update.
-        let heartbeat = d?.integer(forKey: "widget_heartbeat") ?? 0
-        let appAlive = heartbeat > 0 && (Int(Date().timeIntervalSince1970) - heartbeat) < 300
-
         return NowPlayingEntry(
             date: .now,
             hasBook: hasBook,
@@ -121,8 +119,7 @@ struct NowPlayingProvider: TimelineProvider {
             progress: progress,
             coverImage: cover,
             skipBack: skipBack > 0 ? skipBack : 10,
-            skipForward: skipForward > 0 ? skipForward : 30,
-            appAlive: appAlive
+            skipForward: skipForward > 0 ? skipForward : 30
         )
     }
 }
@@ -175,50 +172,40 @@ struct SmallWidgetView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 18) {
-                if entry.appAlive {
-                    Button(intent: SkipBackIntent()) {
-                        Image(systemName: "backward.fill")
-                            .font(.title3)
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
-                    }
+                Button(intent: SkipBackIntent()) {
+                    Image(systemName: "backward.fill")
+                        .font(.title3)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                if entry.hasBook {
                     Button(intent: PlayPauseIntent()) {
                         Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
                             .font(.title2)
                             .frame(width: 32, height: 32)
                             .contentShape(Rectangle())
                     }
-                    Button(intent: SkipForwardIntent()) {
-                        Image(systemName: "forward.fill")
-                            .font(.title3)
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
-                    }
                 } else {
-                    Link(destination: skipBackURL) {
-                        Image(systemName: "backward.fill")
-                            .font(.title3)
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
-                    }
+                    // No session loaded — tap launches the app so it can
+                    // resume the last-played item (AppIntent alone can't
+                    // start playback when the app isn't running).
                     Link(destination: playPauseURL) {
-                        Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
+                        Image(systemName: "play.fill")
                             .font(.title2)
                             .frame(width: 32, height: 32)
                             .contentShape(Rectangle())
                     }
-                    Link(destination: skipForwardURL) {
-                        Image(systemName: "forward.fill")
-                            .font(.title3)
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
-                    }
+                }
+                Button(intent: SkipForwardIntent()) {
+                    Image(systemName: "forward.fill")
+                        .font(.title3)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
             }
             .buttonStyle(.plain)
             .foregroundStyle(.primary)
         }
-        .widgetURL(playPauseURL)
         .containerBackground(.fill.tertiary, for: .widget)
     }
 }
@@ -249,48 +236,34 @@ struct MediumWidgetView: View {
                 Spacer(minLength: 0)
 
                 HStack(spacing: 28) {
-                    if entry.appAlive {
-                        Button(intent: SkipBackIntent()) {
-                            Image(systemName: "backward.fill")
-                                .font(.title3)
-                                .frame(width: 36, height: 36)
-                                .contentShape(Rectangle())
-                        }
+                    Button(intent: SkipBackIntent()) {
+                        Image(systemName: "backward.fill")
+                            .font(.title3)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
 
+                    if entry.hasBook {
                         Button(intent: PlayPauseIntent()) {
                             Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
                                 .font(.title2)
                                 .frame(width: 40, height: 40)
                                 .contentShape(Rectangle())
                         }
-
-                        Button(intent: SkipForwardIntent()) {
-                            Image(systemName: "forward.fill")
-                                .font(.title3)
-                                .frame(width: 36, height: 36)
-                                .contentShape(Rectangle())
-                        }
                     } else {
-                        Link(destination: skipBackURL) {
-                            Image(systemName: "backward.fill")
-                                .font(.title3)
-                                .frame(width: 36, height: 36)
-                                .contentShape(Rectangle())
-                        }
-
                         Link(destination: playPauseURL) {
-                            Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill")
+                            Image(systemName: "play.fill")
                                 .font(.title2)
                                 .frame(width: 40, height: 40)
                                 .contentShape(Rectangle())
                         }
+                    }
 
-                        Link(destination: skipForwardURL) {
-                            Image(systemName: "forward.fill")
-                                .font(.title3)
-                                .frame(width: 36, height: 36)
-                                .contentShape(Rectangle())
-                        }
+                    Button(intent: SkipForwardIntent()) {
+                        Image(systemName: "forward.fill")
+                            .font(.title3)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
                     }
                 }
                 .buttonStyle(.plain)
@@ -300,7 +273,6 @@ struct MediumWidgetView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .widgetURL(playPauseURL)
         .containerBackground(.fill.tertiary, for: .widget)
     }
 }
