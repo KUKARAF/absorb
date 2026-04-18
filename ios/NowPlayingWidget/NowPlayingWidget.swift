@@ -14,6 +14,7 @@ private let playPauseURL = URL(string: "audiobookshelf://widget/play_pause?homeW
 
 /// Posts a Darwin notification visible to the main app process.
 private func postDarwinNotification(_ name: String) {
+    NSLog("[WidgetDebug] postDarwinNotification: %@", name)
     let center = CFNotificationCenterGetDarwinNotifyCenter()
     CFNotificationCenterPostNotification(center, CFNotificationName(name as CFString), nil, nil, true)
 }
@@ -28,6 +29,7 @@ struct SkipBackIntent: AppIntent {
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
+        NSLog("[WidgetDebug] SkipBackIntent.perform fired")
         postDarwinNotification("com.barnabas.absorb.widget.skipBack")
         return .result()
     }
@@ -39,10 +41,15 @@ struct PlayPauseIntent: AppIntent {
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
+        NSLog("[WidgetDebug] PlayPauseIntent.perform fired")
         // Optimistic UI: flip the stored state so the widget redraws immediately.
         let defaults = UserDefaults(suiteName: appGroup)
         let wasPlaying = defaults?.bool(forKey: "widget_is_playing") ?? false
         defaults?.set(!wasPlaying, forKey: "widget_is_playing")
+        NSLog("[WidgetDebug]   wasPlaying=%@ -> %@ (defaults=%@)",
+              wasPlaying ? "true" : "false",
+              !wasPlaying ? "true" : "false",
+              defaults == nil ? "nil" : "ok")
 
         postDarwinNotification("com.barnabas.absorb.widget.playPause")
         WidgetCenter.shared.reloadTimelines(ofKind: "NowPlayingWidget")
@@ -56,6 +63,7 @@ struct SkipForwardIntent: AppIntent {
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
+        NSLog("[WidgetDebug] SkipForwardIntent.perform fired")
         postDarwinNotification("com.barnabas.absorb.widget.skipForward")
         return .result()
     }
@@ -97,6 +105,9 @@ struct NowPlayingProvider: TimelineProvider {
 
     private func readEntry() -> NowPlayingEntry {
         let d = UserDefaults(suiteName: appGroup)
+        if d == nil {
+            NSLog("[WidgetDebug] readEntry: UserDefaults(suiteName:%@) returned nil - app group not accessible from extension", appGroup)
+        }
         let hasBook = d?.bool(forKey: "widget_has_book") ?? false
         let title = d?.string(forKey: "widget_title") ?? ""
         let author = d?.string(forKey: "widget_author") ?? ""
@@ -104,11 +115,27 @@ struct NowPlayingProvider: TimelineProvider {
         let progress = Double(d?.integer(forKey: "widget_progress") ?? 0) / 1000.0
         let skipBack = d?.integer(forKey: "widget_skip_back") ?? 0
         let skipForward = d?.integer(forKey: "widget_skip_forward") ?? 0
+        let coverPath = d?.string(forKey: "widget_cover_path") ?? ""
 
         var cover: UIImage? = nil
-        if let path = d?.string(forKey: "widget_cover_path"), !path.isEmpty {
-            cover = UIImage(contentsOfFile: path)
+        var coverStatus = "empty"
+        if !coverPath.isEmpty {
+            let exists = FileManager.default.fileExists(atPath: coverPath)
+            if !exists {
+                coverStatus = "path_missing"
+            } else {
+                cover = UIImage(contentsOfFile: coverPath)
+                coverStatus = cover == nil ? "decode_failed" : "ok"
+            }
         }
+
+        NSLog("[WidgetDebug] readEntry: hasBook=%@ title=\"%@\" isPlaying=%@ progress=%.3f coverPath=\"%@\" coverStatus=%@",
+              hasBook ? "true" : "false",
+              title,
+              isPlaying ? "true" : "false",
+              progress,
+              coverPath,
+              coverStatus)
 
         return NowPlayingEntry(
             date: .now,

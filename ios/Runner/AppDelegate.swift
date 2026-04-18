@@ -59,6 +59,7 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
         { (_, observer, name, _, _) in
           guard let observer = observer,
                 let rawName = name?.rawValue as String? else { return }
+          NSLog("[WidgetDebug] AppDelegate received Darwin notification: %@", rawName)
           let appDelegate = Unmanaged<AppDelegate>.fromOpaque(observer).takeUnretainedValue()
           let action: String
           switch rawName {
@@ -68,6 +69,7 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
           default: return
           }
           DispatchQueue.main.async {
+            NSLog("[WidgetDebug] AppDelegate dispatching widget action to Flutter: %@", action)
             appDelegate.widgetChannel?.invokeMethod("widgetAction", arguments: ["action": action])
           }
         },
@@ -76,6 +78,7 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
         .deliverImmediately
       )
     }
+    NSLog("[WidgetDebug] AppDelegate registered %d Darwin notification observers", names.count)
   }
 
   private func registerPlatformChannels() {
@@ -121,8 +124,10 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
       switch call.method {
       case "getGroupContainerPath":
         if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.barnabas.absorb") {
+          NSLog("[WidgetDebug] getGroupContainerPath resolved: %@", url.path)
           result(url.path)
         } else {
+          NSLog("[WidgetDebug] getGroupContainerPath: containerURL returned nil - app group entitlement missing or misconfigured")
           result(nil)
         }
       default:

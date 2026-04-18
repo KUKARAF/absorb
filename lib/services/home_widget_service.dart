@@ -42,17 +42,21 @@ class HomeWidgetService {
     // Set up App Group for iOS widget data sharing.
     if (Platform.isIOS) {
       await HomeWidget.setAppGroupId(_appGroupId);
+      debugPrint('[WidgetDebug] setAppGroupId=$_appGroupId');
       try {
         _groupContainerPath =
             await _widgetChannel.invokeMethod<String>('getGroupContainerPath');
+        debugPrint(
+            '[WidgetDebug] groupContainerPath=${_groupContainerPath ?? "<null>"}');
       } catch (e) {
-        debugPrint('[HomeWidget] Failed to get group container path: $e');
+        debugPrint('[WidgetDebug] Failed to get group container path: $e');
       }
 
       // Receive widget AppIntent actions forwarded from AppDelegate.
       _widgetChannel.setMethodCallHandler((call) async {
         if (call.method == 'widgetAction') {
           final action = (call.arguments as Map?)?['action'] as String?;
+          debugPrint('[WidgetDebug] widgetAction received: $action');
           switch (action) {
             case 'playPause':
               await _handlePlayPause();
@@ -120,18 +124,22 @@ class HomeWidgetService {
 
   void _handleSkipBack() {
     final player = AudioPlayerService();
+    debugPrint('[WidgetDebug] _handleSkipBack hasBook=${player.hasBook}');
     if (!player.hasBook) return;
     player.skipBackward();
   }
 
   void _handleSkipForward() {
     final player = AudioPlayerService();
+    debugPrint('[WidgetDebug] _handleSkipForward hasBook=${player.hasBook}');
     if (!player.hasBook) return;
     player.skipForward();
   }
 
   Future<void> _handlePlayPause() async {
     final player = AudioPlayerService();
+    debugPrint(
+        '[WidgetDebug] _handlePlayPause hasBook=${player.hasBook} isPlaying=${player.isPlaying}');
 
     // When there's an active session the widget uses a MediaSession media button
     // instead of launching the app, so this path is only hit for cold resume.
@@ -139,8 +147,10 @@ class HomeWidgetService {
       // On iOS, widget links always come through here (no MediaSession shortcut).
       if (Platform.isIOS) {
         if (player.isPlaying) {
+          debugPrint('[WidgetDebug]   -> pause()');
           player.pause();
         } else {
+          debugPrint('[WidgetDebug]   -> play()');
           player.play();
         }
       }
@@ -267,6 +277,9 @@ class HomeWidgetService {
     final player = AudioPlayerService();
     final hasBook = player.hasBook;
 
+    debugPrint(
+        '[WidgetDebug] _updateWidgetData hasBook=$hasBook isPlaying=${player.isPlaying} title="${player.currentTitle ?? ""}" itemId=${player.currentItemId}');
+
     await HomeWidget.saveWidgetData<bool>('widget_has_book', hasBook);
 
     // Push user's skip durations so the widget shows them on the buttons.
@@ -334,16 +347,21 @@ class HomeWidgetService {
     final player = AudioPlayerService();
     final coverUrl = player.currentCoverUrl;
     final cacheKey = '$itemId|$coverUrl';
-    if (_lastCoverItemId == cacheKey) return;
+    if (_lastCoverItemId == cacheKey) {
+      debugPrint('[WidgetDebug] cover unchanged, skipping (key=$cacheKey)');
+      return;
+    }
     _lastCoverItemId = cacheKey;
 
     String? coverPath;
+    String source = 'none';
 
     try {
       // Check for a locally downloaded cover first.
       final downloadService = DownloadService();
       if (downloadService.isDownloaded(itemId)) {
         coverPath = await downloadService.getLocalCoverPath(itemId);
+        source = 'download';
       }
 
       // If no local cover, download from server to a temp/shared file.
@@ -358,6 +376,9 @@ class HomeWidgetService {
           if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
             await coverFile.writeAsBytes(response.bodyBytes);
             coverPath = coverFile.path;
+            source = 'network';
+          } else {
+            source = 'network_failed(${response.statusCode})';
           }
         }
       } else if (Platform.isIOS && _groupContainerPath != null) {
@@ -368,16 +389,23 @@ class HomeWidgetService {
           await File(coverPath).copy(sharedFile.path);
         }
         coverPath = sharedFile.path;
+        source = 'download_copied_to_group';
       }
     } catch (e) {
-      debugPrint('[HomeWidget] Cover update failed: $e');
+      debugPrint('[WidgetDebug] cover update failed: $e');
     }
+
+    final pathInGroup =
+        coverPath != null && _groupContainerPath != null && coverPath.startsWith(_groupContainerPath!);
+    final exists = coverPath != null && File(coverPath).existsSync();
+    debugPrint(
+        '[WidgetDebug] cover source=$source path=$coverPath exists=$exists inAppGroup=$pathInGroup');
 
     try {
       await HomeWidget.saveWidgetData<String?>('widget_cover_path', coverPath);
       await _updateAllWidgets();
     } catch (e) {
-      debugPrint('[HomeWidget] Cover save failed: $e');
+      debugPrint('[WidgetDebug] cover save failed: $e');
     }
   }
 
