@@ -10,16 +10,12 @@ import 'audio_player_service.dart';
 import 'home_widget_service.dart';
 
 /// Wires up Android / iOS app-icon long-press shortcuts:
-/// - "Continue Listening" resumes the last-played item (same cold-start path
-///   used by the home widget and lock-screen play button) or resumes a
-///   paused session directly when one is already loaded.
-/// - "Downloads" pushes [DownloadsScreen] onto the navigator.
+/// - "Play" resumes the last-played item (same cold-start path used by the
+///   home widget and lock-screen play button) or resumes a paused session
+///   directly when one is already loaded.
 /// - "Search" switches to the Library tab and focuses the search bar.
+/// - "Downloads" pushes [DownloadsScreen] onto the navigator.
 /// - "Bookmarks" pushes [BookmarksScreen] onto the navigator.
-///
-/// The Continue Listening label is updated to include the active book's
-/// title whenever the player's current item changes, so the long-press menu
-/// reflects what will actually start.
 class QuickActionsService {
   QuickActionsService._();
   static final QuickActionsService _instance = QuickActionsService._();
@@ -32,7 +28,6 @@ class QuickActionsService {
 
   final QuickActions _quickActions = const QuickActions();
   bool _initialised = false;
-  String? _lastPushedTitle;
 
   Future<void> init() async {
     if (_initialised) return;
@@ -56,42 +51,24 @@ class QuickActionsService {
       }
     });
 
-    await _pushShortcuts();
-    AudioPlayerService().addListener(_onPlayerChanged);
-  }
-
-  void _onPlayerChanged() {
-    final title = AudioPlayerService().currentTitle;
-    if (title == _lastPushedTitle) return;
-    _pushShortcuts();
-  }
-
-  Future<void> _pushShortcuts() async {
-    final title = AudioPlayerService().currentTitle;
-    _lastPushedTitle = title;
-    // Keep the label one word so Android doesn't truncate it in the
-    // long-press menu: "Resume" when a session is loaded, "Continue" otherwise.
-    final continueLabel =
-        (title != null && title.isNotEmpty) ? 'Resume' : 'Continue';
-
     try {
-      await _quickActions.setShortcutItems(<ShortcutItem>[
+      await _quickActions.setShortcutItems(const <ShortcutItem>[
         ShortcutItem(
           type: _typeContinue,
-          localizedTitle: continueLabel,
+          localizedTitle: 'Play',
           icon: 'ic_shortcut_continue',
         ),
-        const ShortcutItem(
+        ShortcutItem(
           type: _typeDownloads,
           localizedTitle: 'Downloads',
           icon: 'ic_shortcut_downloads',
         ),
-        const ShortcutItem(
+        ShortcutItem(
           type: _typeSearch,
           localizedTitle: 'Search',
           icon: 'ic_shortcut_search',
         ),
-        const ShortcutItem(
+        ShortcutItem(
           type: _typeBookmarks,
           localizedTitle: 'Bookmarks',
           icon: 'ic_shortcut_bookmarks',
@@ -106,8 +83,8 @@ class QuickActionsService {
     try {
       // Pop any pushed route (Downloads/Bookmarks/Settings etc.) and switch
       // to the Absorbing tab so the user actually sees the player after
-      // triggering Resume/Continue. Best-effort: ignore if shell/nav aren't
-      // mounted yet during cold start - the default tab is Absorbing anyway.
+      // triggering Play. Best-effort: ignore if shell/nav aren't mounted yet
+      // during cold start - the default tab is Absorbing anyway.
       final nav = rootNavigatorKey.currentState;
       if (nav != null && nav.canPop()) {
         nav.popUntil((r) => r.isFirst);
@@ -126,7 +103,7 @@ class QuickActionsService {
       }
       await HomeWidgetService().resumeLastPlayedIfAvailable();
     } catch (e) {
-      debugPrint('[QuickActions] resume failed: $e');
+      debugPrint('[QuickActions] play failed: $e');
     }
   }
 
