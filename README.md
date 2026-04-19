@@ -48,6 +48,8 @@ A modern audiobookshelf client with a card-based player experience.
 
 [![Get it on GitHub](https://img.shields.io/badge/Get_it_on-GitHub-blue?style=for-the-badge&logo=github)](../../releases)
 [![Get it on Obtainium](https://img.shields.io/badge/Get_it_on-Obtainium-teal?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTEyIDJMMiAyMmgyMEwxMiAyeiIgZmlsbD0id2hpdGUiLz48L3N2Zz4=)](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/pounat/absorb)
+[![Get it on Google Play](https://img.shields.io/badge/Google_Play-Open_Beta-414141?style=for-the-badge&logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=com.barnabas.absorb)
+[![Join TestFlight](https://img.shields.io/badge/TestFlight-iOS-007AFF?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/GgUbDbve)
 
 ### Release Tracks
 
@@ -57,7 +59,7 @@ A modern audiobookshelf client with a card-based player experience.
 
 ### Google Play
 
-Internal testing matches GitHub pre-releases. Open testing and production releases match GitHub full releases. Once open testing is approved, more users will be accepted into the internal testing group for alpha builds. Join the [Discord](https://discord.gg/dW4Y4zCxRp) to request access.
+Open testing is live - [join the open beta on Google Play](https://play.google.com/store/apps/details?id=com.barnabas.absorb). Open testing and production releases match GitHub full releases. Internal testing (alpha) matches GitHub pre-releases - join the [Discord](https://discord.gg/dW4Y4zCxRp) to request access to the internal track.
 
 ### iOS TestFlight
 
