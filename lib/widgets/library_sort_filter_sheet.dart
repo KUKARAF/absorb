@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../screens/library_screen.dart';
 
 /// Which library tab the sort/filter sheet is being shown for.
@@ -70,6 +71,7 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     final cs = widget.cs;
+    final l = AppLocalizations.of(context)!;
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
@@ -90,24 +92,24 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
               dividerColor: Colors.transparent,
               tabs: [
                 Tab(child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.sort_rounded, size: 18), const SizedBox(width: 6), const Text('Sort')])),
+                  Icon(Icons.sort_rounded, size: 18), const SizedBox(width: 6), Text(l.sort)])),
                 Tab(child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.filter_list_rounded, size: 18), const SizedBox(width: 6),
-                  Text(widget.currentFilter != LibraryFilter.none ? 'Filter \u25cf' : 'Filter')])),
+                  Text(widget.currentFilter != LibraryFilter.none ? l.filterActive : l.filter)])),
               ],
             )
           else
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text('Sort', style: TextStyle(
+              child: Text(l.sort, style: TextStyle(
                 fontSize: 16, fontWeight: FontWeight.w600, color: cs.primary)),
             ),
           SizedBox(
             height: _calcHeight(),
             child: _showFilterTab
                 ? TabBarView(controller: _tabCtrl, children: [
-                    _buildSortTab(cs), _buildFilterTab(cs)])
-                : _buildSortTab(cs),
+                    _buildSortTab(cs, l), _buildFilterTab(cs, l)])
+                : _buildSortTab(cs, l),
           ),
           SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 8),
         ],
@@ -121,8 +123,8 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
     return _genreExpanded ? 420 : (widget.isPodcastLibrary ? 200 : 400);
   }
 
-  Widget _buildSortTab(ColorScheme cs) {
-    final sorts = _getSortOptions();
+  Widget _buildSortTab(ColorScheme cs, AppLocalizations l) {
+    final sorts = _getSortOptions(l);
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       children: [
@@ -140,7 +142,7 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(widget.sortAsc ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 14, color: cs.primary),
                         const SizedBox(width: 4),
-                        Text(widget.sortAsc ? 'ASC' : 'DESC', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.primary)),
+                        Text(widget.sortAsc ? l.asc : l.desc, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.primary)),
                       ]),
                     ),
                   ) : null,
@@ -165,7 +167,7 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
                   color: _collapseSeries ? cs.secondary : cs.onSurfaceVariant),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text('Collapse Series', style: TextStyle(
+                  child: Text(l.collapseSeries, style: TextStyle(
                     fontSize: 14,
                     fontWeight: _collapseSeries ? FontWeight.w600 : FontWeight.w400,
                     color: _collapseSeries ? cs.secondary : cs.onSurface)),
@@ -199,9 +201,9 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Upcoming Releases', style: TextStyle(
+                      Text(l.librarySortFilterUpcomingReleases, style: TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w600, color: cs.primary)),
-                      Text('Scan Audible for new releases in your series', style: TextStyle(
+                      Text(l.librarySortFilterUpcomingReleasesSubtitle, style: TextStyle(
                         fontSize: 11, color: cs.onSurfaceVariant)),
                     ],
                   ),
@@ -215,45 +217,45 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
     );
   }
 
-  List<(LibrarySort, String, IconData)> _getSortOptions() {
+  List<(LibrarySort, String, IconData)> _getSortOptions(AppLocalizations l) {
     switch (widget.libraryTab) {
       case LibraryTab.series:
         return [
-          (LibrarySort.alphabetical, 'Name', Icons.sort_by_alpha_rounded),
-          (LibrarySort.recentlyAdded, 'Date Added', Icons.schedule_rounded),
-          (LibrarySort.totalDuration, 'Number of Books', Icons.auto_stories_rounded),
+          (LibrarySort.alphabetical, l.name, Icons.sort_by_alpha_rounded),
+          (LibrarySort.recentlyAdded, l.dateAdded, Icons.schedule_rounded),
+          (LibrarySort.totalDuration, l.numberOfBooks, Icons.auto_stories_rounded),
         ];
       case LibraryTab.authors:
         return [
-          (LibrarySort.alphabetical, 'Name', Icons.sort_by_alpha_rounded),
-          (LibrarySort.totalDuration, 'Number of Books', Icons.auto_stories_rounded),
+          (LibrarySort.alphabetical, l.name, Icons.sort_by_alpha_rounded),
+          (LibrarySort.totalDuration, l.numberOfBooks, Icons.auto_stories_rounded),
         ];
       case LibraryTab.library:
         if (widget.isPodcastLibrary) {
           return [
-            (LibrarySort.recentlyAdded, 'Date Added', Icons.schedule_rounded),
-            (LibrarySort.alphabetical, 'Title', Icons.sort_by_alpha_rounded),
-            (LibrarySort.random, 'Random', Icons.shuffle_rounded),
+            (LibrarySort.recentlyAdded, l.dateAdded, Icons.schedule_rounded),
+            (LibrarySort.alphabetical, l.title, Icons.sort_by_alpha_rounded),
+            (LibrarySort.random, l.random, Icons.shuffle_rounded),
           ];
         }
         return [
-          (LibrarySort.recentlyAdded, 'Date Added', Icons.schedule_rounded),
-          (LibrarySort.alphabetical, 'Title', Icons.sort_by_alpha_rounded),
-          (LibrarySort.authorName, 'Author', Icons.person_rounded),
-          (LibrarySort.publishedYear, 'Published Year', Icons.calendar_today_rounded),
-          (LibrarySort.duration, 'Duration', Icons.timelapse_rounded),
-          (LibrarySort.random, 'Random', Icons.shuffle_rounded),
+          (LibrarySort.recentlyAdded, l.dateAdded, Icons.schedule_rounded),
+          (LibrarySort.alphabetical, l.title, Icons.sort_by_alpha_rounded),
+          (LibrarySort.authorName, l.author, Icons.person_rounded),
+          (LibrarySort.publishedYear, l.publishedYear, Icons.calendar_today_rounded),
+          (LibrarySort.duration, l.duration, Icons.timelapse_rounded),
+          (LibrarySort.random, l.random, Icons.shuffle_rounded),
         ];
     }
   }
 
-  Widget _buildFilterTab(ColorScheme cs) {
+  Widget _buildFilterTab(ColorScheme cs, AppLocalizations l) {
     final filters = <(LibraryFilter, String, IconData)>[
-      (LibraryFilter.inProgress, 'In Progress', Icons.play_circle_outline_rounded),
-      (LibraryFilter.finished, 'Finished', Icons.check_circle_outline_rounded),
-      (LibraryFilter.notStarted, 'Not Started', Icons.circle_outlined),
-      (LibraryFilter.downloaded, 'Downloaded', Icons.download_done_rounded),
-      (LibraryFilter.hasEbook, 'Has eBook', Icons.menu_book_rounded),
+      (LibraryFilter.inProgress, l.inProgress, Icons.play_circle_outline_rounded),
+      (LibraryFilter.finished, l.filterFinished, Icons.check_circle_outline_rounded),
+      (LibraryFilter.notStarted, l.notStarted, Icons.circle_outlined),
+      (LibraryFilter.downloaded, l.downloaded, Icons.download_done_rounded),
+      (LibraryFilter.hasEbook, l.hasEbook, Icons.menu_book_rounded),
     ];
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -269,7 +271,7 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
                 child: Row(children: [
                   Icon(Icons.clear_rounded, size: 18, color: cs.error),
                   const SizedBox(width: 10),
-                  Text('Clear Filter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: cs.error)),
+                  Text(l.clearFilter, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: cs.error)),
                 ]),
               ),
             ),
@@ -284,7 +286,7 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
         }),
         SheetOption(
           icon: Icons.category_rounded,
-          label: 'Genre',
+          label: l.genre,
           selected: widget.currentFilter == LibraryFilter.genre,
           selectedColor: cs.tertiary,
           trailing: Icon(_genreExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 20, color: cs.onSurfaceVariant),
@@ -295,7 +297,7 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
             padding: const EdgeInsets.only(left: 16),
             child: widget.availableGenres.isEmpty
                 ? Padding(padding: const EdgeInsets.all(12),
-                    child: Text('No genres found', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)))
+                    child: Text(l.noGenresFound, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)))
                 : Column(children: widget.availableGenres.map((genre) {
                     final selected = widget.currentFilter == LibraryFilter.genre && widget.genreFilter == genre;
                     return SheetOption(

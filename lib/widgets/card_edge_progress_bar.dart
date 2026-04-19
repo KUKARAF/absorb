@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../services/audio_player_service.dart';
 import '../services/chromecast_service.dart';
 
@@ -216,10 +217,10 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
     return 0.1;
   }
 
-  static String _scrubSpeedLabel(double scale) {
-    if (scale <= 0.1) return 'Fine Scrubbing';
-    if (scale <= 0.25) return 'Quarter Speed';
-    return 'Half Speed';
+  static String _scrubSpeedLabel(AppLocalizations l, double scale) {
+    if (scale <= 0.1) return l.cardEdgeProgressFineScrubbing;
+    if (scale <= 0.25) return l.cardEdgeProgressQuarterSpeed;
+    return l.cardEdgeProgressHalfSpeed;
   }
 
   @override
@@ -247,6 +248,7 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cast = ChromecastService();
     final active = widget.isActive || _isCastMode;
@@ -371,7 +373,7 @@ class _CardEdgeProgressBarState extends State<CardEdgeProgressBar>
                               )],
                             ),
                           ),
-                          if (_dragValue != null && _edgeScrubSpeed < 1.0) Text(_scrubSpeedLabel(_edgeScrubSpeed), style: tt.labelSmall?.copyWith(color: widget.accent, fontSize: 11, fontWeight: FontWeight.w500)),
+                          if (_dragValue != null && _edgeScrubSpeed < 1.0) Text(_scrubSpeedLabel(l, _edgeScrubSpeed), style: tt.labelSmall?.copyWith(color: widget.accent, fontSize: 11, fontWeight: FontWeight.w500)),
                           Text(
                             '-${_fmt(_dragValue != null ? (1.0 - _dragValue!) * totalDur / speedDiv : bookRemaining)}',
                             style: tt.labelSmall?.copyWith(

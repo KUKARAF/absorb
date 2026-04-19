@@ -10,6 +10,7 @@ import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/bookmark_service.dart';
 import '../widgets/card_buttons.dart';
+import '../l10n/app_localizations.dart';
 
 class CarModeScreen extends StatefulWidget {
   final AudioPlayerService player;
@@ -106,13 +107,14 @@ class _CarModeScreenState extends State<CarModeScreen>
   Future<void> _startPlayback() async {
     if (_isStarting || widget.itemId == null) return;
     setState(() => _isStarting = true);
+    final l = AppLocalizations.of(context)!;
     final auth = context.read<AuthProvider>();
     final api = auth.apiService;
     if (api == null) { setState(() => _isStarting = false); return; }
     await widget.player.playItem(
       api: api,
       itemId: widget.itemId!,
-      title: widget.fallbackTitle ?? 'Unknown',
+      title: widget.fallbackTitle ?? l.unknown,
       author: widget.fallbackAuthor ?? '',
       coverUrl: widget.fallbackCoverUrl,
       totalDuration: widget.fallbackDuration,
@@ -181,8 +183,9 @@ class _CarModeScreenState extends State<CarModeScreen>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     final player = widget.player;
-    final title = player.currentTitle ?? widget.fallbackTitle ?? 'No book loaded';
+    final title = player.currentTitle ?? widget.fallbackTitle ?? l.carModeNoBookLoaded;
     final author = player.currentAuthor ?? widget.fallbackAuthor ?? '';
     final coverUrl = _getCoverUrl(context);
     final auth = context.read<AuthProvider>();
@@ -224,7 +227,7 @@ class _CarModeScreenState extends State<CarModeScreen>
                     const Spacer(),
                     Icon(Icons.directions_car_rounded, color: Colors.white54, size: compact ? 18 : 22),
                     const SizedBox(width: 6),
-                    Text('Car Mode', style: TextStyle(color: Colors.white54, fontSize: compact ? 13 : 16, fontWeight: FontWeight.w600)),
+                    Text(l.carModeTitle, style: TextStyle(color: Colors.white54, fontSize: compact ? 13 : 16, fontWeight: FontWeight.w600)),
                     const SizedBox(width: 16),
                   ],
                 ),
@@ -492,12 +495,12 @@ class _CarModeScreenState extends State<CarModeScreen>
                       BookmarkService().addBookmark(
                         itemId: itemId,
                         positionSeconds: pos,
-                        title: chTitle.isNotEmpty ? chTitle : 'Bookmark',
+                        title: chTitle.isNotEmpty ? chTitle : l.carModeBookmarkDefault,
                       );
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Bookmark added'),
-                          duration: Duration(seconds: 2),
+                        SnackBar(
+                          content: Text(l.carModeBookmarkAdded),
+                          duration: const Duration(seconds: 2),
                           behavior: SnackBarBehavior.floating,
                         ),
                       );

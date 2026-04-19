@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../services/audio_player_service.dart';
 import '../services/chromecast_service.dart';
 import 'absorb_slider.dart';
@@ -234,16 +235,17 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with WidgetsB
     return 0.1;
   }
 
-  static String _scrubSpeedLabel(double scale) {
-    if (scale <= 0.1) return 'Fine Scrubbing';
-    if (scale <= 0.25) return 'Quarter Speed';
-    return 'Half Speed';
+  static String _scrubSpeedLabel(AppLocalizations l, double scale) {
+    if (scale <= 0.1) return l.cardProgressFineScrubbing;
+    if (scale <= 0.25) return l.cardProgressQuarterSpeed;
+    return l.cardProgressHalfSpeed;
   }
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     final player = widget.player;
     final cast = ChromecastService();
     final active = widget.isActive || _isCastMode;
@@ -331,7 +333,7 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with WidgetsB
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_fmt(_bookDragValue != null ? _bookDragValue! * totalDur : bookElapsed), style: tt.labelSmall?.copyWith(color: _bookDragValue != null ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w600, shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
-                  if (_bookDragValue != null && _bookScrubSpeed < 1.0) Text(_scrubSpeedLabel(_bookScrubSpeed), style: tt.labelSmall?.copyWith(color: widget.accent, fontSize: 11, fontWeight: FontWeight.w500)),
+                  if (_bookDragValue != null && _bookScrubSpeed < 1.0) Text(_scrubSpeedLabel(l, _bookScrubSpeed), style: tt.labelSmall?.copyWith(color: widget.accent, fontSize: 11, fontWeight: FontWeight.w500)),
                   Text('-${_fmt(_bookDragValue != null ? (1.0 - _bookDragValue!) * totalDur : bookRemaining)}', style: tt.labelSmall?.copyWith(color: _bookDragValue != null ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w600, shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
                 ],
               )),
@@ -360,7 +362,7 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with WidgetsB
               final rawName = resolvedChapterName ?? widget.chapterName;
               final chIdx = resolvedChapterIdx >= 0 ? resolvedChapterIdx : widget.chapterIndex;
               final chName = rawName != null
-                  ? _smartChapterName(rawName, chIdx, widget.totalChapters)
+                  ? _smartChapterName(l, rawName, chIdx, widget.totalChapters)
                   : null;
 
               return GestureDetector(
@@ -408,7 +410,7 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with WidgetsB
                     fontSize: 11, fontWeight: FontWeight.w600,
                     fontFeatures: const [FontFeature.tabularFigures()],
                     shadows: [Shadow(color: Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.5) : Colors.white.withValues(alpha: 0.5), blurRadius: 3)])),
-                if (_chapterDragValue != null && _chapterScrubSpeed < 1.0) Text(_scrubSpeedLabel(_chapterScrubSpeed), style: tt.labelSmall?.copyWith(color: widget.accent, fontSize: 11, fontWeight: FontWeight.w500)),
+                if (_chapterDragValue != null && _chapterScrubSpeed < 1.0) Text(_scrubSpeedLabel(l, _chapterScrubSpeed), style: tt.labelSmall?.copyWith(color: widget.accent, fontSize: 11, fontWeight: FontWeight.w500)),
                 Text('-${_fmt(_chapterDragValue != null ? ((1.0 - _chapterDragValue!) * chapterDur) / speedDiv : chapterRemaining)}',
                   style: tt.labelSmall?.copyWith(
                     color: _chapterDragValue != null ? widget.accent : cs.onSurface.withValues(alpha: 0.5),
@@ -432,15 +434,15 @@ class _CardDualProgressBarState extends State<CardDualProgressBar> with WidgetsB
   }
 
   /// Smart chapter name: prefix bare numbers, show chapter position.
-  String _smartChapterName(String raw, int index, int total) {
+  String _smartChapterName(AppLocalizations l, String raw, int index, int total) {
     final trimmed = raw.trim();
     // Pure number → "Chapter 16"
     if (RegExp(r'^\d+$').hasMatch(trimmed)) {
-      return 'Chapter $trimmed';
+      return l.cardProgressChapterPrefix(trimmed);
     }
     // Very short (1-2 chars) → prefix
     if (trimmed.length <= 2) {
-      return 'Chapter $trimmed';
+      return l.cardProgressChapterPrefix(trimmed);
     }
     return trimmed;
   }

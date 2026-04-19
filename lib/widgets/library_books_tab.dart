@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../screens/library_screen.dart';
 import 'library_grid_tiles.dart';
 
@@ -32,20 +33,21 @@ class LibraryBooksTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     if (items.isEmpty && isLoadingPage) {
       return const Center(child: CircularProgressIndicator());
     }
     if (items.isEmpty && !isLoadingPage) {
       final filterMsg = switch (filter) {
-        LibraryFilter.inProgress => 'No books in progress',
-        LibraryFilter.finished => 'No finished books',
-        LibraryFilter.notStarted => 'All books have been started',
-        LibraryFilter.downloaded => 'No downloaded books',
-        LibraryFilter.inASeries => 'No series found',
-        LibraryFilter.hasEbook => 'No books with eBooks',
-        LibraryFilter.genre => 'No books in "${genreFilter ?? 'genre'}"',
-        LibraryFilter.none => 'No books found',
+        LibraryFilter.inProgress => l.libraryNoBooksInProgress,
+        LibraryFilter.finished => l.libraryNoFinishedBooks,
+        LibraryFilter.notStarted => l.libraryAllBooksStarted,
+        LibraryFilter.downloaded => l.libraryNoDownloadedBooks,
+        LibraryFilter.inASeries => l.libraryNoSeriesFound,
+        LibraryFilter.hasEbook => l.libraryNoBooksWithEbooks,
+        LibraryFilter.genre => l.libraryNoBooksInGenre(genreFilter ?? l.genre.toLowerCase()),
+        LibraryFilter.none => l.libraryNoBooks,
       };
       return RefreshIndicator(
         onRefresh: onRefresh,
@@ -66,7 +68,7 @@ class LibraryBooksTab extends StatelessWidget {
                       const SizedBox(height: 8),
                       GestureDetector(
                         onTap: onClearFilter,
-                        child: Text('Clear filter',
+                        child: Text(l.libraryClearFilter,
                             style: tt.bodySmall?.copyWith(color: cs.primary)),
                       ),
                     ],

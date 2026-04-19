@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/absorb_page_header.dart';
+import '../l10n/app_localizations.dart';
 import 'admin_users_screen.dart';
 import 'admin_podcasts_screen.dart';
 
@@ -65,6 +66,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -80,24 +82,24 @@ class _AdminScreenState extends State<AdminScreen> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
                       child: Row(children: [
-                        const Expanded(child: AbsorbPageHeader(title: 'Server Admin', padding: EdgeInsets.zero)),
+                        Expanded(child: AbsorbPageHeader(title: l.adminTitle, padding: EdgeInsets.zero)),
                         IconButton(icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant), onPressed: () => Navigator.pop(context)),
                       ]),
                     ),
                     const SizedBox(height: 20),
 
                     // ── Server Overview ──
-                    _section(cs, tt, 'Server'),
+                    _section(cs, tt, l.adminServer),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Container(
                         padding: const EdgeInsets.all(16),
                         decoration: _cardDeco(cs),
                         child: Row(children: [
-                          _stat(tt, cs, Icons.dns_rounded, _serverVersion ?? '–', 'Version'),
-                          _stat(tt, cs, Icons.people_rounded, '${_users.length}', 'Users'),
-                          _stat(tt, cs, Icons.wifi_rounded, '${_onlineUsers.length}', 'Online'),
-                          _stat(tt, cs, Icons.backup_rounded, '${_backups.length}', 'Backups'),
+                          _stat(tt, cs, Icons.dns_rounded, _serverVersion ?? '–', l.adminVersion),
+                          _stat(tt, cs, Icons.people_rounded, '${_users.length}', l.adminUsers),
+                          _stat(tt, cs, Icons.wifi_rounded, '${_onlineUsers.length}', l.adminOnline),
+                          _stat(tt, cs, Icons.backup_rounded, '${_backups.length}', l.adminBackupsLabel),
                         ]),
                       ),
                     ),
@@ -105,22 +107,22 @@ class _AdminScreenState extends State<AdminScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(children: [
-                        Expanded(child: _actionBtn(cs, tt, Icons.backup_rounded, 'Backup', _creatingBackup, _createBackup)),
+                        Expanded(child: _actionBtn(cs, tt, Icons.backup_rounded, l.adminBackup, _creatingBackup, _createBackup)),
                         const SizedBox(width: 10),
-                        Expanded(child: _actionBtn(cs, tt, Icons.cleaning_services_rounded, 'Purge Cache', _purgingCache, _purgeCache)),
+                        Expanded(child: _actionBtn(cs, tt, Icons.cleaning_services_rounded, l.adminPurgeCache, _purgingCache, _purgeCache)),
                       ]),
                     ),
                     const SizedBox(height: 28),
 
                     // ── Manage Buttons ──
-                    _section(cs, tt, 'Manage'),
+                    _section(cs, tt, l.adminManage),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Column(children: [
                         _navButton(cs, tt,
                           icon: Icons.people_rounded,
-                          label: 'Users',
-                          subtitle: '${_users.length} accounts · ${_onlineUsers.length} online',
+                          label: l.adminUsers,
+                          subtitle: l.adminUsersSubtitle(_users.length, _onlineUsers.length),
                           onTap: () async {
                             await Navigator.push(context, MaterialPageRoute(
                               builder: (_) => AdminUsersScreen(users: _users, onlineUsers: _onlineUsers, libraries: _libraries)));
@@ -131,8 +133,8 @@ class _AdminScreenState extends State<AdminScreen> {
                         if (_hasPodcastLibrary)
                           _navButton(cs, tt,
                             icon: Icons.podcasts_rounded,
-                            label: 'Podcasts',
-                            subtitle: 'Search, add & manage shows',
+                            label: l.adminPodcasts,
+                            subtitle: l.adminPodcastsSubtitle,
                             onTap: () {
                               final podLib = _libraries.firstWhere((l) => l['mediaType'] == 'podcast', orElse: () => null);
                               if (podLib != null) {
@@ -147,13 +149,13 @@ class _AdminScreenState extends State<AdminScreen> {
 
                     // ── Active Sessions ──
                     if (_activeSessions.isNotEmpty) ...[
-                      _section(cs, tt, 'Listening Now'),
+                      _section(cs, tt, l.adminListeningNow),
                       ..._activeSessions.map((s) => _sessionCard(cs, tt, s)),
                       const SizedBox(height: 18),
                     ],
 
                     // ── Libraries ──
-                    _section(cs, tt, 'Libraries'),
+                    _section(cs, tt, l.adminLibraries),
                     ..._libraries.map((lib) => _libraryCard(cs, tt, lib)),
                   ],
                 ),
@@ -203,8 +205,9 @@ class _AdminScreenState extends State<AdminScreen> {
   // ─── Library Card ───────────────────────────────────────────
 
   Widget _libraryCard(ColorScheme cs, TextTheme tt, dynamic lib) {
+    final l = AppLocalizations.of(context)!;
     final id = lib['id'] as String? ?? '';
-    final name = lib['name'] as String? ?? 'Library';
+    final name = lib['name'] as String? ?? l.libraryFallback;
     final mediaType = lib['mediaType'] as String? ?? 'book';
     final folders = (lib['folders'] as List?)?.length ?? 0;
     final stats = _libraryStats[id];
@@ -228,16 +231,16 @@ class _AdminScreenState extends State<AdminScreen> {
           ]),
           const SizedBox(height: 12),
           Row(children: [
-            _mini(cs, tt, '$totalItems', mediaType == 'podcast' ? 'shows' : 'books'),
-            if (folders > 0) _mini(cs, tt, '$folders', 'folders'),
-            if (totalSize != null) _mini(cs, tt, _fmtB(totalSize.toInt()), 'size'),
-            if (totalDur != null) _mini(cs, tt, _fmtD(totalDur.toDouble()), 'duration'),
+            _mini(cs, tt, '$totalItems', mediaType == 'podcast' ? l.adminLibraryShows : l.adminLibraryBooks),
+            if (folders > 0) _mini(cs, tt, '$folders', l.adminLibraryFolders),
+            if (totalSize != null) _mini(cs, tt, _fmtB(totalSize.toInt()), l.adminLibrarySize),
+            if (totalDur != null) _mini(cs, tt, _fmtD(totalDur.toDouble()), l.adminLibraryDuration),
           ]),
           const SizedBox(height: 12),
           Row(children: [
-            Expanded(child: _libAct(cs, tt, Icons.search_rounded, isScanning ? 'Scanning…' : 'Scan', isScanning, () => _scanLib(id, name))),
+            Expanded(child: _libAct(cs, tt, Icons.search_rounded, isScanning ? l.adminScanning : l.adminScan, isScanning, () => _scanLib(id, name))),
             const SizedBox(width: 8),
-            Expanded(child: _libAct(cs, tt, Icons.auto_fix_high_rounded, isMatching ? 'Matching…' : 'Match All', isMatching, () => _matchLib(id, name))),
+            Expanded(child: _libAct(cs, tt, Icons.auto_fix_high_rounded, isMatching ? l.adminMatching : l.adminMatchAll, isMatching, () => _matchLib(id, name))),
           ]),
         ])));
   }
@@ -261,7 +264,8 @@ class _AdminScreenState extends State<AdminScreen> {
       ])));
 
   Widget _sessionCard(ColorScheme cs, TextTheme tt, dynamic session) {
-    final displayTitle = session['displayTitle'] as String? ?? 'Unknown';
+    final l = AppLocalizations.of(context)!;
+    final displayTitle = session['displayTitle'] as String? ?? l.unknown;
     final displayAuthor = session['displayAuthor'] as String? ?? '';
     final userName = _userNameForSession(session);
     final currentTime = session['currentTime'] as num? ?? 0;
@@ -316,35 +320,53 @@ class _AdminScreenState extends State<AdminScreen> {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     setState(() => _scanningLibraries.add(id));
     final ok = await api.scanLibrary(id);
-    if (mounted) { setState(() => _scanningLibraries.remove(id)); _msg(ok ? 'Scan started for $name' : 'Failed to scan $name'); }
+    if (mounted) {
+      final l = AppLocalizations.of(context)!;
+      setState(() => _scanningLibraries.remove(id));
+      _msg(ok ? l.adminScanStarted(name) : l.adminScanFailed(name));
+    }
   }
 
   Future<void> _matchLib(String id, String name) async {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
+    final l = AppLocalizations.of(context)!;
     final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Match All Items?'),
-      content: Text('Match metadata for all items in $name? This can take a while.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Match'))],
+      title: Text(l.adminMatchAllTitle),
+      content: Text(l.adminMatchAllContent(name)),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.adminMatchAction))],
     ));
     if (yes != true) return;
     setState(() => _matchingLibraries.add(id));
     final ok = await api.matchLibrary(id);
-    if (mounted) { setState(() => _matchingLibraries.remove(id)); _msg(ok ? 'Matching started for $name' : 'Failed'); }
+    if (mounted) {
+      final l2 = AppLocalizations.of(context)!;
+      setState(() => _matchingLibraries.remove(id));
+      _msg(ok ? l2.adminMatchingStarted(name) : l2.adminMatchFailed);
+    }
   }
 
   Future<void> _createBackup() async {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     setState(() => _creatingBackup = true);
     final ok = await api.createBackup();
-    if (mounted) { setState(() => _creatingBackup = false); _msg(ok ? 'Backup created' : 'Backup failed'); if (ok) _loadAll(); }
+    if (mounted) {
+      final l = AppLocalizations.of(context)!;
+      setState(() => _creatingBackup = false);
+      _msg(ok ? l.adminBackupCreated : l.adminBackupFailed);
+      if (ok) _loadAll();
+    }
   }
 
   Future<void> _purgeCache() async {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     setState(() => _purgingCache = true);
     final ok = await api.purgeCache();
-    if (mounted) { setState(() => _purgingCache = false); _msg(ok ? 'Cache purged' : 'Failed'); }
+    if (mounted) {
+      final l = AppLocalizations.of(context)!;
+      setState(() => _purgingCache = false);
+      _msg(ok ? l.adminCachePurged : l.adminPurgeCacheFailed);
+    }
   }
 
   void _msg(String s) => ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(

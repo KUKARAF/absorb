@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/metadata_override_service.dart';
 
@@ -146,22 +147,23 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
 
   void _showFieldPicker(Map<String, dynamic> result) {
     final book = result['book'] as Map<String, dynamic>? ?? result;
+    final l = AppLocalizations.of(context)!;
 
     // Build available fields from the result
     final fields = <String, String>{};
-    void tryAdd(String key, String label, dynamic value) {
+    void tryAdd(String key, dynamic value) {
       final s = _safeString(value);
       if (s.isNotEmpty) fields[key] = s;
     }
 
-    tryAdd('title', 'Title', book['title']);
-    tryAdd('author', 'Author', book['author'] ?? book['authorName']);
-    tryAdd('narrator', 'Narrator', book['narrator'] ?? book['narratorName']);
-    tryAdd('description', 'Description', book['description']);
-    tryAdd('publisher', 'Publisher', book['publisher']);
-    tryAdd('publishedYear', 'Year', book['publishedYear'] ?? book['publishedDate']);
-    tryAdd('asin', 'ASIN', book['asin']);
-    tryAdd('isbn', 'ISBN', book['isbn']);
+    tryAdd('title', book['title']);
+    tryAdd('author', book['author'] ?? book['authorName']);
+    tryAdd('narrator', book['narrator'] ?? book['narratorName']);
+    tryAdd('description', book['description']);
+    tryAdd('publisher', book['publisher']);
+    tryAdd('publishedYear', book['publishedYear'] ?? book['publishedDate']);
+    tryAdd('asin', book['asin']);
+    tryAdd('isbn', book['isbn']);
 
     final coverUrl = _safeString(book['cover']).isNotEmpty
         ? _safeString(book['cover'])
@@ -185,17 +187,17 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
     final selected = Set<String>.from(fields.keys);
 
     final labels = {
-      'title': 'Title',
-      'author': 'Author',
-      'narrator': 'Narrator',
-      'description': 'Description',
-      'publisher': 'Publisher',
-      'publishedYear': 'Year',
-      'asin': 'ASIN',
-      'isbn': 'ISBN',
-      'coverUrl': 'Cover',
-      'genres': 'Genres',
-      'series': 'Series',
+      'title': l.titleLabel,
+      'author': l.authorLabel,
+      'narrator': l.narratorLabel,
+      'description': l.descriptionLabel,
+      'publisher': l.publisherLabel,
+      'publishedYear': l.yearLabel,
+      'asin': l.asinLabel,
+      'isbn': l.isbnLabel,
+      'coverUrl': l.metadataLookupCover,
+      'genres': l.genresLabel,
+      'series': l.seriesLabel,
     };
 
     showDialog(
@@ -205,7 +207,7 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
           final cs = Theme.of(ctx).colorScheme;
           final tt = Theme.of(ctx).textTheme;
           return AlertDialog(
-            title: const Text('Choose Fields to Apply'),
+            title: Text(l.metadataLookupChooseFields),
             content: SizedBox(
               width: double.maxFinite,
               child: ListView(
@@ -230,13 +232,13 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
               FilledButton(
                 onPressed: selected.isEmpty ? null : () {
                   Navigator.pop(ctx);
                   _applySelectedFields(result, selected);
                 },
-                child: Text('Apply ${selected.length} field${selected.length == 1 ? '' : 's'}'),
+                child: Text(l.metadataLookupApplyFields(selected.length)),
               ),
             ],
           );
@@ -292,10 +294,11 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
     await MetadataOverrideService().save(widget.itemId, override);
 
     if (mounted) {
+      final l = AppLocalizations.of(context)!;
       widget.onApplied();
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${selected.length} field${selected.length == 1 ? '' : 's'} saved locally'),
+        content: Text(l.metadataLookupFieldsSavedLocally(selected.length)),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -339,10 +342,11 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
     await MetadataOverrideService().save(widget.itemId, override);
 
     if (mounted) {
+      final l = AppLocalizations.of(context)!;
       widget.onApplied();
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Metadata saved locally'),
+        content: Text(l.metadataSavedLocally),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -356,6 +360,7 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Container(
       decoration: BoxDecoration(
@@ -373,7 +378,7 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
           child: Row(children: [
             Icon(Icons.manage_search_rounded, size: 22, color: cs.primary),
             const SizedBox(width: 8),
-            Text('Local Metadata', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: Colors.white)),
+            Text(l.localMetadata, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: Colors.white)),
           ]),
         ),
 
@@ -383,9 +388,9 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
           labelColor: cs.primary,
           unselectedLabelColor: Colors.white54,
           indicatorColor: cs.primary,
-          tabs: const [
-            Tab(text: 'Quick Match'),
-            Tab(text: 'Custom'),
+          tabs: [
+            Tab(text: l.quickMatch),
+            Tab(text: l.custom),
           ],
         ),
 
@@ -394,8 +399,8 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
           child: TabBarView(
             controller: _tabCtrl,
             children: [
-              _buildSearchTab(cs, tt),
-              _buildCustomTab(cs, tt),
+              _buildSearchTab(cs, tt, l),
+              _buildCustomTab(cs, tt, l),
             ],
           ),
         ),
@@ -405,14 +410,14 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
 
   // ─── Search Tab ─────────────────────────────────────────────
 
-  Widget _buildSearchTab(ColorScheme cs, TextTheme tt) {
+  Widget _buildSearchTab(ColorScheme cs, TextTheme tt, AppLocalizations l) {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
         child: Column(children: [
-          _buildField(controller: _titleController, label: 'Title', icon: Icons.book_rounded, cs: cs, onSubmitted: (_) => _doSearch()),
+          _buildField(controller: _titleController, label: l.titleLabel, icon: Icons.book_rounded, cs: cs, onSubmitted: (_) => _doSearch()),
           const SizedBox(height: 8),
-          _buildField(controller: _authorController, label: 'Author (optional)', icon: Icons.person_rounded, cs: cs, onSubmitted: (_) => _doSearch()),
+          _buildField(controller: _authorController, label: l.authorOptionalLabel, icon: Icons.person_rounded, cs: cs, onSubmitted: (_) => _doSearch()),
           const SizedBox(height: 10),
           Row(children: [
             Expanded(
@@ -445,7 +450,7 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
                 icon: _isSearching
                     ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary))
                     : const Icon(Icons.search_rounded, size: 18),
-                label: const Text('Search'),
+                label: Text(l.search),
                 style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               ),
             ),
@@ -465,7 +470,7 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
                 ? ListView(controller: widget.scrollController, children: [
                     const SizedBox(height: 80),
                     Center(child: Text(
-                      _hasSearched ? 'No results found.\nTry adjusting your search or provider.' : 'Search for metadata above',
+                      _hasSearched ? l.noResultsFound : l.searchForMetadataAbove,
                       textAlign: TextAlign.center,
                       style: tt.bodyMedium?.copyWith(color: Colors.white38),
                     )),
@@ -475,7 +480,7 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
                     padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + MediaQuery.of(context).viewPadding.bottom),
                     itemCount: _results.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (_, i) => _buildResultCard(_results[i], cs, tt),
+                    itemBuilder: (_, i) => _buildResultCard(_results[i], cs, tt, l),
                   ),
       ),
     ]);
@@ -483,17 +488,17 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
 
   // ─── Custom Tab ─────────────────────────────────────────────
 
-  Widget _buildCustomTab(ColorScheme cs, TextTheme tt) {
+  Widget _buildCustomTab(ColorScheme cs, TextTheme tt, AppLocalizations l) {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
         child: Row(children: [
-          Text('Override local display', style: tt.labelSmall?.copyWith(color: Colors.white38)),
+          Text(l.metadataLookupOverrideLocalDisplay, style: tt.labelSmall?.copyWith(color: Colors.white38)),
           const Spacer(),
           FilledButton.icon(
             onPressed: _saveCustom,
             icon: const Icon(Icons.check_rounded, size: 18),
-            label: const Text('Save'),
+            label: Text(l.save),
             style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
           ),
         ]),
@@ -503,27 +508,27 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
         child: ListView(
           padding: EdgeInsets.fromLTRB(20, 0, 20, 32 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
           children: [
-            _customField('Title', _cTitleCtrl, tt),
-            _customField('Author', _cAuthorCtrl, tt),
-            _customField('Narrator', _cNarratorCtrl, tt),
+            _customField(l.titleLabel, _cTitleCtrl, tt),
+            _customField(l.authorLabel, _cAuthorCtrl, tt),
+            _customField(l.narratorLabel, _cNarratorCtrl, tt),
             Row(children: [
-              Expanded(child: _customField('Series', _cSeriesCtrl, tt)),
+              Expanded(child: _customField(l.seriesLabel, _cSeriesCtrl, tt)),
               const SizedBox(width: 12),
               SizedBox(width: 80, child: _customField('#', _cSeriesSeqCtrl, tt)),
             ]),
-            _customField('Description', _cDescCtrl, tt, maxLines: 4),
-            _customField('Publisher', _cPublisherCtrl, tt),
+            _customField(l.descriptionLabel, _cDescCtrl, tt, maxLines: 4),
+            _customField(l.publisherLabel, _cPublisherCtrl, tt),
             Row(children: [
-              Expanded(child: _customField('Year', _cYearCtrl, tt)),
+              Expanded(child: _customField(l.yearLabel, _cYearCtrl, tt)),
               const SizedBox(width: 12),
-              Expanded(child: _customField('ASIN', _cAsinCtrl, tt)),
+              Expanded(child: _customField(l.asinLabel, _cAsinCtrl, tt)),
             ]),
             Row(children: [
-              Expanded(child: _customField('ISBN', _cIsbnCtrl, tt)),
+              Expanded(child: _customField(l.isbnLabel, _cIsbnCtrl, tt)),
               const SizedBox(width: 12),
-              Expanded(child: _customField('Genres', _cGenresCtrl, tt, hint: 'Comma separated')),
+              Expanded(child: _customField(l.genresLabel, _cGenresCtrl, tt, hint: l.commaSeparated)),
             ]),
-            _customField('Cover URL', _cCoverUrlCtrl, tt, hint: 'https://...'),
+            _customField(l.coverUrlLabel, _cCoverUrlCtrl, tt, hint: l.coverUrlHint),
           ],
         ),
       ),
@@ -591,7 +596,7 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
     return value.toString();
   }
 
-  Widget _buildResultCard(Map<String, dynamic> result, ColorScheme cs, TextTheme tt) {
+  Widget _buildResultCard(Map<String, dynamic> result, ColorScheme cs, TextTheme tt, AppLocalizations l) {
     final book = result['book'] as Map<String, dynamic>? ?? result;
     final title = _safeString(book['title']);
     final author = _safeString(book['author']).isNotEmpty ? _safeString(book['author']) : _safeString(book['authorName']);
@@ -637,7 +642,7 @@ class _MetadataLookupSheetState extends State<MetadataLookupSheet>
               ],
               if (narrator.isNotEmpty) ...[
                 const SizedBox(height: 1),
-                Text('Narrated by $narrator', maxLines: 1, overflow: TextOverflow.ellipsis,
+                Text(l.narratedBy(narrator), maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: tt.labelSmall?.copyWith(color: Colors.white38)),
               ],
               const SizedBox(height: 4),

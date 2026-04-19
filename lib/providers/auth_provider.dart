@@ -8,7 +8,8 @@ import '../services/audio_player_service.dart';
 import '../services/session_cache.dart';
 import '../services/socket_service.dart';
 import '../services/user_account_service.dart';
-import '../main.dart' show scaffoldMessengerKey;
+import '../l10n/app_localizations.dart';
+import '../main.dart' show scaffoldMessengerKey, rootNavigatorKey;
 
 class AuthProvider extends ChangeNotifier {
   String? _accessToken;
@@ -94,8 +95,11 @@ class AuthProvider extends ChangeNotifier {
   void _onAuthExpired() {
     debugPrint('[Auth] Token refresh failed, forcing re-login');
     // Show a message to the user
+    final ctx = rootNavigatorKey.currentContext;
+    final l = ctx != null ? AppLocalizations.of(ctx) : null;
+    final msg = l?.authSessionExpired ?? 'Session expired. Please log in again.';
     scaffoldMessengerKey.currentState?.showSnackBar(
-      const SnackBar(content: Text('Session expired. Please log in again.')),
+      SnackBar(content: Text(msg)),
     );
     logout();
   }
@@ -204,11 +208,15 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Login with username/password.
+  ///
+  /// [l] is used to localize error messages stored in [errorMessage]. If null,
+  /// English fallbacks are used (e.g. when called from a non-UI context).
   Future<bool> login({
     required String serverUrl,
     required String username,
     required String password,
     Map<String, String> customHeaders = const {},
+    AppLocalizations? l,
   }) async {
     _errorMessage = null;
 
@@ -224,7 +232,7 @@ class AuthProvider extends ChangeNotifier {
     // Check server reachability
     final reachable = await ApiService.pingServer(url, customHeaders: customHeaders);
     if (!reachable) {
-      _errorMessage = 'Cannot reach server at $url';
+      _errorMessage = l?.authCannotReachServer(url) ?? 'Cannot reach server at $url';
       return false;
     }
 
@@ -238,15 +246,15 @@ class AuthProvider extends ChangeNotifier {
 
     if (result == null) {
       _errorMessage = statusCode == 401
-          ? 'Invalid username or password'
-          : 'Login failed - check your server address and credentials';
+          ? (l?.authInvalidUsernameOrPassword ?? 'Invalid username or password')
+          : (l?.authLoginFailedDetail ?? 'Login failed - check your server address and credentials');
       return false;
     }
 
     // Extract user info
     final user = result['user'] as Map<String, dynamic>?;
     if (user == null) {
-      _errorMessage = 'Unexpected server response';
+      _errorMessage = l?.authUnexpectedServerResponse ?? 'Unexpected server response';
       return false;
     }
 
@@ -314,9 +322,13 @@ class AuthProvider extends ChangeNotifier {
 
   /// Login using OIDC callback response data.
   /// [result] is the JSON from /auth/openid/callback — same shape as /login response.
+  ///
+  /// [l] is used to localize error messages stored in [errorMessage]. If null,
+  /// English fallbacks are used.
   Future<bool> loginWithOidc({
     required String serverUrl,
     required Map<String, dynamic> result,
+    AppLocalizations? l,
   }) async {
     _errorMessage = null;
 
@@ -325,7 +337,7 @@ class AuthProvider extends ChangeNotifier {
 
     final user = result['user'] as Map<String, dynamic>?;
     if (user == null) {
-      _errorMessage = 'SSO returned an unexpected response';
+      _errorMessage = l?.authSsoUnexpectedResponse ?? 'SSO returned an unexpected response';
       notifyListeners();
       return false;
     }
@@ -411,9 +423,11 @@ class AuthProvider extends ChangeNotifier {
     if (_useLocalServer != wasLocal) {
       debugPrint('[Auth] Local server switch: useLocal=$_useLocalServer');
       SocketService().switchServer(activeServerUrl!);
+      final ctx = rootNavigatorKey.currentContext;
+      final l = ctx != null ? AppLocalizations.of(ctx) : null;
       _showServerToast(_useLocalServer
-          ? 'Switched to local server'
-          : 'Switched to remote server');
+          ? (l?.authSwitchedToLocalServer ?? 'Switched to local server')
+          : (l?.authSwitchedToRemoteServer ?? 'Switched to remote server'));
       notifyListeners();
     }
   }
@@ -426,7 +440,9 @@ class AuthProvider extends ChangeNotifier {
     if (_serverUrl != null) {
       SocketService().switchServer(_serverUrl!);
     }
-    _showServerToast('Switched to remote server');
+    final ctx = rootNavigatorKey.currentContext;
+    final l = ctx != null ? AppLocalizations.of(ctx) : null;
+    _showServerToast(l?.authSwitchedToRemoteServer ?? 'Switched to remote server');
     notifyListeners();
   }
 

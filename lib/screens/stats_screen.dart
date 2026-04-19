@@ -12,6 +12,7 @@ import '../widgets/absorb_wave_icon.dart';
 import '../widgets/card_buttons.dart';
 import '../main.dart' show oledNotifier;
 import 'app_shell.dart';
+import '../l10n/app_localizations.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -158,6 +159,7 @@ class _StatsScreenState extends State<StatsScreen>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -182,7 +184,7 @@ class _StatsScreenState extends State<StatsScreen>
                       strokeWidth: 2,
                       color: cs.onSurface.withValues(alpha: 0.24)))
               : _stats == null
-                  ? _errorState(tt, cs)
+                  ? _errorState(tt, cs, l)
                   : RefreshIndicator(
                       onRefresh: () async {
                         setState(() => _isLoading = true);
@@ -192,7 +194,7 @@ class _StatsScreenState extends State<StatsScreen>
                       backgroundColor: cs.surfaceContainerHigh,
                       child: AnimatedBuilder(
                         animation: _animValue,
-                        builder: (_, __) => _buildContent(cs, tt),
+                        builder: (_, __) => _buildContent(cs, tt, l),
                       ),
                     ),
         ),
@@ -200,13 +202,13 @@ class _StatsScreenState extends State<StatsScreen>
     );
   }
 
-  Widget _errorState(TextTheme tt, ColorScheme cs) {
+  Widget _errorState(TextTheme tt, ColorScheme cs, AppLocalizations l) {
     return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
       Icon(Icons.signal_wifi_off_rounded,
           size: 48, color: cs.onSurface.withValues(alpha: 0.15)),
       const SizedBox(height: 12),
-      Text('Couldn\'t load stats',
+      Text(l.statsCouldNotLoad,
           style: tt.bodyMedium
               ?.copyWith(color: cs.onSurface.withValues(alpha: 0.38))),
       const SizedBox(height: 8),
@@ -215,11 +217,11 @@ class _StatsScreenState extends State<StatsScreen>
             setState(() => _isLoading = true);
             _loadStats();
           },
-          child: const Text('Retry')),
+          child: Text(l.retry)),
     ]));
   }
 
-  Widget _buildContent(ColorScheme cs, TextTheme tt) {
+  Widget _buildContent(ColorScheme cs, TextTheme tt, AppLocalizations l) {
     final totalSeconds = _safeNum(_stats!['totalTime']);
     final dailyMap = _extractDailyMap(_stats!);
     final today = _todaySeconds(dailyMap);
@@ -236,28 +238,28 @@ class _StatsScreenState extends State<StatsScreen>
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
       children: [
-        const AbsorbPageHeader(
-          title: 'Your Stats',
-          padding: EdgeInsets.only(top: 12),
+        AbsorbPageHeader(
+          title: l.statsTitle,
+          padding: const EdgeInsets.only(top: 12),
         ),
         const SizedBox(height: 24),
 
         // -- Hero stat --
-        _heroStat(tt, cs, totalSeconds),
+        _heroStat(tt, cs, l, totalSeconds),
         const SizedBox(height: 16),
 
         // -- Time periods --
         Row(children: [
-          Expanded(child: _periodCard(tt, cs, 'Today', today)),
+          Expanded(child: _periodCard(tt, cs, l.statsToday, today)),
           const SizedBox(width: 8),
-          Expanded(child: _periodCard(tt, cs, 'This Week', thisWeek)),
+          Expanded(child: _periodCard(tt, cs, l.statsThisWeek, thisWeek)),
           const SizedBox(width: 8),
-          Expanded(child: _periodCard(tt, cs, 'This Month', thisMonth)),
+          Expanded(child: _periodCard(tt, cs, l.statsThisMonth, thisMonth)),
         ]),
         const SizedBox(height: 24),
 
         // -- Activity stats --
-        _sectionTitle(tt, cs, 'Activity'),
+        _sectionTitle(tt, cs, l.statsActivity),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(
@@ -266,47 +268,47 @@ class _StatsScreenState extends State<StatsScreen>
                   cs,
                   Icons.local_fire_department_rounded,
                   Colors.orange,
-                  '${streak}d',
-                  'Current Streak')),
+                  l.statsScreenStreakDays(streak),
+                  l.statsCurrentStreak)),
           const SizedBox(width: 8),
           Expanded(
               child: _accentStatCard(tt, cs, Icons.emoji_events_rounded,
-                  Colors.amber.shade600, '${longestStreak}d', 'Best Streak')),
+                  Colors.amber.shade600, l.statsScreenStreakDays(longestStreak), l.statsBestStreak)),
         ]),
         const SizedBox(height: 8),
         Row(children: [
           Expanded(
               child: _accentStatCard(tt, cs, Icons.check_circle_rounded,
-                  Colors.green, '$_booksFinished', 'Finished')),
+                  Colors.green, '$_booksFinished', l.statsFinished)),
           const SizedBox(width: 8),
           Expanded(
               child: _accentStatCard(tt, cs, Icons.calendar_today_rounded,
-                  cs.primary, '$activeDays', 'Days Active')),
+                  cs.primary, '$activeDays', l.statsDaysActive)),
         ]),
         const SizedBox(height: 8),
         _accentStatCard(tt, cs, Icons.speed_rounded, cs.tertiary,
-            _formatDuration(avgDaily), 'Daily Average'),
+            _formatDuration(avgDaily), l.statsDailyAverage),
         const SizedBox(height: 28),
 
         // -- Last 7 days chart --
-        _sectionTitle(tt, cs, 'Last 7 Days'),
+        _sectionTitle(tt, cs, l.statsLast7Days),
         const SizedBox(height: 10),
         _barChart(weekData, cs, tt),
         const SizedBox(height: 28),
 
         // -- Top items --
         if (topItems.isNotEmpty) ...[
-          _sectionTitle(tt, cs, 'Most Listened'),
+          _sectionTitle(tt, cs, l.statsMostListened),
           const SizedBox(height: 10),
-          ...topItems.map((item) => _topItemCard(tt, cs, item)),
+          ...topItems.map((item) => _topItemCard(tt, cs, l, item)),
           const SizedBox(height: 28),
         ],
 
         // -- Recent Sessions --
         if (_sessions.isNotEmpty) ...[
-          _sectionTitle(tt, cs, 'Recent Sessions'),
+          _sectionTitle(tt, cs, l.statsRecentSessions),
           const SizedBox(height: 10),
-          ..._buildSessions(tt, cs),
+          ..._buildSessions(tt, cs, l),
           if (_isLoadingMoreSessions)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -338,7 +340,7 @@ class _StatsScreenState extends State<StatsScreen>
 
   // --- HERO STAT ---
 
-  Widget _heroStat(TextTheme tt, ColorScheme cs, double totalSeconds) {
+  Widget _heroStat(TextTheme tt, ColorScheme cs, AppLocalizations l, double totalSeconds) {
     final hours = (totalSeconds / 3600).floor();
     final minutes = ((totalSeconds % 3600) / 60).floor();
     final anim = _animValue.value;
@@ -358,7 +360,7 @@ class _StatsScreenState extends State<StatsScreen>
         border: Border.all(color: cs.primary.withValues(alpha: oledNotifier.value ? 0.08 : 0.15)),
       ),
       child: Column(children: [
-        Text('TOTAL LISTENING TIME',
+        Text(l.statsTotalListeningTime,
             style: tt.labelSmall?.copyWith(
               color: cs.onSurface.withValues(alpha: 0.35),
               letterSpacing: 2,
@@ -378,7 +380,7 @@ class _StatsScreenState extends State<StatsScreen>
                     fontSize: 52,
                     height: 1)),
             const SizedBox(width: 2),
-            Text('h',
+            Text(l.statsHoursUnit,
                 style: tt.titleLarge?.copyWith(
                     color: cs.onSurface.withValues(alpha: 0.3),
                     fontWeight: FontWeight.w300)),
@@ -390,25 +392,25 @@ class _StatsScreenState extends State<StatsScreen>
                     fontSize: 52,
                     height: 1)),
             const SizedBox(width: 2),
-            Text('m',
+            Text(l.statsMinutesUnit,
                 style: tt.titleLarge?.copyWith(
                     color: cs.onSurface.withValues(alpha: 0.3),
                     fontWeight: FontWeight.w300)),
           ],
         ),
         const SizedBox(height: 10),
-        Text(_daysEquivalent(totalSeconds),
+        Text(_daysEquivalent(totalSeconds, l),
             style: tt.bodySmall
                 ?.copyWith(color: cs.onSurface.withValues(alpha: 0.25))),
       ]),
     );
   }
 
-  String _daysEquivalent(double seconds) {
+  String _daysEquivalent(double seconds, AppLocalizations l) {
     final days = seconds / 86400;
-    if (days >= 1) return 'That\'s ${days.toStringAsFixed(1)} days of audio';
+    if (days >= 1) return l.statsDaysOfAudio(days.toStringAsFixed(1));
     final hours = seconds / 3600;
-    return 'That\'s ${hours.toStringAsFixed(1)} hours of audio';
+    return l.statsHoursOfAudio(hours.toStringAsFixed(1));
   }
 
   // --- ACCENT STAT CARD ---
@@ -574,7 +576,7 @@ class _StatsScreenState extends State<StatsScreen>
     return items.take(5).toList();
   }
 
-  Widget _topItemCard(TextTheme tt, ColorScheme cs, _TopItem item) {
+  Widget _topItemCard(TextTheme tt, ColorScheme cs, AppLocalizations l, _TopItem item) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Container(
@@ -610,7 +612,9 @@ class _StatsScreenState extends State<StatsScreen>
                     color: cs.onSurface.withValues(alpha: 0.5),
                     fontWeight: FontWeight.w700)),
             Text(
-                '${item.sessionCount} ${item.sessionCount == 1 ? 'session' : 'sessions'}',
+                item.sessionCount == 1
+                    ? l.statsScreenSessionCountOne(item.sessionCount)
+                    : l.statsScreenSessionCountOther(item.sessionCount),
                 style: TextStyle(
                     color: cs.onSurface.withValues(alpha: 0.2), fontSize: 9)),
           ]),
@@ -621,7 +625,7 @@ class _StatsScreenState extends State<StatsScreen>
 
   // --- SESSIONS ---
 
-  List<Widget> _buildSessions(TextTheme tt, ColorScheme cs) {
+  List<Widget> _buildSessions(TextTheme tt, ColorScheme cs, AppLocalizations l) {
     return _sessions.map((s) {
       if (s is! Map<String, dynamic>) return const SizedBox.shrink();
       final rawTitle = s['displayTitle'] as String?;
@@ -629,7 +633,7 @@ class _StatsScreenState extends State<StatsScreen>
       final meta = s['mediaMetadata'] as Map<String, dynamic>?;
       final title = (rawTitle != null && !_looksLikeId(rawTitle))
           ? rawTitle
-          : meta?['title'] as String? ?? 'Unknown';
+          : meta?['title'] as String? ?? l.unknown;
       final author = (rawAuthor != null && !_looksLikeId(rawAuthor))
           ? rawAuthor
           : meta?['authorName'] as String? ?? '';
@@ -853,11 +857,12 @@ class _StatsScreenState extends State<StatsScreen>
   }
 
   List<_DayData> _last7Days(Map<String, dynamic> dailyMap) {
+    final l = AppLocalizations.of(context)!;
     final now = DateTime.now();
     return List.generate(7, (i) {
       final date = now.subtract(Duration(days: 6 - i));
       return _DayData(
-        label: _dayLabel(date),
+        label: _dayLabel(date, l),
         fullLabel: _dateKey(date),
         seconds: _daySeconds(dailyMap, _dateKey(date)),
       );
@@ -867,30 +872,43 @@ class _StatsScreenState extends State<StatsScreen>
   String _dateKey(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  String _dayLabel(DateTime d) =>
-      ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d.weekday - 1];
+  String _dayLabel(DateTime d, AppLocalizations l) {
+    switch (d.weekday) {
+      case 1: return l.statsScreenDayMon;
+      case 2: return l.statsScreenDayTue;
+      case 3: return l.statsScreenDayWed;
+      case 4: return l.statsScreenDayThu;
+      case 5: return l.statsScreenDayFri;
+      case 6: return l.statsScreenDaySat;
+      case 7: return l.statsScreenDaySun;
+    }
+    return '';
+  }
 
   String _formatDuration(double seconds) {
+    final l = AppLocalizations.of(context)!;
     final h = (seconds / 3600).floor();
     final m = ((seconds % 3600) / 60).floor();
-    if (h > 0) return '${h}h ${m}m';
-    if (m > 0) return '${m}m';
-    if (seconds > 0) return '<1m';
-    return '0m';
+    if (h > 0) return l.statsScreenDurationHm(h, m);
+    if (m > 0) return l.statsScreenDurationM(m);
+    if (seconds > 0) return l.statsScreenDurationLessThanMin;
+    return l.statsScreenDurationZero;
   }
 
   String _shortDuration(double seconds) {
+    final l = AppLocalizations.of(context)!;
     final h = (seconds / 3600).floor();
     final m = ((seconds % 3600) / 60).floor();
-    if (h > 0) return '${h}h';
-    return '${m}m';
+    if (h > 0) return l.statsScreenDurationShortH(h);
+    return l.statsScreenDurationShortM(m);
   }
 
   String _relativeDate(DateTime date) {
+    final l = AppLocalizations.of(context)!;
     final diff = DateTime.now().difference(date);
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    if (diff.inMinutes < 60) return l.minutesAgo(diff.inMinutes);
+    if (diff.inHours < 24) return l.hoursAgo(diff.inHours);
+    if (diff.inDays < 7) return l.daysAgo(diff.inDays);
     return '${date.month}/${date.day}';
   }
 }
@@ -939,24 +957,40 @@ class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
     return '$m:${sec.toString().padLeft(2, '0')}';
   }
 
-  String _fmtDuration(double seconds) {
+  String _fmtDuration(double seconds, AppLocalizations l) {
     final h = (seconds / 3600).floor();
     final m = ((seconds % 3600) / 60).floor();
-    if (h > 0) return '${h}h ${m}m';
-    if (m > 0) return '${m}m';
-    if (seconds > 0) return '<1m';
-    return '0m';
+    if (h > 0) return l.statsScreenDurationHm(h, m);
+    if (m > 0) return l.statsScreenDurationM(m);
+    if (seconds > 0) return l.statsScreenDurationLessThanMin;
+    return l.statsScreenDurationZero;
   }
 
-  String _fmtDate(int ms) {
+  String _fmtDate(int ms, AppLocalizations l) {
     final d = DateTime.fromMillisecondsSinceEpoch(ms);
-    final months = [
-      'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'
-    ];
+    final monthName = _monthShort(d.month, l);
     final hour12 = d.hour == 0 ? 12 : (d.hour > 12 ? d.hour - 12 : d.hour);
-    final ampm = d.hour >= 12 ? 'PM' : 'AM';
+    final ampm = d.hour >= 12 ? l.statsScreenPmLabel : l.statsScreenAmLabel;
     final min = d.minute.toString().padLeft(2, '0');
-    return '${months[d.month - 1]} ${d.day}, ${d.year} at $hour12:$min $ampm';
+    return l.statsScreenDateAtTime(monthName, d.day, d.year, hour12, min, ampm);
+  }
+
+  String _monthShort(int m, AppLocalizations l) {
+    switch (m) {
+      case 1: return l.statsScreenMonthJan;
+      case 2: return l.statsScreenMonthFeb;
+      case 3: return l.statsScreenMonthMar;
+      case 4: return l.statsScreenMonthApr;
+      case 5: return l.statsScreenMonthMay;
+      case 6: return l.statsScreenMonthJun;
+      case 7: return l.statsScreenMonthJul;
+      case 8: return l.statsScreenMonthAug;
+      case 9: return l.statsScreenMonthSep;
+      case 10: return l.statsScreenMonthOct;
+      case 11: return l.statsScreenMonthNov;
+      case 12: return l.statsScreenMonthDec;
+    }
+    return '';
   }
 
   Future<void> _jumpToStart() async {
@@ -984,9 +1018,10 @@ class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
 
     if (api == null) {
       if (mounted) {
+        final l = AppLocalizations.of(context)!;
         setState(() => _jumping = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Not connected to server'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.bookmarksNotConnected),
           behavior: SnackBarBehavior.floating,
         ));
       }
@@ -1004,9 +1039,10 @@ class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
     final fullItem = await api.getLibraryItem(itemId);
     if (fullItem == null) {
       if (mounted) {
+        final l = AppLocalizations.of(context)!;
         setState(() => _jumping = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not load item'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.statsScreenCouldNotLoadItem),
           behavior: SnackBarBehavior.floating,
         ));
       }
@@ -1031,9 +1067,10 @@ class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
       );
       if (episode is! Map<String, dynamic>) {
         if (mounted) {
+          final l = AppLocalizations.of(context)!;
           setState(() => _jumping = false);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Could not find episode'),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(l.statsScreenCouldNotFindEpisode),
             behavior: SnackBarBehavior.floating,
           ));
         }
@@ -1085,6 +1122,7 @@ class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final s = widget.session;
 
     final meta = s['mediaMetadata'] as Map<String, dynamic>? ?? {};
@@ -1097,7 +1135,7 @@ class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
     bool looksLikeId(String v) => idPattern.hasMatch(v);
     final title = (rawTitle != null && !looksLikeId(rawTitle))
         ? rawTitle
-        : meta['title'] as String? ?? 'Unknown';
+        : meta['title'] as String? ?? l.unknown;
     final author = (rawAuthor != null && !looksLikeId(rawAuthor))
         ? rawAuthor
         : meta['authorName'] as String? ?? '';
@@ -1191,14 +1229,14 @@ class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
                           ],
                           if (author.isNotEmpty) ...[
                             const SizedBox(height: 4),
-                            Text('by $author',
+                            Text(l.statsScreenByAuthor(author),
                                 style: tt.bodySmall?.copyWith(
                                     color: cs.onSurface
                                         .withValues(alpha: 0.6))),
                           ],
                           if (narrator.isNotEmpty) ...[
                             const SizedBox(height: 2),
-                            Text('Narrated by $narrator',
+                            Text(l.narratedBy(narrator),
                                 style: tt.bodySmall?.copyWith(
                                     color: cs.onSurface
                                         .withValues(alpha: 0.5))),
@@ -1206,39 +1244,39 @@ class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
                         ])),
                   ]),
                   const SizedBox(height: 20),
-                  _infoRow(cs, tt, 'Listened', _fmtDuration(timeListening)),
-                  _infoRow(cs, tt, 'Started at position', _fmtPos(startTime)),
-                  _infoRow(cs, tt, 'Ended at position', _fmtPos(currentTime)),
+                  _infoRow(cs, tt, l.statsScreenListened, _fmtDuration(timeListening, l)),
+                  _infoRow(cs, tt, l.statsScreenStartedAtPosition, _fmtPos(startTime)),
+                  _infoRow(cs, tt, l.statsScreenEndedAtPosition, _fmtPos(currentTime)),
                   if (totalDuration > 0)
-                    _infoRow(cs, tt, 'Total duration',
+                    _infoRow(cs, tt, l.statsScreenTotalDuration,
                         _fmtPos(totalDuration)),
                   const SizedBox(height: 16),
                   if (startedAt is num)
-                    _infoRow(cs, tt, 'Started', _fmtDate(startedAt.toInt())),
+                    _infoRow(cs, tt, l.statsScreenStarted, _fmtDate(startedAt.toInt(), l)),
                   if (updatedAt is num)
-                    _infoRow(cs, tt, 'Updated', _fmtDate(updatedAt.toInt())),
+                    _infoRow(cs, tt, l.statsScreenUpdated, _fmtDate(updatedAt.toInt(), l)),
                   const SizedBox(height: 16),
                   if (clientName.isNotEmpty)
                     _infoRow(
                         cs,
                         tt,
-                        'Client',
+                        l.statsScreenClient,
                         clientVersion.isNotEmpty
                             ? '$clientName $clientVersion'
                             : clientName),
                   if (deviceModel.isNotEmpty)
-                    _infoRow(cs, tt, 'Device', deviceModel),
+                    _infoRow(cs, tt, l.statsScreenDevice, deviceModel),
                   if (osName.isNotEmpty)
                     _infoRow(
                         cs,
                         tt,
-                        'OS',
+                        l.statsScreenOs,
                         osVersion.isNotEmpty
                             ? '$osName $osVersion'
                             : osName),
                   if (playMethod != null)
-                    _infoRow(cs, tt, 'Play method',
-                        _playMethodLabel(playMethod)),
+                    _infoRow(cs, tt, l.statsScreenPlayMethod,
+                        _playMethodLabel(playMethod, l)),
                   const SizedBox(height: 24),
                   if (itemId != null)
                     SizedBox(
@@ -1253,8 +1291,8 @@ class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
                                     strokeWidth: 2))
                             : const Icon(Icons.replay_rounded),
                         label: Text(_jumping
-                            ? 'Loading...'
-                            : 'Jump to session start (${_fmtPos(startTime)})'),
+                            ? l.statsScreenLoading
+                            : l.statsScreenJumpToSessionStart(_fmtPos(startTime))),
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
@@ -1284,17 +1322,17 @@ class _SessionDetailsSheetState extends State<_SessionDetailsSheet> {
     );
   }
 
-  String _playMethodLabel(dynamic m) {
+  String _playMethodLabel(dynamic m, AppLocalizations l) {
     final i = m is num ? m.toInt() : -1;
     switch (i) {
       case 0:
-        return 'Direct play';
+        return l.statsScreenPlayMethodDirect;
       case 1:
-        return 'Direct stream';
+        return l.statsScreenPlayMethodDirectStream;
       case 2:
-        return 'Transcode';
+        return l.statsScreenPlayMethodTranscode;
       case 3:
-        return 'Local';
+        return l.statsScreenPlayMethodLocal;
       default:
         return m.toString();
     }

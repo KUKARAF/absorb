@@ -2,29 +2,44 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/download_service.dart';
 import '../services/playback_history_service.dart';
 import 'overlay_toast.dart';
 
-String dateLabel(DateTime dt) {
+String dateLabel(DateTime dt, [AppLocalizations? l]) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   final date = DateTime(dt.year, dt.month, dt.day);
-  if (date == today) return 'Today';
-  if (date == today.subtract(const Duration(days: 1))) return 'Yesterday';
+  if (date == today) return l?.absorbingSharedToday ?? 'Today';
+  if (date == today.subtract(const Duration(days: 1))) return l?.absorbingSharedYesterday ?? 'Yesterday';
   if (now.difference(dt).inDays < 7) {
+    if (l != null) {
+      switch (dt.weekday) {
+        case 1: return l.absorbingSharedMonday;
+        case 2: return l.absorbingSharedTuesday;
+        case 3: return l.absorbingSharedWednesday;
+        case 4: return l.absorbingSharedThursday;
+        case 5: return l.absorbingSharedFriday;
+        case 6: return l.absorbingSharedSaturday;
+        case 7: return l.absorbingSharedSunday;
+      }
+    }
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     return days[dt.weekday - 1];
   }
   return '${dt.month}/${dt.day}/${dt.year}';
 }
 
-String timeOfDay(DateTime dt) {
+String timeOfDay(DateTime dt, [AppLocalizations? l]) {
   final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
   final m = dt.minute.toString().padLeft(2, '0');
-  final ampm = dt.hour < 12 ? 'AM' : 'PM';
+  final isAm = dt.hour < 12;
+  final ampm = l != null
+      ? (isAm ? l.absorbingSharedAm : l.absorbingSharedPm)
+      : (isAm ? 'AM' : 'PM');
   return '$h:$m $ampm';
 }
 
@@ -158,6 +173,7 @@ class _DownloadWideButtonState extends State<DownloadWideButton> {
     final downloading = _dl.isDownloading(widget.itemId);
     final downloaded = _dl.isDownloaded(widget.itemId);
     final progress = _dl.downloadProgress(widget.itemId);
+    final l = AppLocalizations.of(context)!;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final dlGreen = isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700;
@@ -166,7 +182,7 @@ class _DownloadWideButtonState extends State<DownloadWideButton> {
     final Color color;
     if (downloaded) {
       icon = Icons.download_done_rounded;
-      label = 'Saved';
+      label = l.saved;
       color = dlGreen;
     } else if (downloading) {
       icon = Icons.downloading_rounded;
@@ -174,7 +190,7 @@ class _DownloadWideButtonState extends State<DownloadWideButton> {
       color = widget.accent;
     } else {
       icon = Icons.download_outlined;
-      label = 'Download';
+      label = l.download;
       color = Theme.of(context).colorScheme.onSurfaceVariant;
     }
 
@@ -216,18 +232,19 @@ class _DownloadWideButtonState extends State<DownloadWideButton> {
     final auth = context.read<AuthProvider>();
     final api = auth.apiService;
     if (api == null) return;
+    final l = AppLocalizations.of(context)!;
     if (_dl.isDownloaded(widget.itemId)) {
       showDialog(context: context, builder: (ctx) => AlertDialog(
-        title: const Text('Remove download?'),
-        content: const Text('This will be removed from your device.'),
+        title: Text(l.removeDownloadQuestion),
+        content: Text(l.removeDownloadContent),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
           TextButton(onPressed: () {
             _dl.deleteDownload(widget.itemId);
             Navigator.pop(ctx);
-            showOverlayToast(context, 'Download removed', icon: Icons.delete_outline_rounded);
+            showOverlayToast(context, l.downloadRemoved, icon: Icons.delete_outline_rounded);
           },
-            child: const Text('Remove', style: TextStyle(color: Colors.redAccent))),
+            child: Text(l.remove, style: const TextStyle(color: Colors.redAccent))),
         ],
       ));
     } else if (_dl.isDownloading(widget.itemId)) {

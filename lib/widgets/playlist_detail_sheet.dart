@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'overlay_toast.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -136,13 +137,16 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
     await lib.refresh();
     if (mounted) {
       final count = _selectedKeys.length;
+      final l = AppLocalizations.of(context)!;
       setState(() {
         _isBatchUpdating = false;
         _selectMode = false;
         _selectedKeys.clear();
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('$count item${count == 1 ? '' : 's'} marked as ${finished ? 'finished' : 'unfinished'}'),
+        content: Text(finished
+            ? l.playlistDetailItemsMarkedFinished(count)
+            : l.playlistDetailItemsMarkedUnfinished(count)),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -171,13 +175,14 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
 
     if (mounted) {
       final count = _selectedKeys.length;
+      final l = AppLocalizations.of(context)!;
       setState(() {
         _isBatchUpdating = false;
         _selectMode = false;
         _selectedKeys.clear();
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('$count item${count == 1 ? '' : 's'} removed'),
+        content: Text(l.playlistDetailItemsRemoved(count)),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -196,19 +201,20 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
   }
 
   Future<void> _deletePlaylist(BuildContext context, LibraryProvider lib) async {
+    final l = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Playlist'),
-        content: const Text('Are you sure you want to delete this playlist?'),
+        title: Text(l.deletePlaylist),
+        content: Text(l.deletePlaylistContent),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(l.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(l.delete),
           ),
         ],
       ),
@@ -246,6 +252,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
 
     final playlist = lib.playlists.cast<Map<String, dynamic>>().where(
@@ -253,13 +260,13 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
     ).firstOrNull;
 
     if (playlist == null) {
-      return ListView(controller: widget.scrollController, children: const [
-        SizedBox(height: 80),
-        Center(child: Text('Playlist not found')),
+      return ListView(controller: widget.scrollController, children: [
+        const SizedBox(height: 80),
+        Center(child: Text(l.playlistNotFound)),
       ]);
     }
 
-    final name = playlist['name'] as String? ?? 'Playlist';
+    final name = playlist['name'] as String? ?? l.playlistDetailDefaultName;
     final items = (playlist['items'] as List<dynamic>?) ?? [];
 
     return Column(children: [
@@ -270,7 +277,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
           if (_reordering) ...[
             GestureDetector(
               onTap: _cancelReorder,
-              child: Text('Cancel', style: tt.labelMedium?.copyWith(
+              child: Text(l.cancel, style: tt.labelMedium?.copyWith(
                 color: cs.onSurfaceVariant, fontWeight: FontWeight.w500,
               )),
             ),
@@ -281,7 +288,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
             const Spacer(),
             GestureDetector(
               onTap: () => _saveReorder(lib),
-              child: Text('Done', style: tt.labelMedium?.copyWith(
+              child: Text(l.done, style: tt.labelMedium?.copyWith(
                 color: cs.primary, fontWeight: FontWeight.w600,
               )),
             ),
@@ -294,7 +301,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
               child: Icon(Icons.close_rounded, size: 20, color: cs.onSurfaceVariant),
             ),
             const SizedBox(width: 8),
-            Text('${_selectedKeys.length} selected',
+            Text(l.selectedCount(_selectedKeys.length),
               style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
             const SizedBox(width: 8),
             GestureDetector(
@@ -310,7 +317,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                   }
                 });
               },
-              child: Text('Select All',
+              child: Text(l.selectAll,
                 style: TextStyle(fontSize: 12, color: cs.primary, fontWeight: FontWeight.w500)),
             ),
             const Spacer(),
@@ -328,7 +335,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                 fontWeight: FontWeight.w600, color: cs.onSurface,
               )),
             ),
-            Text('${items.length} item${items.length == 1 ? '' : 's'}',
+            Text(l.playlistDetailItemCount(items.length),
               style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
             ),
             const SizedBox(width: 8),
@@ -361,12 +368,12 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
       // Content
       Expanded(
         child: _reordering
-            ? _buildReorderList(cs, tt, lib)
+            ? _buildReorderList(cs, tt, lib, l)
             : _selectMode
-                ? _buildSelectList(cs, tt, lib, items)
+                ? _buildSelectList(cs, tt, lib, items, l)
                 : _gridView
-                    ? _buildGrid(cs, tt, lib, items)
-                    : _buildItemList(cs, tt, lib, items),
+                    ? _buildGrid(cs, tt, lib, items, l)
+                    : _buildItemList(cs, tt, lib, items, l),
       ),
       // Batch action bar
       if (_selectMode && _selectedKeys.isNotEmpty)
@@ -383,21 +390,21 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                   Expanded(child: FilledButton.tonalIcon(
                     onPressed: () => _batchMarkFinished(true, lib),
                     icon: const Icon(Icons.check_circle_rounded, size: 18),
-                    label: const Text('Finished'),
+                    label: Text(l.finished),
                     style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
                   )),
                   const SizedBox(width: 8),
                   Expanded(child: OutlinedButton.icon(
                     onPressed: () => _batchMarkFinished(false, lib),
                     icon: const Icon(Icons.radio_button_unchecked_rounded, size: 18),
-                    label: const Text('Unfinished'),
+                    label: Text(l.playlistDetailUnfinished),
                     style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
                   )),
                   const SizedBox(width: 8),
                   IconButton(
                     onPressed: () => _batchRemove(lib),
                     icon: Icon(Icons.playlist_remove_rounded, color: cs.error),
-                    tooltip: 'Remove from playlist',
+                    tooltip: l.playlistDetailRemoveFromPlaylist,
                     style: IconButton.styleFrom(
                       backgroundColor: cs.error.withValues(alpha: 0.1),
                     ),
@@ -407,7 +414,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
     ]);
   }
 
-  Widget _buildReorderList(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
+  Widget _buildReorderList(ColorScheme cs, TextTheme tt, LibraryProvider lib, AppLocalizations l) {
     final items = _reorderItems!;
     return ReorderableListView.builder(
       padding: EdgeInsets.only(top: 8, bottom: 8 + MediaQuery.of(context).viewPadding.bottom),
@@ -431,7 +438,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
 
         final media = libraryItem['media'] as Map<String, dynamic>? ?? {};
         final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final title = metadata['title'] as String? ?? 'Unknown';
+        final title = metadata['title'] as String? ?? l.unknown;
         final coverUrl = lib.getCoverUrl(libraryItemId);
 
         String? episodeTitle;
@@ -472,7 +479,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                         color: Colors.red.withValues(alpha: 0.85),
                         borderRadius: BorderRadius.circular(3),
                       ),
-                      child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w800)),
+                      child: Text(l.bookCardExplicitBadge, style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w800)),
                     ),
                   ),
               ]),
@@ -497,7 +504,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
     );
   }
 
-  Widget _buildSelectList(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> items) {
+  Widget _buildSelectList(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> items, AppLocalizations l) {
     return ListView.builder(
       controller: widget.scrollController,
       padding: EdgeInsets.only(bottom: (_selectedKeys.isNotEmpty ? 64.0 : 32.0) + MediaQuery.of(context).viewPadding.bottom),
@@ -511,7 +518,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
 
         final media = libraryItem['media'] as Map<String, dynamic>? ?? {};
         final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final title = metadata['title'] as String? ?? 'Unknown';
+        final title = metadata['title'] as String? ?? l.unknown;
         final author = metadata['authorName'] as String? ?? '';
         final coverUrl = lib.getCoverUrl(libraryItemId);
         final key = _itemKey(item);
@@ -569,7 +576,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
     );
   }
 
-  Widget _buildItemList(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> items) {
+  Widget _buildItemList(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> items, AppLocalizations l) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final doneColor = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
 
@@ -587,7 +594,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
 
         final media = libraryItem['media'] as Map<String, dynamic>? ?? {};
         final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final title = metadata['title'] as String? ?? 'Unknown';
+        final title = metadata['title'] as String? ?? l.unknown;
         final author = metadata['authorName'] as String? ?? '';
         final coverUrl = lib.getCoverUrl(libraryItemId);
         final progressKey = episodeId != null ? '$libraryItemId-$episodeId' : libraryItemId;
@@ -611,7 +618,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
               lib.absorbingItemCache[progressKey] = Map<String, dynamic>.from(libraryItem);
               HapticFeedback.mediumImpact();
               if (context.mounted) {
-                showOverlayToast(context, 'Added "${episodeTitle ?? title}" to Absorbing', icon: Icons.add_circle_outline_rounded);
+                showOverlayToast(context, l.playlistDetailAddedToAbsorbing(episodeTitle ?? title), icon: Icons.add_circle_outline_rounded);
               }
               return false;
             }
@@ -693,13 +700,13 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                                   Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                                     Icon(Icons.check_circle_rounded, size: 10, color: doneColor),
                                     const SizedBox(width: 3),
-                                    Text('Done', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
+                                    Text(l.playlistDetailDone, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
                                   ]),
                                 if (isDownloaded)
                                   Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                                     Icon(Icons.download_done_rounded, size: 10, color: cs.primary),
                                     const SizedBox(width: 3),
-                                    Text('Saved', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
+                                    Text(l.saved, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
                                   ]),
                               ]),
                             ),
@@ -734,7 +741,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
     );
   }
 
-  Widget _buildGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> items) {
+  Widget _buildGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> items, AppLocalizations l) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final doneColor = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
 
@@ -758,7 +765,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
 
         final media = libraryItem['media'] as Map<String, dynamic>? ?? {};
         final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final title = metadata['title'] as String? ?? 'Unknown';
+        final title = metadata['title'] as String? ?? l.unknown;
         final author = metadata['authorName'] as String? ?? '';
         final coverUrl = lib.getCoverUrl(libraryItemId);
         final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
@@ -804,7 +811,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                             color: Colors.red.withValues(alpha: 0.85),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                          child: Text(l.bookCardExplicitBadge, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
                         ),
                       ),
                     if (progress > 0 && !isFinished)
@@ -837,13 +844,13 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                               Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                                 Icon(Icons.check_circle_rounded, size: 10, color: doneColor),
                                 const SizedBox(width: 3),
-                                Text('Done', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
+                                Text(l.playlistDetailDone, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
                               ]),
                             if (isDownloaded)
                               Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                                 Icon(Icons.download_done_rounded, size: 10, color: cs.primary),
                                 const SizedBox(width: 3),
-                                Text('Saved', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
+                                Text(l.saved, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
                               ]),
                           ]),
                         ),

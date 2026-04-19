@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../screens/app_shell.dart';
@@ -62,11 +63,12 @@ class _PressableState extends State<Pressable> {
 
 /// Show a toast when the user taps a button that requires active playback.
 void showInactiveToast(BuildContext context) {
+  final l = AppLocalizations.of(context)!;
   ScaffoldMessenger.of(context)
     ..clearSnackBars()
-    ..showSnackBar(const SnackBar(
-      content: Text('Start playing something first'),
-      duration: Duration(seconds: 2),
+    ..showSnackBar(SnackBar(
+      content: Text(l.startPlayingSomethingFirst),
+      duration: const Duration(seconds: 2),
       behavior: SnackBarBehavior.floating,
     ));
 }
@@ -192,6 +194,7 @@ class CardSleepButtonInline extends StatelessWidget {
       listenable: SleepTimerService(),
       builder: (_, __) {
         final cs = Theme.of(context).colorScheme;
+        final l = AppLocalizations.of(context)!;
         final sleep = SleepTimerService();
         // Only show timer state on the card that's actually playing
         final active = isActive && sleep.isActive;
@@ -204,9 +207,9 @@ class CardSleepButtonInline extends StatelessWidget {
           final s = r.inSeconds % 60;
           label = '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
         } else if (active) {
-          label = '${sleep.chaptersRemaining} ch left';
+          label = l.chaptersLeftCount(sleep.chaptersRemaining);
         } else {
-          label = 'Timer';
+          label = l.timer;
         }
 
         final h = compact ? 30.0 : (large ? 48.0 : 36.0);
@@ -279,6 +282,7 @@ class CardDownloadButtonInline extends StatelessWidget {
       listenable: DownloadService(),
       builder: (_, __) {
         final cs = Theme.of(context).colorScheme;
+        final l = AppLocalizations.of(context)!;
         final dl = DownloadService();
         final downloading = dl.isDownloading(itemId);
         final downloaded = dl.isDownloaded(itemId);
@@ -292,7 +296,7 @@ class CardDownloadButtonInline extends StatelessWidget {
         final Color color;
         if (downloaded) {
           icon = Icons.download_done_rounded;
-          label = 'Saved';
+          label = l.saved;
           color = dlGreen;
         } else if (downloading) {
           icon = Icons.downloading_rounded;
@@ -300,7 +304,7 @@ class CardDownloadButtonInline extends StatelessWidget {
           color = accent;
         } else {
           icon = Icons.download_outlined;
-          label = 'Download';
+          label = l.download;
           color = cs.onSurfaceVariant;
         }
 
@@ -351,17 +355,18 @@ class CardDownloadButtonInline extends StatelessWidget {
   }
 
   void _handleTap(BuildContext context, DownloadService dl) async {
+    final l = AppLocalizations.of(context)!;
     if (dl.isDownloaded(itemId)) {
       showDialog(context: context, builder: (ctx) => AlertDialog(
-        title: const Text('Remove download?'),
-        content: const Text('This will be removed from your device.'),
+        title: Text(l.removeDownloadQuestion),
+        content: Text(l.removeDownloadContent),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
           TextButton(onPressed: () {
             dl.deleteDownload(itemId);
             Navigator.pop(ctx);
-            showOverlayToast(context, 'Download removed', icon: Icons.delete_outline_rounded);
-          }, child: const Text('Remove', style: TextStyle(color: Colors.redAccent))),
+            showOverlayToast(context, l.downloadRemoved, icon: Icons.delete_outline_rounded);
+          }, child: Text(l.remove, style: const TextStyle(color: Colors.redAccent))),
         ],
       ));
     } else if (dl.isDownloading(itemId)) {
@@ -414,6 +419,7 @@ class _CardBookmarkButtonInlineState extends State<CardBookmarkButtonInline> {
 
   @override Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     final cp = widget.compact;
     final lg = widget.large;
     final active = widget.isActive || _isCasting;
@@ -422,7 +428,7 @@ class _CardBookmarkButtonInlineState extends State<CardBookmarkButtonInline> {
     final vPad = cp ? 6.0 : (lg ? 12.0 : 8.0);
     final radius = cp ? 10.0 : (lg ? 14.0 : 12.0);
     final sh = widget.short;
-    final label = cp ? (_count > 0 ? '$_count' : 'Bookmark') : sh ? 'Bookmarks' : (_count > 0 ? 'Bookmarks ($_count)' : 'Bookmark');
+    final label = cp ? (_count > 0 ? '$_count' : l.bookmark) : sh ? l.bookmarks : (_count > 0 ? l.bookmarksWithCount(_count) : l.bookmark);
     return Pressable(
       onTap: () => _showBookmarks(context),
       onLongPress: active ? () => _quickAdd(context) : null,
@@ -454,6 +460,7 @@ class _CardBookmarkButtonInlineState extends State<CardBookmarkButtonInline> {
   }
 
   void _quickAdd(BuildContext ctx) async {
+    final l = AppLocalizations.of(ctx)!;
     final cast = ChromecastService();
     final pos = _isCasting
         ? cast.castPosition.inMilliseconds / 1000.0
@@ -466,10 +473,10 @@ class _CardBookmarkButtonInlineState extends State<CardBookmarkButtonInline> {
       final e = (m['end'] as num?)?.toDouble() ?? 0;
       if (pos >= s && pos < e) { chTitle = m['title'] as String?; break; }
     }
-    await BookmarkService().addBookmark(itemId: widget.itemId, positionSeconds: pos, title: chTitle ?? 'Bookmark', api: AudioPlayerService().currentApi);
+    await BookmarkService().addBookmark(itemId: widget.itemId, positionSeconds: pos, title: chTitle ?? l.bookmark, api: AudioPlayerService().currentApi);
     _loadCount();
     if (ctx.mounted) {
-      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: const Text('Bookmark added'), behavior: SnackBarBehavior.floating,
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: Text(l.bookmarkAdded), behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
     }
   }
@@ -615,6 +622,7 @@ class _CardSpeedSheetState extends State<CardSpeedSheet> {
 
   @override Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final navBarPad = MediaQuery.of(context).viewPadding.bottom;
     return Container(
       padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + navBarPad),
@@ -623,7 +631,7 @@ class _CardSpeedSheetState extends State<CardSpeedSheet> {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 40, height: 4, decoration: BoxDecoration(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2))),
         const SizedBox(height: 20),
-        Text('Playback Speed', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+        Text(l.playbackSpeed, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
         Text('${_speed.toStringAsFixed(2)}x', style: tt.headlineMedium?.copyWith(fontWeight: FontWeight.w700, color: widget.accent)),
         const SizedBox(height: 16),
@@ -699,6 +707,7 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
   @override Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).bottomSheetTheme.backgroundColor,
@@ -719,9 +728,9 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
               _load();
             },
             child: Tooltip(
-              message: _sort == 'newest' ? 'Sorted by newest'
-                  : _sort == 'position' ? 'Sorted by position'
-                  : 'Sorted by position (reversed)',
+              message: _sort == 'newest' ? l.bookmarksSortedByNewest
+                  : _sort == 'position' ? l.bookmarksSortedByPosition
+                  : l.bookmarksSortedByPositionReversed,
               child: Container(
                 width: 36, height: 36,
                 decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10)),
@@ -735,7 +744,7 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
             ),
           ),
           const Spacer(),
-          Text('Bookmarks', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+          Text(l.bookmarks, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
           const Spacer(),
           GestureDetector(onTap: () => _addBookmark(), child: Container(
             width: 36, height: 36,
@@ -750,9 +759,9 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
                 ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.bookmark_outline_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.1)),
                     const SizedBox(height: 12),
-                    Text('No bookmarks yet', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                    Text(l.noBookmarksYet, style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
                     const SizedBox(height: 4),
-                    Text('Long-press the bookmark button to quick save', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24), fontSize: 11)),
+                    Text(l.longPressBookmarkHint, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24), fontSize: 11)),
                   ]))
                 : ListView.builder(
                     controller: widget.scrollController, padding: const EdgeInsets.only(bottom: 24), itemCount: _bookmarks!.length,
@@ -762,11 +771,11 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
                       return InkWell(
                         onTap: () async {
                           final confirmed = await showDialog<bool>(context: ctx, builder: (dlg) => AlertDialog(
-                            title: const Text('Jump to bookmark?'),
-                            content: Text('"${bm.title}" at ${bm.formattedPosition}'),
+                            title: Text(l.bookmarksJumpTitle),
+                            content: Text(l.bookmarksJumpShortContent(bm.title, bm.formattedPosition)),
                             actions: [
-                              TextButton(onPressed: () => Navigator.pop(dlg, false), child: const Text('Cancel')),
-                              FilledButton(onPressed: () => Navigator.pop(dlg, true), child: const Text('Jump')),
+                              TextButton(onPressed: () => Navigator.pop(dlg, false), child: Text(l.cancel)),
+                              FilledButton(onPressed: () => Navigator.pop(dlg, true), child: Text(l.bookmarksJump)),
                             ],
                           ));
                           if (confirmed != true || !ctx.mounted) return;
@@ -816,11 +825,11 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
                             GestureDetector(
                               onTap: () async {
                                 final confirmed = await showDialog<bool>(context: context, builder: (dlg) => AlertDialog(
-                                  title: const Text('Delete bookmark?'),
-                                  content: Text('"${bm.title}" at ${bm.formattedPosition}'),
+                                  title: Text(l.deleteBookmarkQuestion),
+                                  content: Text(l.bookmarksJumpShortContent(bm.title, bm.formattedPosition)),
                                   actions: [
-                                    TextButton(onPressed: () => Navigator.pop(dlg, false), child: const Text('Cancel')),
-                                    TextButton(onPressed: () => Navigator.pop(dlg, true), child: Text('Delete', style: TextStyle(color: Colors.red.shade300))),
+                                    TextButton(onPressed: () => Navigator.pop(dlg, false), child: Text(l.cancel)),
+                                    TextButton(onPressed: () => Navigator.pop(dlg, true), child: Text(l.delete, style: TextStyle(color: Colors.red.shade300))),
                                   ],
                                 ));
                                 if (confirmed != true) return;
@@ -869,6 +878,7 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
   }
 
   Future<void> _addBookmark() async {
+    final l = AppLocalizations.of(context)!;
     final cast = ChromecastService();
     final pos = _isCasting
         ? cast.castPosition.inMilliseconds / 1000.0
@@ -878,7 +888,7 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
 
     // Find current chapter name for default title
     final chapters = _isCasting ? cast.castingChapters : widget.player.chapters;
-    String defaultTitle = 'Bookmark at $posStr';
+    String defaultTitle = l.bookmarkAtPosition(posStr);
     for (final ch in chapters) {
       final cm = ch as Map<String, dynamic>;
       final cs = (cm['start'] as num?)?.toDouble() ?? 0;
@@ -889,15 +899,15 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
     final titleC = TextEditingController(text: defaultTitle);
     final noteC = TextEditingController();
     final result = await showDialog<Map<String, String>>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Add Bookmark'),
+      title: Text(l.addBookmark),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: titleC, autofocus: true, decoration: const InputDecoration(labelText: 'Title', border: OutlineInputBorder())),
+        TextField(controller: titleC, autofocus: true, decoration: InputDecoration(labelText: l.titleLabel, border: const OutlineInputBorder())),
         const SizedBox(height: 12),
-        TextField(controller: noteC, maxLines: 3, decoration: const InputDecoration(labelText: 'Note (optional)', border: OutlineInputBorder(), alignLabelWithHint: true)),
+        TextField(controller: noteC, maxLines: 3, decoration: InputDecoration(labelText: l.noteOptionalLabel, border: const OutlineInputBorder(), alignLabelWithHint: true)),
       ]),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, {'title': titleC.text, 'note': noteC.text}), child: const Text('Save')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
+        FilledButton(onPressed: () => Navigator.pop(ctx, {'title': titleC.text, 'note': noteC.text}), child: Text(l.save)),
       ],
     ));
     if (result != null && result['title']!.isNotEmpty) {
@@ -908,18 +918,19 @@ class _SimpleBookmarkSheetState extends State<SimpleBookmarkSheet> {
   }
 
   Future<void> _editBookmark(Bookmark bm) async {
+    final l = AppLocalizations.of(context)!;
     final titleC = TextEditingController(text: bm.title);
     final noteC = TextEditingController(text: bm.note ?? '');
     final result = await showDialog<Map<String, String>>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Edit Bookmark'),
+      title: Text(l.editBookmark),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: titleC, decoration: const InputDecoration(labelText: 'Title', border: OutlineInputBorder())),
+        TextField(controller: titleC, decoration: InputDecoration(labelText: l.titleLabel, border: const OutlineInputBorder())),
         const SizedBox(height: 12),
-        TextField(controller: noteC, maxLines: 3, decoration: const InputDecoration(labelText: 'Note (optional)', border: OutlineInputBorder(), alignLabelWithHint: true)),
+        TextField(controller: noteC, maxLines: 3, decoration: InputDecoration(labelText: l.noteOptionalLabel, border: const OutlineInputBorder(), alignLabelWithHint: true)),
       ]),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, {'title': titleC.text, 'note': noteC.text}), child: const Text('Save')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
+        FilledButton(onPressed: () => Navigator.pop(ctx, {'title': titleC.text, 'note': noteC.text}), child: Text(l.save)),
       ],
     ));
     if (result != null && result['title']!.isNotEmpty) {
@@ -1025,6 +1036,7 @@ class _MoreMenuSheetState extends State<MoreMenuSheet> {
   }
 
   Widget _buildEditMode(ColorScheme cs, TextTheme tt) {
+    final l = AppLocalizations.of(context)!;
     return Container(
       constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
       decoration: BoxDecoration(
@@ -1039,7 +1051,7 @@ class _MoreMenuSheetState extends State<MoreMenuSheet> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
               child: Row(children: [
-                Text('Edit Layout', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                Text(l.editLayout, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 IconButton(
                   icon: Icon(Icons.check_rounded, color: widget.accent),
@@ -1062,7 +1074,7 @@ class _MoreMenuSheetState extends State<MoreMenuSheet> {
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
               child: Wrap(spacing: 8, runSpacing: 4, children: [
                 FilterChip(
-                  label: const Text('Icons only', style: TextStyle(fontSize: 12)),
+                  label: Text(l.cardIconsOnlyChip, style: const TextStyle(fontSize: 12)),
                   selected: _iconsOnly,
                   onSelected: (v) { setState(() => _iconsOnly = v); PlayerSettings.setCardIconsOnly(v); },
                   selectedColor: widget.accent.withValues(alpha: 0.2),
@@ -1070,7 +1082,7 @@ class _MoreMenuSheetState extends State<MoreMenuSheet> {
                   visualDensity: VisualDensity.compact,
                 ),
                 FilterChip(
-                  label: const Text('"More" in grid', style: TextStyle(fontSize: 12)),
+                  label: Text(l.cardMoreInGridChip, style: const TextStyle(fontSize: 12)),
                   selected: _moreInline,
                   onSelected: (v) {
                     setState(() {
@@ -1164,7 +1176,7 @@ class _MoreMenuSheetState extends State<MoreMenuSheet> {
                         Expanded(child: Divider(color: cs.onSurface.withValues(alpha: 0.12))),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(_moreInline ? 'Hidden' : 'In menu',
+                          child: Text(_moreInline ? l.cardLayoutHidden : l.inMenu,
                             style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4))),
                         ),
                         Expanded(child: Divider(color: cs.onSurface.withValues(alpha: 0.12))),
@@ -1193,7 +1205,7 @@ class _MoreMenuSheetState extends State<MoreMenuSheet> {
                         Icon(isMore ? Icons.more_horiz_rounded : def!.icon, size: 20,
                           color: id == 'remove' ? Colors.red.shade300 : cs.onSurface.withValues(alpha: 0.7)),
                         const SizedBox(width: 12),
-                        Expanded(child: Text(isMore ? 'More' : def!.label, style: tt.bodyMedium)),
+                        Expanded(child: Text(isMore ? l.more : localizedCardButtonLabel(l, def!), style: tt.bodyMedium)),
                         if (isOnCard)
                           Padding(
                             padding: const EdgeInsets.only(right: 8),
@@ -1332,6 +1344,7 @@ class CardActionDelegate {
 
   Widget _buildInlineMoreButton(Color accent, {bool compact = false, bool short = false}) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     final large = MediaQuery.sizeOf(context).height > 700;
     final h = compact ? 30.0 : (large ? 48.0 : 36.0);
     final iconSz = compact ? 13.0 : (large ? 20.0 : 16.0);
@@ -1362,7 +1375,7 @@ class CardActionDelegate {
                   children: [
                     Icon(moreIcon, size: iconSz, color: iconColor),
                     const SizedBox(width: 6),
-                    Flexible(child: Text(castActive ? 'Casting' : 'More', overflow: TextOverflow.ellipsis,
+                    Flexible(child: Text(castActive ? l.casting : l.more, overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: iconColor, fontSize: fontSize, fontWeight: FontWeight.w500))),
                   ],
                 ),
@@ -1384,28 +1397,29 @@ class CardActionDelegate {
 
   Widget buildCardButton(String id, Color accent, TextTheme tt, {bool compact = false, bool short = false, bool iconsOnly = false}) {
     final large = MediaQuery.sizeOf(context).height > 700;
+    final l = AppLocalizations.of(context)!;
     switch (id) {
       case 'chapters':
         return CardWideButton(
-          icon: Icons.list_rounded, label: 'Chapters',
+          icon: Icons.list_rounded, label: l.chapters,
           accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact, iconsOnly: iconsOnly,
           onTap: chapters.isNotEmpty ? () => showChapters(context, accent, tt) : null,
         );
       case 'speed':
         return CardWideButton(
-          icon: Icons.speed_rounded, label: 'Speed',
+          icon: Icons.speed_rounded, label: l.speed,
           accent: accent, isActive: isPlaybackActive, large: large, compact: compact, iconsOnly: iconsOnly,
           child: CardSpeedButtonInline(player: player, accent: accent, isActive: isActive, large: large, compact: compact, itemId: itemId),
         );
       case 'sleep':
         return CardWideButton(
-          icon: Icons.nightlight_round_outlined, label: 'Timer',
+          icon: Icons.nightlight_round_outlined, label: l.timer,
           accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact, iconsOnly: iconsOnly,
           child: CardSleepButtonInline(accent: accent, isActive: isPlaybackActive, large: large, compact: compact, iconsOnly: iconsOnly),
         );
       case 'bookmarks':
         return CardWideButton(
-          icon: Icons.bookmark_outline_rounded, label: 'Bookmarks',
+          icon: Icons.bookmark_outline_rounded, label: l.bookmarks,
           accent: accent, isActive: isPlaybackActive, large: large, compact: compact, iconsOnly: iconsOnly,
           child: CardBookmarkButtonInline(
             player: player, accent: accent,
@@ -1415,7 +1429,7 @@ class CardActionDelegate {
       case 'details':
         return CardWideButton(
           icon: (episodeId != null || isPodcastEpisode) ? Icons.podcasts_rounded : Icons.info_outline_rounded,
-          label: short ? 'Details' : ((episodeId != null || isPodcastEpisode) ? 'Episode Details' : 'Book Details'),
+          label: short ? l.details : ((episodeId != null || isPodcastEpisode) ? l.episodeDetailsLabel : l.bookDetailsLabel),
           accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact, iconsOnly: iconsOnly,
           onTap: () => _openDetails(),
         );
@@ -1429,7 +1443,7 @@ class CardActionDelegate {
               builder: (_, snap) {
                 final highlighted = snap.data ?? false;
                 return CardWideButton(
-                  icon: Icons.equalizer_rounded, label: compact ? 'EQ' : 'Equalizer',
+                  icon: Icons.equalizer_rounded, label: compact ? l.equalizerShort : l.equalizerLabel,
                   accent: accent, isActive: true, alwaysEnabled: true,
                   highlighted: highlighted,
                   large: large, compact: compact, iconsOnly: iconsOnly,
@@ -1446,13 +1460,13 @@ class CardActionDelegate {
             final cast = ChromecastService();
             final String castLabel;
             if (compact || short) {
-              castLabel = cast.isConnected ? 'Casting' : 'Cast';
+              castLabel = cast.isConnected ? l.casting : l.cast;
             } else if (cast.isCasting && cast.castingItemId == itemId) {
-              castLabel = 'Casting to ${cast.connectedDeviceName ?? "device"}';
+              castLabel = l.castingToDevice(cast.connectedDeviceName ?? 'device');
             } else if (cast.isConnected) {
-              castLabel = 'Cast to ${cast.connectedDeviceName ?? "device"}';
+              castLabel = l.castToDeviceNamed(cast.connectedDeviceName ?? 'device');
             } else {
-              castLabel = 'Cast to Device';
+              castLabel = l.castToDevice;
             }
             return CardWideButton(
               icon: cast.isConnected ? Icons.cast_connected_rounded : Icons.cast_rounded,
@@ -1463,31 +1477,31 @@ class CardActionDelegate {
         );
       case 'history':
         return CardWideButton(
-          icon: Icons.history_rounded, label: (compact || short) ? 'History' : 'Playback History',
+          icon: Icons.history_rounded, label: (compact || short) ? l.historyShort : l.playbackHistory,
           accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact, iconsOnly: iconsOnly,
           onTap: () => showHistory(context, accent, tt),
         );
       case 'remove':
         return CardWideButton(
-          icon: Icons.remove_circle_outline_rounded, label: (compact || short) ? 'Remove' : 'Remove from Absorbing',
+          icon: Icons.remove_circle_outline_rounded, label: (compact || short) ? l.remove : l.removeFromAbsorbing,
           accent: Colors.red.shade300, isActive: true, alwaysEnabled: true, large: large, compact: compact, iconsOnly: iconsOnly,
           onTap: () { removeFromAbsorbing(); onRemoveExtra?.call(); },
         );
       case 'car':
         return CardWideButton(
-          icon: Icons.directions_car_rounded, label: 'Car Mode',
+          icon: Icons.directions_car_rounded, label: l.carModeTitle,
           accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact, iconsOnly: iconsOnly,
           onTap: () => openCarMode(context),
         );
       case 'notes':
         return CardWideButton(
-          icon: Icons.note_rounded, label: 'Notes',
+          icon: Icons.note_rounded, label: l.notes,
           accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact, iconsOnly: iconsOnly,
           onTap: () => showNotes(context, accent),
         );
       case 'download':
         return CardWideButton(
-          icon: Icons.download_outlined, label: 'Download',
+          icon: Icons.download_outlined, label: l.download,
           accent: accent, isActive: true, alwaysEnabled: true, large: large, compact: compact, iconsOnly: iconsOnly,
           child: CardDownloadButtonInline(
             itemId: itemId, title: title, author: author, coverUrl: coverUrl,
@@ -1500,16 +1514,17 @@ class CardActionDelegate {
   }
 
   Widget buildMoreMenuItem(String id, Color accent, TextTheme tt, BuildContext ctx) {
+    final l = AppLocalizations.of(context)!;
     switch (id) {
       case 'chapters':
         return MoreMenuItem(
-          icon: Icons.list_rounded, label: 'Chapters', accent: accent,
+          icon: Icons.list_rounded, label: l.chapters, accent: accent,
           enabled: chapters.isNotEmpty,
           onTap: () { Navigator.pop(ctx); showChapters(context, accent, tt); },
         );
       case 'speed':
         return MoreMenuItem(
-          icon: Icons.speed_rounded, label: 'Speed', accent: accent,
+          icon: Icons.speed_rounded, label: l.speed, accent: accent,
           enabled: true,
           onTap: () {
             Navigator.pop(ctx);
@@ -1519,7 +1534,7 @@ class CardActionDelegate {
         );
       case 'sleep':
         return MoreMenuItem(
-          icon: Icons.nightlight_round_outlined, label: 'Timer', accent: accent,
+          icon: Icons.nightlight_round_outlined, label: l.timer, accent: accent,
           enabled: true,
           onTap: () {
             Navigator.pop(ctx);
@@ -1528,7 +1543,7 @@ class CardActionDelegate {
         );
       case 'bookmarks':
         return MoreMenuItem(
-          icon: Icons.bookmark_outline_rounded, label: 'Bookmarks', accent: accent,
+          icon: Icons.bookmark_outline_rounded, label: l.bookmarks, accent: accent,
           enabled: isPlaybackActive,
           onTap: () {
             Navigator.pop(ctx);
@@ -1543,13 +1558,13 @@ class CardActionDelegate {
       case 'details':
         return MoreMenuItem(
           icon: (episodeId != null || isPodcastEpisode) ? Icons.podcasts_rounded : Icons.info_outline_rounded,
-          label: (episodeId != null || isPodcastEpisode) ? 'Episode Details' : 'Book Details',
+          label: (episodeId != null || isPodcastEpisode) ? l.episodeDetailsLabel : l.bookDetailsLabel,
           accent: accent,
           onTap: () { Navigator.pop(ctx); _openDetails(); },
         );
       case 'equalizer':
         return MoreMenuItem(
-          icon: Icons.equalizer_rounded, label: 'Equalizer', accent: accent,
+          icon: Icons.equalizer_rounded, label: l.equalizerLabel, accent: accent,
           onTap: () { Navigator.pop(ctx); showEqualizerSheet(context, accent, itemId: itemId, itemTitle: title); },
         );
       case 'cast':
@@ -1559,11 +1574,11 @@ class CardActionDelegate {
             final cast = ChromecastService();
             final String castLabel;
             if (cast.isCasting && cast.castingItemId == itemId) {
-              castLabel = 'Casting to ${cast.connectedDeviceName ?? "device"}';
+              castLabel = l.castingToDevice(cast.connectedDeviceName ?? 'device');
             } else if (cast.isConnected) {
-              castLabel = 'Cast to ${cast.connectedDeviceName ?? "device"}';
+              castLabel = l.castToDeviceNamed(cast.connectedDeviceName ?? 'device');
             } else {
-              castLabel = 'Cast to Device';
+              castLabel = l.castToDevice;
             }
             return MoreMenuItem(
               icon: cast.isConnected ? Icons.cast_connected_rounded : Icons.cast_rounded,
@@ -1574,24 +1589,24 @@ class CardActionDelegate {
         );
       case 'history':
         return MoreMenuItem(
-          icon: Icons.history_rounded, label: 'Playback History', accent: accent,
+          icon: Icons.history_rounded, label: l.playbackHistory, accent: accent,
           enabled: true,
           onTap: () { Navigator.pop(ctx); showHistory(context, accent, tt); },
         );
       case 'remove':
         return MoreMenuItem(
-          icon: Icons.remove_circle_outline_rounded, label: 'Remove from Absorbing',
+          icon: Icons.remove_circle_outline_rounded, label: l.removeFromAbsorbing,
           accent: Colors.red.shade300,
           onTap: () { Navigator.pop(ctx); removeFromAbsorbing(); onRemoveExtra?.call(); },
         );
       case 'car':
         return MoreMenuItem(
-          icon: Icons.directions_car_rounded, label: 'Car Mode', accent: accent,
+          icon: Icons.directions_car_rounded, label: l.carModeTitle, accent: accent,
           onTap: () { Navigator.pop(ctx); openCarMode(context); },
         );
       case 'notes':
         return MoreMenuItem(
-          icon: Icons.note_rounded, label: 'Notes', accent: accent,
+          icon: Icons.note_rounded, label: l.notes, accent: accent,
           onTap: () { Navigator.pop(ctx); showNotes(context, accent); },
         );
       case 'download':
@@ -1608,11 +1623,11 @@ class CardActionDelegate {
             final IconData dlIcon;
             final Color dlAccent;
             if (downloaded) {
-              dlIcon = Icons.download_done_rounded; dlLabel = 'Saved'; dlAccent = dlGreen;
+              dlIcon = Icons.download_done_rounded; dlLabel = l.saved; dlAccent = dlGreen;
             } else if (downloading) {
               dlIcon = Icons.downloading_rounded; dlLabel = '${(progress * 100).toStringAsFixed(0)}%'; dlAccent = accent;
             } else {
-              dlIcon = Icons.download_outlined; dlLabel = 'Download'; dlAccent = accent;
+              dlIcon = Icons.download_outlined; dlLabel = l.download; dlAccent = accent;
             }
             return MoreMenuItem(
               icon: dlIcon, label: dlLabel, accent: dlAccent,
@@ -1621,15 +1636,15 @@ class CardActionDelegate {
                 final dl = DownloadService();
                 if (dl.isDownloaded(itemId)) {
                   showDialog(context: context, builder: (dCtx) => AlertDialog(
-                    title: const Text('Remove download?'),
-                    content: const Text('This will be removed from your device.'),
+                    title: Text(l.removeDownloadQuestion),
+                    content: Text(l.removeDownloadContent),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
+                      TextButton(onPressed: () => Navigator.pop(dCtx), child: Text(l.cancel)),
                       TextButton(onPressed: () {
                         dl.deleteDownload(itemId);
                         Navigator.pop(dCtx);
-                        showOverlayToast(context, 'Download removed', icon: Icons.delete_outline_rounded);
-                      }, child: const Text('Remove', style: TextStyle(color: Colors.redAccent))),
+                        showOverlayToast(context, l.downloadRemoved, icon: Icons.delete_outline_rounded);
+                      }, child: Text(l.remove, style: const TextStyle(color: Colors.redAccent))),
                     ],
                   ));
                 } else if (dl.isDownloading(itemId)) {
@@ -1750,6 +1765,7 @@ class CardActionDelegate {
   }
 
   void showHistory(BuildContext ctx, Color accent, TextTheme tt) {
+    final l = AppLocalizations.of(ctx)!;
     showModalBottomSheet(
       context: ctx, isScrollControlled: true, useSafeArea: true,
       backgroundColor: Colors.transparent,
@@ -1768,7 +1784,7 @@ class CardActionDelegate {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(children: [
                 const Spacer(),
-                Text('Playback History', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                Text(l.playbackHistory, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 IconButton(
                   icon: Icon(Icons.delete_outline_rounded, size: 20, color: Theme.of(ctx).colorScheme.onSurfaceVariant),
@@ -1776,14 +1792,14 @@ class CardActionDelegate {
                     await PlaybackHistoryService().clearHistory(itemId);
                     if (sheetCtx.mounted) Navigator.pop(sheetCtx);
                   },
-                  tooltip: 'Clear history',
+                  tooltip: l.clearHistoryTooltip,
                 ),
               ]),
             ),
             if (isActive)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Text('Tap an event to jump to that position',
+                child: Text(l.tapEventToJump,
                   style: tt.bodySmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant.withValues(alpha: 0.6), fontStyle: FontStyle.italic)),
               )
             else
@@ -1793,7 +1809,7 @@ class CardActionDelegate {
               builder: (futureCtx, snap) {
                 if (!snap.hasData) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
                 final events = snap.data!;
-                if (events.isEmpty) return Center(child: Text('No history yet', style: tt.bodyMedium?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant)));
+                if (events.isEmpty) return Center(child: Text(l.noHistoryYet, style: tt.bodyMedium?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant)));
 
                 final items = <Widget>[];
                 String? lastDate;
@@ -1814,12 +1830,12 @@ class CardActionDelegate {
                     dense: true, visualDensity: const VisualDensity(vertical: -2),
                     leading: Icon(historyIcon(e.type), size: 18, color: accent.withValues(alpha: 0.7)),
                     title: Text(e.label, style: tt.bodySmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.7))),
-                    subtitle: Text('at $posLabel', style: tt.labelSmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
+                    subtitle: Text(l.atPosition(posLabel), style: tt.labelSmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
                     trailing: Text(timeStr, style: tt.labelSmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.3))),
                     onTap: isActive ? () {
                       player.seekTo(Duration(seconds: e.positionSeconds.round()));
                       Navigator.pop(futureCtx);
-                      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(duration: const Duration(seconds: 3), content: Text('Jumped to $posLabel')));
+                      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(duration: const Duration(seconds: 3), content: Text(l.jumpedToPosition(posLabel))));
                     } : null,
                   ));
                 }

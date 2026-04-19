@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -97,7 +98,11 @@ class _ExpandedCardState extends State<ExpandedCard> {
   String get _itemId => _item['id'] as String? ?? '';
   Map<String, dynamic> get _media => _item['media'] as Map<String, dynamic>? ?? {};
   Map<String, dynamic> get _metadata => _media['metadata'] as Map<String, dynamic>? ?? {};
-  String get _title => _metadata['title'] as String? ?? 'Unknown';
+  String get _title {
+    final t = _metadata['title'] as String?;
+    if (t != null && t.isNotEmpty) return t;
+    return mounted ? AppLocalizations.of(context)!.unknown : 'Unknown';
+  }
   String get _author => _metadata['authorName'] as String? ?? '';
   double get _duration => (_media['duration'] as num?)?.toDouble() ?? 0;
   List<dynamic> get _chapters {
@@ -291,11 +296,12 @@ class _ExpandedCardState extends State<ExpandedCard> {
     }
 
     // Fallback: synthesize from player data
+    final fallbackTitle = mounted ? AppLocalizations.of(context)!.unknown : 'Unknown';
     newItem ??= {
       'id': newItemId,
       'media': {
         'metadata': {
-          'title': widget.player.currentTitle ?? 'Unknown',
+          'title': widget.player.currentTitle ?? fallbackTitle,
           'authorName': widget.player.currentAuthor ?? '',
         },
         'duration': widget.player.totalDuration,
@@ -498,6 +504,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
     final cs = _coverScheme ?? Theme.of(context).colorScheme;
     final accent = cs.primary;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = AppLocalizations.of(context)!;
 
     final lib = context.watch<LibraryProvider>();
     final mediaHeaders = lib.mediaHeaders;
@@ -639,7 +646,7 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                               showSaved ? Icons.download_done_rounded : Icons.cell_tower_rounded,
                                               size: 11, color: showSaved ? savedColor : streamColor),
                                             const SizedBox(width: 3),
-                                            Text(showSaved ? 'Saved' : 'Streaming', style: TextStyle(
+                                            Text(showSaved ? l.saved : l.expandedCardStreaming, style: TextStyle(
                                               fontSize: 10, fontWeight: FontWeight.w500,
                                               color: showSaved ? savedColor : streamColor,
                                             )),
@@ -745,12 +752,12 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                                 children: [
                                                   Icon(Icons.cast_connected_rounded, size: 36, color: accent.withValues(alpha: 0.9)),
                                                   const SizedBox(height: 8),
-                                                  Text('Casting to', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11, fontWeight: FontWeight.w500)),
+                                                  Text(l.castingTo, style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11, fontWeight: FontWeight.w500)),
                                                   const SizedBox(height: 2),
                                                   Padding(
                                                     padding: const EdgeInsets.symmetric(horizontal: 16),
                                                     child: Text(
-                                                      castService.connectedDeviceName ?? 'Device',
+                                                      castService.connectedDeviceName ?? l.expandedCardDeviceFallback,
                                                       style: TextStyle(color: accent, fontSize: 14, fontWeight: FontWeight.w700),
                                                       textAlign: TextAlign.center,
                                                       maxLines: 2,
@@ -826,12 +833,12 @@ class _ExpandedCardState extends State<ExpandedCard> {
                                                     ? [
                                                         Icon(Icons.cast_connected_rounded, size: 20, color: accent),
                                                         const SizedBox(width: 6),
-                                                        Text('Casting', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: accent)),
+                                                        Text(l.casting, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: accent)),
                                                       ]
                                                     : [
                                                         Icon(Icons.more_horiz_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.54)),
                                                         const SizedBox(width: 6),
-                                                        Text('More', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: cs.onSurface.withValues(alpha: 0.54))),
+                                                        Text(l.more, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: cs.onSurface.withValues(alpha: 0.54))),
                                                       ],
                                               ),
                                             ),

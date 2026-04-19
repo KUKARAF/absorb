@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 
@@ -108,6 +109,7 @@ class _HomeCustomizeSheetState extends State<HomeCustomizeSheet> {
     final alreadyAdded = lib.addedGenres;
 
     if (!context.mounted) return;
+    final l = AppLocalizations.of(context)!;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -131,9 +133,9 @@ class _HomeCustomizeSheetState extends State<HomeCustomizeSheet> {
             ),
           )),
           const SizedBox(height: 16),
-          Text('Add Genre Section', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+          Text(l.homeCustomizeAddGenreTitle, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          Text('Pick a genre to show on your home screen',
+          Text(l.homeCustomizeAddGenreSubtitle,
             style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(height: 12),
           Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.3), indent: 20, endIndent: 20),
@@ -141,7 +143,7 @@ class _HomeCustomizeSheetState extends State<HomeCustomizeSheet> {
             child: genres.isEmpty
                 ? ListView(controller: sc, children: [
                     const SizedBox(height: 60),
-                    Center(child: Text('No genres found', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant))),
+                    Center(child: Text(l.noGenresFound, style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant))),
                   ])
                 : ListView.builder(
                     controller: sc,
@@ -205,6 +207,7 @@ class _HomeCustomizeSheetState extends State<HomeCustomizeSheet> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final lib = context.read<LibraryProvider>();
+    final l = AppLocalizations.of(context)!;
 
     _initSections(lib);
 
@@ -224,12 +227,12 @@ class _HomeCustomizeSheetState extends State<HomeCustomizeSheet> {
         child: Row(children: [
           GestureDetector(
             onTap: () => _reset(lib),
-            child: Text('Reset', style: tt.labelMedium?.copyWith(
+            child: Text(l.reset, style: tt.labelMedium?.copyWith(
               color: cs.primary, fontWeight: FontWeight.w500,
             )),
           ),
           const Spacer(),
-          Text('Customize Home', style: tt.titleMedium?.copyWith(
+          Text(l.customizeHome, style: tt.titleMedium?.copyWith(
             fontWeight: FontWeight.w600, color: cs.onSurface,
           )),
           const Spacer(),
@@ -245,7 +248,7 @@ class _HomeCustomizeSheetState extends State<HomeCustomizeSheet> {
             onTap: () => _save(lib),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-              child: Text('Done', style: tt.labelLarge?.copyWith(
+              child: Text(l.done, style: tt.labelLarge?.copyWith(
                 color: cs.primary, fontWeight: FontWeight.w600,
               )),
             ),
@@ -256,7 +259,7 @@ class _HomeCustomizeSheetState extends State<HomeCustomizeSheet> {
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Text(
-          'Drag to reorder, tap eye to show/hide',
+          l.dragToReorderTapEye,
           style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
           textAlign: TextAlign.center,
         ),

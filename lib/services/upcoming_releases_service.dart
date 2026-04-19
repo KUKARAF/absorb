@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
+import '../l10n/app_localizations.dart';
+import '../main.dart' show rootNavigatorKey;
 
 /// Result for a single series that has upcoming or recently released books.
 class UpcomingSeriesResult {
@@ -88,10 +90,17 @@ class UpcomingReleasesService extends ChangeNotifier {
 
   // Notification
   static const _notifChannelId = 'absorb_upcoming_scan';
-  static const _notifChannelName = 'Upcoming Release Scan';
-  static const _notifChannelDesc = 'Shows progress while scanning for upcoming releases';
+  String get _notifChannelName =>
+      _l()?.upcomingNotifChannelName ?? 'Upcoming Release Scan';
+  String get _notifChannelDesc =>
+      _l()?.upcomingNotifChannelDesc ?? 'Shows progress while scanning for upcoming releases';
   static const _scanNotifId = 9100;
   static const _completeNotifId = 9101;
+
+  AppLocalizations? _l() {
+    final ctx = rootNavigatorKey.currentContext;
+    return ctx != null ? AppLocalizations.of(ctx) : null;
+  }
 
   // Persistence keys
   static const _cacheKey = 'upcomingReleasesCache';
@@ -173,7 +182,7 @@ class UpcomingReleasesService extends ChangeNotifier {
     _currentSeriesName = null;
     notifyListeners();
 
-    await _showScanNotification('Starting scan...');
+    await _showScanNotification(_l()?.upcomingNotifStartingScan ?? 'Starting scan...');
 
     try {
       // Use filter data to get series list - lightweight, no embedded books
@@ -242,8 +251,10 @@ class UpcomingReleasesService extends ChangeNotifier {
 
     // Update scan notification periodically
     if (_processedCount % 5 == 0) {
+      final l = _l();
       await _showScanNotification(
-        'Checking $seriesName... (${_processedCount + 1}/$_totalSeries)',
+        l?.upcomingNotifCheckingSeries(seriesName, _processedCount + 1, _totalSeries)
+          ?? 'Checking $seriesName... (${_processedCount + 1}/$_totalSeries)',
       );
     }
 
@@ -536,7 +547,7 @@ class UpcomingReleasesService extends ChangeNotifier {
 
       if (androidPlugin != null) {
         await androidPlugin.createNotificationChannel(
-          const AndroidNotificationChannel(
+          AndroidNotificationChannel(
             _notifChannelId,
             _notifChannelName,
             description: _notifChannelDesc,
@@ -549,7 +560,7 @@ class UpcomingReleasesService extends ChangeNotifier {
       final progress = _totalSeries > 0 ? _processedCount : 0;
       final max = _totalSeries > 0 ? _totalSeries : 0;
 
-      const androidDetails = AndroidNotificationDetails(
+      final androidDetails = AndroidNotificationDetails(
         _notifChannelId,
         _notifChannelName,
         channelDescription: _notifChannelDesc,
@@ -560,13 +571,15 @@ class UpcomingReleasesService extends ChangeNotifier {
         icon: 'drawable/ic_notification',
       );
 
+      final scanTitle = _l()?.upcomingNotifScanTitle ?? 'Scanning for upcoming releases';
+
       // Start as foreground service on first call so the scan survives
       // the app being sent to the background.
       if (!_foregroundActive && androidPlugin != null) {
         try {
           await androidPlugin.startForegroundService(
             _scanNotifId,
-            'Scanning for upcoming releases',
+            scanTitle,
             body,
             notificationDetails: androidDetails,
             payload: 'upcoming_scan',
@@ -581,7 +594,7 @@ class UpcomingReleasesService extends ChangeNotifier {
 
       await plugin.show(
         _scanNotifId,
-        'Scanning for upcoming releases',
+        scanTitle,
         body,
         NotificationDetails(
           android: AndroidNotificationDetails(
@@ -630,7 +643,7 @@ class UpcomingReleasesService extends ChangeNotifier {
           AndroidFlutterLocalNotificationsPlugin>();
       if (androidPlugin != null) {
         await androidPlugin.createNotificationChannel(
-          const AndroidNotificationChannel(
+          AndroidNotificationChannel(
             _notifChannelId,
             _notifChannelName,
             description: _notifChannelDesc,
@@ -640,11 +653,13 @@ class UpcomingReleasesService extends ChangeNotifier {
       }
 
       final seriesCount = _results.length;
+      final l = _l();
       await plugin.show(
         _completeNotifId,
-        'Upcoming releases found!',
-        '$totalBooks upcoming across $seriesCount series',
-        const NotificationDetails(
+        l?.upcomingNotifFoundTitle ?? 'Upcoming releases found!',
+        l?.upcomingNotifFoundBody(totalBooks, seriesCount)
+            ?? '$totalBooks upcoming across $seriesCount series',
+        NotificationDetails(
           android: AndroidNotificationDetails(
             _notifChannelId,
             _notifChannelName,

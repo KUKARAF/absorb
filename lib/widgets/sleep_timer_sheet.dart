@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../services/audio_player_service.dart';
 import '../services/sleep_timer_service.dart';
 
@@ -58,6 +59,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final accent = widget.accent;
+    final l = AppLocalizations.of(context)!;
 
     return ListenableBuilder(
       listenable: SleepTimerService(),
@@ -78,11 +80,11 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(width: 40, height: 4, decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 16),
-            Text('Sleep Timer', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+            Text(l.sleepTimer, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
             const SizedBox(height: 16),
 
             if (isActive)
-              _buildActiveState(sleep, accent, tt)
+              _buildActiveState(sleep, accent, tt, l)
             else ...[
               // Tab bar
               Container(
@@ -92,30 +94,30 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
                 ),
                 padding: const EdgeInsets.all(3),
                 child: Row(children: [
-                  _tab('Timer', Icons.timer_outlined, 0, accent),
+                  _tab(l.timer, Icons.timer_outlined, 0, accent),
                   const SizedBox(width: 4),
-                  _tab('End of Chapter', Icons.auto_stories_outlined, 1, accent),
+                  _tab(l.endOfChapter, Icons.auto_stories_outlined, 1, accent),
                 ]),
               ),
               const SizedBox(height: 20),
 
               // Tab content
-              if (_tabIndex == 0) _buildTimerTab(accent, tt)
-              else _buildChapterTab(accent, tt),
+              if (_tabIndex == 0) _buildTimerTab(accent, tt, l)
+              else _buildChapterTab(accent, tt, l),
 
               const SizedBox(height: 16),
               Container(height: 0.5, color: cs.onSurface.withValues(alpha: 0.08)),
               const SizedBox(height: 12),
 
               // Rewind on sleep
-              _buildRewindSection(accent, tt),
+              _buildRewindSection(accent, tt, l),
 
               const SizedBox(height: 12),
               Container(height: 0.5, color: cs.onSurface.withValues(alpha: 0.08)),
               const SizedBox(height: 12),
 
               // Shake toggle
-              _buildShakeToggle(accent, tt),
+              _buildShakeToggle(accent, tt, l),
             ],
           ]),
           ),
@@ -124,7 +126,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
     );
   }
 
-  Widget _buildActiveState(SleepTimerService sleep, Color accent, TextTheme tt) {
+  Widget _buildActiveState(SleepTimerService sleep, Color accent, TextTheme tt, AppLocalizations l) {
     final cs = Theme.of(context).colorScheme;
     final isTime = sleep.mode == SleepTimerMode.time;
 
@@ -135,7 +137,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
       final s = r.inSeconds % 60;
       countdownLabel = '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
     } else {
-      countdownLabel = '${sleep.chaptersRemaining} ${sleep.chaptersRemaining == 1 ? 'chapter' : 'chapters'} left';
+      countdownLabel = l.sleepTimerSheetChaptersLeft(sleep.chaptersRemaining);
     }
 
     return Column(children: [
@@ -164,19 +166,19 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
       const SizedBox(height: 20),
 
       // Quick add buttons
-      Text('Add more time', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+      Text(l.addMoreTime, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
       const SizedBox(height: 10),
       if (isTime)
         Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
           for (final mins in [5, 10, 15, 30])
-            _presetChip(accent, '+${mins}m', false, () {
+            _presetChip(accent, l.sleepTimerSheetAddMinutesChip(mins), false, () {
               sleep.addTime(Duration(minutes: mins));
             }),
         ])
       else
         Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
           for (final ch in [1, 2, 3])
-            _presetChip(accent, '+$ch ch', false, () {
+            _presetChip(accent, l.sleepTimerSheetAddChaptersChip(ch), false, () {
               for (int i = 0; i < ch; i++) sleep.addChapter();
             }),
         ]),
@@ -185,7 +187,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
       // Cancel button
       SizedBox(width: double.infinity, height: 44, child: OutlinedButton.icon(
         icon: const Icon(Icons.close_rounded, size: 18),
-        label: const Text('Cancel timer'),
+        label: Text(l.cancelTimer),
         style: OutlinedButton.styleFrom(
           foregroundColor: cs.onSurfaceVariant,
           side: BorderSide(color: cs.onSurface.withValues(alpha: 0.12)),
@@ -200,11 +202,11 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
       const SizedBox(height: 12),
       Container(height: 0.5, color: cs.onSurface.withValues(alpha: 0.08)),
       const SizedBox(height: 12),
-      _buildRewindSection(accent, tt),
+      _buildRewindSection(accent, tt, l),
       const SizedBox(height: 12),
       Container(height: 0.5, color: cs.onSurface.withValues(alpha: 0.08)),
       const SizedBox(height: 12),
-      _buildShakeToggle(accent, tt),
+      _buildShakeToggle(accent, tt, l),
     ]);
   }
 
@@ -237,11 +239,11 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
     );
   }
 
-  Widget _buildTimerTab(Color accent, TextTheme tt) {
+  Widget _buildTimerTab(Color accent, TextTheme tt, AppLocalizations l) {
     final cs = Theme.of(context).colorScheme;
     return Column(children: [
       // Custom slider
-      Text('${_customMinutes.round()} min',
+      Text(l.minutesValue(_customMinutes.round()),
         style: TextStyle(color: accent, fontSize: 28, fontWeight: FontWeight.w700,
           fontFeatures: const [FontFeature.tabularFigures()])),
       const SizedBox(height: 8),
@@ -262,15 +264,15 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('1m', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
-          Text('120m', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+          Text(l.sleepTimerSheetMinShort(1), style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+          Text(l.sleepTimerSheetMinShort(120), style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
         ]),
       ),
       const SizedBox(height: 12),
       // Presets
       Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
         for (final mins in [5, 10, 15, 30, 45, 60])
-          _presetChip(accent, '${mins}m', _customMinutes.round() == mins, () {
+          _presetChip(accent, l.sleepTimerSheetMinShort(mins), _customMinutes.round() == mins, () {
             setState(() => _customMinutes = mins.toDouble());
           }),
       ]),
@@ -284,16 +286,16 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
           SleepTimerService().setTimeSleep(Duration(minutes: _customMinutes.round()));
           Navigator.pop(context);
         },
-        child: Text('Start ${_customMinutes.round()} min timer',
+        child: Text(l.startMinTimer(_customMinutes.round()),
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
       )),
     ]);
   }
 
-  Widget _buildChapterTab(Color accent, TextTheme tt) {
+  Widget _buildChapterTab(Color accent, TextTheme tt, AppLocalizations l) {
     final cs = Theme.of(context).colorScheme;
     return Column(children: [
-      Text('$_customChapters ${_customChapters == 1 ? 'chapter' : 'chapters'}',
+      Text(l.sleepTimerSheetChaptersValue(_customChapters),
         style: TextStyle(color: accent, fontSize: 28, fontWeight: FontWeight.w700)),
       const SizedBox(height: 16),
       // Chapter count selector
@@ -310,7 +312,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
       // Quick presets
       Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
         for (final ch in [1, 2, 3, 5])
-          _presetChip(accent, '$ch ch', _customChapters == ch, () {
+          _presetChip(accent, l.sleepTimerSheetChaptersChip(ch), _customChapters == ch, () {
             setState(() => _customChapters = ch);
           }),
       ]),
@@ -324,22 +326,22 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
           SleepTimerService().setChapterSleep(_customChapters);
           Navigator.pop(context);
         },
-        child: Text('Sleep after $_customChapters ${_customChapters == 1 ? 'chapter' : 'chapters'}',
+        child: Text(l.sleepTimerSheetStartChapterSleep(_customChapters),
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
       )),
     ]);
   }
 
   /// Format seconds as a human-readable label (e.g. "30s", "5m", "1m 30s").
-  String _rewindLabel(int seconds) {
-    if (seconds == 0) return 'Off';
-    if (seconds < 60) return '${seconds}s';
+  String _rewindLabel(int seconds, AppLocalizations l) {
+    if (seconds == 0) return l.off;
+    if (seconds < 60) return l.sleepTimerSheetSecondsShort(seconds);
     final m = seconds ~/ 60;
     final s = seconds % 60;
-    return s > 0 ? '${m}m ${s}s' : '${m}m';
+    return s > 0 ? l.sleepTimerSheetMinSecShort(m, s) : l.sleepTimerSheetMinShort(m);
   }
 
-  Widget _buildRewindSection(Color accent, TextTheme tt) {
+  Widget _buildRewindSection(Color accent, TextTheme tt, AppLocalizations l) {
     final cs = Theme.of(context).colorScheme;
     final isEnabled = _sleepRewindSeconds > 0;
     final rewindMinutes = (_sleepRewindSeconds / 60).clamp(0.0, _maxRewindMinutes.toDouble());
@@ -348,9 +350,9 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
       Row(children: [
         Icon(Icons.replay_rounded, size: 18, color: isEnabled ? accent : cs.onSurface.withValues(alpha: 0.24)),
         const SizedBox(width: 10),
-        Expanded(child: Text('Rewind on sleep',
+        Expanded(child: Text(l.sleepTimerSheetRewindOnSleep,
           style: TextStyle(color: isEnabled ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w500))),
-        Text(isEnabled ? _rewindLabel(_sleepRewindSeconds) : 'Off',
+        Text(isEnabled ? _rewindLabel(_sleepRewindSeconds, l) : l.off,
           style: TextStyle(color: isEnabled ? accent : cs.onSurface.withValues(alpha: 0.3), fontSize: 13, fontWeight: FontWeight.w600)),
       ]),
       const SizedBox(height: 4),
@@ -375,30 +377,30 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('Off', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
-          Text('120m', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+          Text(l.off, style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+          Text(l.sleepTimerSheetMinShort(120), style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
         ]),
       ),
     ]);
   }
 
-  Widget _buildShakeToggle(Color accent, TextTheme tt) {
+  Widget _buildShakeToggle(Color accent, TextTheme tt, AppLocalizations l) {
     final cs = Theme.of(context).colorScheme;
     final isEnabled = _shakeMode != 'off';
     String subtitle;
     if (_shakeMode == 'addTime') {
-      subtitle = _tabIndex == 0 ? 'Adds $_shakeAddMinutes min' : 'Adds 1 chapter';
+      subtitle = _tabIndex == 0 ? l.sleepTimerSheetAddsMinutes(_shakeAddMinutes) : l.sleepTimerSheetAddsOneChapter;
     } else if (_shakeMode == 'resetTimer') {
-      subtitle = 'Resets to full duration';
+      subtitle = l.sleepTimerSheetResetsToFull;
     } else {
-      subtitle = 'Disabled';
+      subtitle = l.disabled;
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Icon(Icons.vibration_rounded, size: 18, color: isEnabled ? accent : cs.onSurface.withValues(alpha: 0.24)),
         const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Shake', style: TextStyle(color: isEnabled ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w500)),
+          Text(l.sleepTimerSheetShake, style: TextStyle(color: isEnabled ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w500)),
           Text(subtitle, style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
         ])),
       ]),
@@ -407,10 +409,10 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
         width: double.infinity,
         child: SegmentedButton<String>(
           showSelectedIcon: false,
-          segments: const [
-            ButtonSegment(value: 'off', label: Text('Off')),
-            ButtonSegment(value: 'addTime', label: Text('Add Time')),
-            ButtonSegment(value: 'resetTimer', label: Text('Reset')),
+          segments: [
+            ButtonSegment(value: 'off', label: Text(l.off)),
+            ButtonSegment(value: 'addTime', label: Text(l.shakeAddTime)),
+            ButtonSegment(value: 'resetTimer', label: Text(l.shakeReset)),
           ],
           selected: {_shakeMode},
           style: ButtonStyle(
@@ -433,8 +435,8 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Shake adds', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-                Text('$_shakeAddMinutes min',
+                Text(l.shakeAdds, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+                Text(l.minutesValue(_shakeAddMinutes),
                   style: TextStyle(fontWeight: FontWeight.w600, color: accent, fontSize: 12)),
               ],
             ),

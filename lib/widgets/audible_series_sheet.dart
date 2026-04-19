@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/player_settings.dart';
 import 'overlay_toast.dart';
@@ -76,14 +77,14 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
       final books = await ApiService.discoverAudibleSeries(widget.seriesAsin, region: _region);
       if (!mounted) return;
       if (books.isEmpty) {
-        setState(() { _isLoading = false; _error = 'No books found on Audible'; });
+        setState(() { _isLoading = false; _error = AppLocalizations.of(context)!.audibleSeriesNoBooksFound; });
         return;
       }
       setState(() { _allBooks = books; _isLoading = false; });
     } catch (e, st) {
       debugPrint('[AudibleSeries] discoverAudibleSeries error: $e\n$st');
       if (!mounted) return;
-      setState(() { _isLoading = false; _error = 'Failed to load series from Audible'; });
+      setState(() { _isLoading = false; _error = AppLocalizations.of(context)!.audibleSeriesFailedToLoad; });
     }
   }
 
@@ -158,6 +159,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     final missingCount = _allBooks.where((b) => !_isOwned(b) && !_isUpcoming(b)).length;
     final upcomingCount = _allBooks.where((b) => _isUpcoming(b)).length;
@@ -191,7 +193,9 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
         const SizedBox(height: 4),
         if (!_isLoading && _error == null)
           Text(
-            '${_allBooks.length} on Audible · $missingCount missing${upcomingCount > 0 ? ' · $upcomingCount upcoming' : ''}',
+            upcomingCount > 0
+                ? l.audibleSeriesSummaryWithUpcoming(_allBooks.length, missingCount, upcomingCount)
+                : l.audibleSeriesSummary(_allBooks.length, missingCount),
             style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
           ),
         const SizedBox(height: 4),
@@ -215,13 +219,13 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(children: [
-              _filterChip(cs, 'Missing ($missingCount)', _filter == 0, () => setState(() => _filter = 0)),
+              _filterChip(cs, l.audibleSeriesFilterMissing(missingCount), _filter == 0, () => setState(() => _filter = 0)),
               const SizedBox(width: 8),
               if (upcomingCount > 0) ...[
-                _filterChip(cs, 'Upcoming ($upcomingCount)', _filter == 1, () => setState(() => _filter = 1)),
+                _filterChip(cs, l.audibleSeriesFilterUpcoming(upcomingCount), _filter == 1, () => setState(() => _filter = 1)),
                 const SizedBox(width: 8),
               ],
-              _filterChip(cs, 'All (${_allBooks.length})', _filter == 2, () => setState(() => _filter = 2)),
+              _filterChip(cs, l.audibleSeriesFilterAll(_allBooks.length), _filter == 2, () => setState(() => _filter = 2)),
             ]),
           ),
         const SizedBox(height: 8),
@@ -232,7 +236,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
             const SizedBox(height: 80),
             const Center(child: CircularProgressIndicator(strokeWidth: 2)),
             const SizedBox(height: 12),
-            Center(child: Text('Searching Audible...', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4)))),
+            Center(child: Text(l.audibleSeriesSearching, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4)))),
           ]))
         else if (_error != null)
           Expanded(child: ListView(controller: widget.scrollController, children: [
@@ -247,9 +251,9 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
               size: 48, color: cs.primary.withValues(alpha: 0.5)),
             const SizedBox(height: 12),
             Center(child: Text(
-              _filter == 0 ? 'You have the complete series!'
-                  : _filter == 1 ? 'No upcoming releases found'
-                  : 'No books found',
+              _filter == 0 ? l.audibleSeriesCompleteSeries
+                  : _filter == 1 ? l.audibleSeriesNoUpcoming
+                  : l.noBooksFound,
               style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant))),
           ]))
         else
@@ -258,7 +262,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
               controller: widget.scrollController,
               padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).viewPadding.bottom),
               itemCount: displayBooks.length,
-              itemBuilder: (context, index) => _buildBookCard(cs, tt, displayBooks[index]),
+              itemBuilder: (context, index) => _buildBookCard(cs, tt, l, displayBooks[index]),
             ),
           ),
       ],
@@ -283,7 +287,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
     );
   }
 
-  Widget _buildBookCard(ColorScheme cs, TextTheme tt, Map<String, dynamic> book) {
+  Widget _buildBookCard(ColorScheme cs, TextTheme tt, AppLocalizations l, Map<String, dynamic> book) {
     final title = book['title'] as String? ?? '';
     final subtitle = book['subtitle'] as String? ?? '';
     final authors = book['authors'] as String? ?? '';
@@ -342,7 +346,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                         decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.9), borderRadius: BorderRadius.circular(6)),
-                        child: const Text('UPCOMING', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
+                        child: Text(l.audibleSeriesUpcomingBadge, style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
                       ),
                     ),
                   if (owned)
@@ -378,7 +382,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
                         Text(authors, maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 11)),
                       if (narrators.isNotEmpty)
-                        Text('Narrated by $narrators', maxLines: 1, overflow: TextOverflow.ellipsis,
+                        Text(l.narratedBy(narrators), maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 10)),
                       const SizedBox(height: 4),
                       Row(children: [
@@ -402,7 +406,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
                               color: cs.error.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: Text('Abridged', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.error)),
+                            child: Text(l.audibleSeriesAbridged, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.error)),
                           ),
                           if (releaseDate.isNotEmpty || runtime.isNotEmpty)
                             Padding(
@@ -440,6 +444,7 @@ class _AudibleSeriesSheetState extends State<AudibleSeriesSheet> {
 Future<String?> showAudibleRegionPicker(BuildContext context, {required String currentRegion}) {
   final cs = Theme.of(context).colorScheme;
   final tt = Theme.of(context).textTheme;
+  final l = AppLocalizations.of(context)!;
   return showModalBottomSheet<String>(
     context: context,
     backgroundColor: Theme.of(context).bottomSheetTheme.backgroundColor,
@@ -455,7 +460,7 @@ Future<String?> showAudibleRegionPicker(BuildContext context, {required String c
           child: Column(children: [
             Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
-            Text('Audible Region', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+            Text(l.audibleSeriesRegionTitle, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
           ]),
         ),
@@ -494,6 +499,7 @@ void showAudibleBookMenu(BuildContext context, {
 }) {
   final cs = Theme.of(context).colorScheme;
   final tt = Theme.of(context).textTheme;
+  final l = AppLocalizations.of(context)!;
   final title = book['title'] as String? ?? '';
   final asin = book['asin'] as String? ?? '';
   final releaseDate = book['releaseDate'] as String? ?? '';
@@ -523,7 +529,7 @@ void showAudibleBookMenu(BuildContext context, {
         if (asin.isNotEmpty)
           ListTile(
             leading: Icon(Icons.open_in_new_rounded, color: cs.primary, size: 22),
-            title: const Text('Open on Audible', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            title: Text(l.audibleSeriesOpenOnAudible, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
             dense: true, visualDensity: VisualDensity.compact,
             onTap: () {
               Navigator.pop(ctx);
@@ -533,7 +539,7 @@ void showAudibleBookMenu(BuildContext context, {
         if (releaseDate.isNotEmpty)
           ListTile(
             leading: Icon(Icons.calendar_month_rounded, color: cs.primary, size: 22),
-            title: const Text('Add to Calendar', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            title: Text(l.audibleSeriesAddToCalendar, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
             dense: true, visualDensity: VisualDensity.compact,
             onTap: () {
               Navigator.pop(ctx);
@@ -570,16 +576,17 @@ Future<void> _openOnAudible(BuildContext context, String asin, String region) as
   try {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   } catch (e) {
-    if (context.mounted) showOverlayToast(context, 'Could not open Audible', icon: Icons.error_outline_rounded);
+    if (context.mounted) showOverlayToast(context, AppLocalizations.of(context)!.audibleSeriesCouldNotOpenAudible, icon: Icons.error_outline_rounded);
   }
 }
 
 Future<void> _addToCalendar(BuildContext context, String title, String seriesName, String dateStr) async {
   final date = DateTime.tryParse(dateStr);
   if (date == null) return;
+  final l = AppLocalizations.of(context)!;
 
   final eventTitle = '$title - $seriesName';
-  final description = 'New audiobook release in the $seriesName series';
+  final description = l.audibleSeriesCalendarDescription(seriesName);
 
   if (Platform.isAndroid) {
     final begin = DateTime(date.year, date.month, date.day).millisecondsSinceEpoch;
@@ -608,6 +615,6 @@ Future<void> _addToCalendar(BuildContext context, String title, String seriesNam
   try {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   } catch (e) {
-    if (context.mounted) showOverlayToast(context, 'Could not open calendar', icon: Icons.error_outline_rounded);
+    if (context.mounted) showOverlayToast(context, AppLocalizations.of(context)!.audibleSeriesCouldNotOpenCalendar, icon: Icons.error_outline_rounded);
   }
 }

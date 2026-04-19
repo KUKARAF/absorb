@@ -256,25 +256,30 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     final includePreReleases = await PlayerSettings.getIncludePreReleases();
     final info = await UpdateCheckerService.check(includePreReleases: includePreReleases);
     if (info == null || !mounted) return;
+    final l = AppLocalizations.of(context)!;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(info.isPreRelease ? 'Pre-release available' : 'Update available'),
-        content: Text('A new ${info.isPreRelease ? 'pre-release' : 'version'} of Absorb is available: ${info.latestVersion}\n\nYou are on ${info.currentVersion}.'),
+        title: Text(info.isPreRelease ? l.preReleaseAvailable : l.updateAvailable),
+        content: Text(l.updateDialogContent(
+          info.isPreRelease ? l.updateKindPreRelease : l.updateKindVersion,
+          info.latestVersion,
+          info.currentVersion,
+        )),
         actions: [
           TextButton(
             onPressed: () {
               UpdateCheckerService.dismiss(info.latestVersion);
               Navigator.pop(ctx);
             },
-            child: const Text('Later'),
+            child: Text(l.later),
           ),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
               launchUrl(Uri.parse(info.downloadUrl), mode: LaunchMode.externalApplication);
             },
-            child: const Text('Download'),
+            child: Text(l.downloadButton),
           ),
         ],
       ),

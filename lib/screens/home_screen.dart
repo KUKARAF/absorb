@@ -19,6 +19,7 @@ import '../widgets/playlist_detail_sheet.dart';
 import '../widgets/collection_detail_sheet.dart';
 import '../widgets/section_detail_sheet.dart';
 import 'app_shell.dart';
+import '../l10n/app_localizations.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -222,6 +223,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   void _showLibraryPicker(BuildContext context, ColorScheme cs, TextTheme tt,
       List<dynamic> allLibraries, LibraryProvider lib) {
+    final l = AppLocalizations.of(context)!;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -250,7 +252,7 @@ class HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text('Select Library',
+                child: Text(l.selectLibrary,
                     style:
                         tt.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
               ),
@@ -263,7 +265,7 @@ class HomeScreenState extends State<HomeScreen> {
                   itemBuilder: (_, i) {
                     final library = allLibraries[i] as Map<String, dynamic>;
                     final id = library['id'] as String;
-                    final name = library['name'] as String? ?? 'Library';
+                    final name = library['name'] as String? ?? l.libraryFallback;
                     final mediaType = library['mediaType'] as String? ?? 'book';
                     final isSelected = id == lib.selectedLibraryId;
                     return ListTile(
@@ -292,15 +294,18 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  static const _sectionLabels = {
-    'continue-listening': 'Continue Listening',
-    'continue-series': 'Continue Series',
-    'recently-added': 'Recently Added',
-    'listen-again': 'Listen Again',
-    'discover': 'Discover',
-    'episodes-recently-added': 'New Episodes',
-    'downloaded-books': 'Downloads',
-  };
+  String _sectionLabel(String id, AppLocalizations l) {
+    switch (id) {
+      case 'continue-listening': return l.continueListening;
+      case 'continue-series': return l.continueSeries;
+      case 'recently-added': return l.recentlyAdded;
+      case 'listen-again': return l.listenAgain;
+      case 'discover': return l.discover;
+      case 'episodes-recently-added': return l.newEpisodes;
+      case 'downloaded-books': return l.downloads;
+    }
+    return _titleCase(id);
+  }
 
   static const _sectionIcons = {
     'continue-listening': Icons.play_circle_outline_rounded,
@@ -324,11 +329,12 @@ class HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final lowerFade = Color.lerp(cs.surface, scaffoldBg, 0.55) ?? scaffoldBg;
     final lib = context.watch<LibraryProvider>();
     final allLibraries = lib.libraries;
-    final libraryName = lib.selectedLibrary?['name'] as String? ?? 'Library';
+    final libraryName = lib.selectedLibrary?['name'] as String? ?? l.libraryFallback;
     if (lib.isLoading) {
       // Reset cache so stale data isn't shown after a user switch
       // (where the new user may have the same number of sections).
@@ -366,7 +372,7 @@ class HomeScreenState extends State<HomeScreen> {
                 // ── Top bar: ABSORB title + page name ──
                 SliverToBoxAdapter(
                   child: AbsorbPageHeader(
-                    title: 'Home',
+                    title: l.homeTitle,
                     trailing: GestureDetector(
                       onTap: () {
                         final newVal = !lib.isManualOffline;
@@ -486,7 +492,7 @@ class HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 16),
                           FilledButton.tonal(
                               onPressed: lib.refresh,
-                              child: const Text('Retry')),
+                              child: Text(l.retry)),
                         ],
                       ),
                     ),
@@ -512,8 +518,8 @@ class HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 12),
                           Text(
                             lib.isOffline
-                                ? 'No downloaded books'
-                                : 'Your library is empty',
+                                ? l.noDownloadedBooks
+                                : l.yourLibraryIsEmpty,
                             style: tt.bodyLarge?.copyWith(
                               color: cs.onSurfaceVariant,
                             ),
@@ -521,7 +527,7 @@ class HomeScreenState extends State<HomeScreen> {
                           if (lib.isOffline) ...[
                             const SizedBox(height: 4),
                             Text(
-                              'Download books while online to listen offline',
+                              l.downloadBooksWhileOnline,
                               style: tt.bodySmall?.copyWith(
                                 color:
                                     cs.onSurfaceVariant.withValues(alpha: 0.6),
@@ -552,7 +558,7 @@ class HomeScreenState extends State<HomeScreen> {
                           child: GestureDetector(
                             onTap: () => SectionDetailSheet.show(
                               context,
-                              title: 'Continue Listening',
+                              title: l.continueListening,
                               icon: Icons.play_circle_outline_rounded,
                               entities: clItems,
                               coverAspectRatio: _rectangleCovers ? 2 / 3 : 1.0,
@@ -564,7 +570,7 @@ class HomeScreenState extends State<HomeScreen> {
                                 Icon(Icons.play_circle_outline_rounded,
                                     size: 16, color: cs.primary.withValues(alpha: 0.7)),
                                 const SizedBox(width: 8),
-                                Text('Continue Listening',
+                                Text(l.continueListening,
                                     style: tt.titleSmall?.copyWith(
                                       fontWeight: FontWeight.w500,
                                       color: cs.onSurface.withValues(alpha: 0.8),
@@ -604,9 +610,7 @@ class HomeScreenState extends State<HomeScreen> {
                       ];
                     }
 
-                    final label = section['label'] ??
-                        _sectionLabels[id] ??
-                        _titleCase(id);
+                    final label = section['label'] ?? _sectionLabel(id, l);
                     final entities = _filterEbookOnly(
                         (section['entities'] as List<dynamic>?) ?? [],
                         sectionType: section['type'] as String?);
@@ -712,6 +716,7 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     final item = widget.item;
     final lib = widget.lib;
@@ -724,8 +729,8 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
 
     // For podcasts with recentEpisode, show episode title + show name
     final title = recentEpisode != null
-        ? (recentEpisode['title'] as String? ?? 'Episode')
-        : (metadata['title'] as String? ?? 'Unknown');
+        ? (recentEpisode['title'] as String? ?? l.homeScreenEpisodeFallback)
+        : (metadata['title'] as String? ?? l.unknown);
     final author = recentEpisode != null
         ? (metadata['title'] as String? ?? '')
         : (metadata['authorName'] as String? ?? '');
@@ -930,8 +935,9 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
 
     if (recentEpisode != null) {
       // Podcast episode — play the recent episode directly
+      final l = AppLocalizations.of(context)!;
       final episodeId = recentEpisode['id'] as String? ?? '';
-      final episodeTitle = recentEpisode['title'] as String? ?? 'Episode';
+      final episodeTitle = recentEpisode['title'] as String? ?? l.homeScreenEpisodeFallback;
       final media = widget.item['media'] as Map<String, dynamic>? ?? {};
       final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
       final showTitle = metadata['title'] as String? ?? '';

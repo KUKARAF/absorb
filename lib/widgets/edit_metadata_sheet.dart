@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 
@@ -74,11 +75,16 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
   bool _isSearching = false;
   bool _hasSearched = false;
   String _provider = 'audible';
-  static const _providers = [
-    ('audible', 'Audible'),
-    ('itunes', 'iTunes'),
-    ('openlibrary', 'Open Library'),
-  ];
+  static const _providerKeys = ['audible', 'itunes', 'openlibrary'];
+
+  String _providerLabel(AppLocalizations l, String key) {
+    switch (key) {
+      case 'audible': return l.audible;
+      case 'itunes': return l.iTunes;
+      case 'openlibrary': return l.openLibrary;
+    }
+    return key;
+  }
 
   String? _coverFilePath;
   bool _saving = false;
@@ -228,13 +234,14 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     if (!mounted) return;
     setState(() => _saving = false);
 
+    final l = AppLocalizations.of(context)!;
     if (ok) {
       context.read<LibraryProvider>().refresh();
       Navigator.pop(context);
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(
-          content: const Text('Metadata updated from match'),
+          content: Text(l.editMetadataUpdatedFromMatch),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -243,7 +250,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(
-          content: const Text('Failed to update metadata'),
+          content: Text(l.failedToUpdateMetadata),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 3),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -257,19 +264,18 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     final author = _safeString(book['author']).isNotEmpty
         ? _safeString(book['author'])
         : _safeString(book['authorName']);
+    final l = AppLocalizations.of(context)!;
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Apply This Match?'),
-        content: Text(
-          'This will update the server metadata for this book using:\n\n'
-          '"$title"${author.isNotEmpty ? ' by $author' : ''}\n\n'
-          'All fields and the cover will be overwritten on the server.',
-        ),
+        title: Text(l.applyThisMatch),
+        content: Text(author.isNotEmpty
+            ? l.editMetadataConfirmMatchWithAuthor(title, author)
+            : l.editMetadataConfirmMatch(title)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () { Navigator.pop(ctx); _applyMatch(result); }, child: const Text('Apply')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
+          FilledButton(onPressed: () { Navigator.pop(ctx); _applyMatch(result); }, child: Text(l.apply)),
         ],
       ),
     );
@@ -330,13 +336,14 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     if (!mounted) return;
     setState(() => _saving = false);
 
+    final l = AppLocalizations.of(context)!;
     if (ok) {
       context.read<LibraryProvider>().refresh();
       Navigator.pop(context);
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(
-          content: const Text('Metadata updated'),
+          content: Text(l.metadataUpdated),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -345,7 +352,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(
-          content: const Text('Failed to update metadata'),
+          content: Text(l.failedToUpdateMetadata),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 3),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -379,6 +386,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Container(
       decoration: BoxDecoration(
@@ -392,7 +400,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(children: [
-            Text('Edit Details', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+            Text(l.editDetails, style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
             const Spacer(),
             if (_saving)
               const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
@@ -406,9 +414,9 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
           labelColor: cs.primary,
           unselectedLabelColor: cs.onSurfaceVariant,
           indicatorColor: cs.primary,
-          tabs: const [
-            Tab(text: 'Quick Match'),
-            Tab(text: 'Custom'),
+          tabs: [
+            Tab(text: l.quickMatch),
+            Tab(text: l.custom),
           ],
         ),
 
@@ -417,8 +425,8 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
           child: TabBarView(
             controller: _tabCtrl,
             children: [
-              _buildQuickMatchTab(cs, tt),
-              _buildCustomTab(cs, tt),
+              _buildQuickMatchTab(cs, tt, l),
+              _buildCustomTab(cs, tt, l),
             ],
           ),
         ),
@@ -428,14 +436,14 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
 
   // ─── Quick Match Tab ────────────────────────────────────────
 
-  Widget _buildQuickMatchTab(ColorScheme cs, TextTheme tt) {
+  Widget _buildQuickMatchTab(ColorScheme cs, TextTheme tt, AppLocalizations l) {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
         child: Column(children: [
-          _searchField(_searchTitleCtrl, 'Title', Icons.book_rounded, cs, tt),
+          _searchField(_searchTitleCtrl, l.title, Icons.book_rounded, cs, tt),
           const SizedBox(height: 8),
-          _searchField(_searchAuthorCtrl, 'Author (optional)', Icons.person_rounded, cs, tt),
+          _searchField(_searchAuthorCtrl, l.authorOptionalLabel, Icons.person_rounded, cs, tt),
           const SizedBox(height: 10),
           Row(children: [
             Expanded(
@@ -454,7 +462,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
                     dropdownColor: cs.surfaceContainerHigh,
                     style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                     icon: Icon(Icons.expand_more_rounded, size: 18, color: cs.onSurfaceVariant),
-                    items: _providers.map((p) => DropdownMenuItem(value: p.$1, child: Text(p.$2))).toList(),
+                    items: _providerKeys.map((k) => DropdownMenuItem(value: k, child: Text(_providerLabel(l, k)))).toList(),
                     onChanged: (v) { if (v != null) setState(() => _provider = v); },
                   ),
                 ),
@@ -468,7 +476,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
                 icon: _isSearching
                     ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary))
                     : const Icon(Icons.search_rounded, size: 18),
-                label: const Text('Search'),
+                label: Text(l.search),
                 style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               ),
             ),
@@ -487,7 +495,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
                 ? ListView(controller: widget.scrollController, children: [
                     const SizedBox(height: 80),
                     Center(child: Text(
-                      _hasSearched ? 'No results found.\nTry adjusting your search or provider.' : 'Search for metadata above',
+                      _hasSearched ? l.noResultsFound : l.searchForMetadataAbove,
                       textAlign: TextAlign.center,
                       style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
                     )),
@@ -497,7 +505,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
                     padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + MediaQuery.of(context).viewPadding.bottom),
                     itemCount: _searchResults.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (_, i) => _buildResultCard(_searchResults[i], cs, tt),
+                    itemBuilder: (_, i) => _buildResultCard(_searchResults[i], cs, tt, l),
                   ),
       ),
     ]);
@@ -526,7 +534,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     );
   }
 
-  Widget _buildResultCard(Map<String, dynamic> result, ColorScheme cs, TextTheme tt) {
+  Widget _buildResultCard(Map<String, dynamic> result, ColorScheme cs, TextTheme tt, AppLocalizations l) {
     final book = result['book'] as Map<String, dynamic>? ?? result;
     final title = _safeString(book['title']);
     final author = _safeString(book['author']).isNotEmpty ? _safeString(book['author']) : _safeString(book['authorName']);
@@ -572,7 +580,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
               ],
               if (narrator.isNotEmpty) ...[
                 const SizedBox(height: 1),
-                Text('Narrated by $narrator', maxLines: 1, overflow: TextOverflow.ellipsis,
+                Text(l.narratedBy(narrator), maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
               ],
               const SizedBox(height: 4),
@@ -620,7 +628,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
 
   // ─── Custom Tab ─────────────────────────────────────────────
 
-  Widget _buildCustomTab(ColorScheme cs, TextTheme tt) {
+  Widget _buildCustomTab(ColorScheme cs, TextTheme tt, AppLocalizations l) {
     return Column(children: [
       // Save button bar
       Padding(
@@ -632,7 +640,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
             icon: _saving
                 ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary))
                 : const Icon(Icons.check_rounded, size: 18),
-            label: const Text('Save'),
+            label: Text(l.save),
             style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
           ),
         ]),
@@ -642,39 +650,39 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
         child: ListView(
           padding: EdgeInsets.fromLTRB(20, 0, 20, 32 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
           children: [
-            _field('Title', _titleCtrl, tt),
-            _field('Subtitle', _subtitleCtrl, tt),
-            _field('Author', _authorCtrl, tt),
-            _field('Narrator', _narratorCtrl, tt),
+            _field(l.titleLabel, _titleCtrl, tt),
+            _field(l.subtitleLabel, _subtitleCtrl, tt),
+            _field(l.authorLabel, _authorCtrl, tt),
+            _field(l.narratorLabel, _narratorCtrl, tt),
             Row(children: [
-              Expanded(child: _field('Series', _seriesCtrl, tt)),
+              Expanded(child: _field(l.seriesLabel, _seriesCtrl, tt)),
               const SizedBox(width: 12),
               SizedBox(width: 80, child: _field('#', _seriesSeqCtrl, tt)),
             ]),
-            _field('Description', _descCtrl, tt, maxLines: 5),
-            _field('Publisher', _publisherCtrl, tt),
+            _field(l.descriptionLabel, _descCtrl, tt, maxLines: 5),
+            _field(l.publisherLabel, _publisherCtrl, tt),
             Row(children: [
-              Expanded(child: _field('Year', _yearCtrl, tt, keyboardType: TextInputType.number)),
+              Expanded(child: _field(l.yearLabel, _yearCtrl, tt, keyboardType: TextInputType.number)),
               const SizedBox(width: 12),
-              Expanded(child: _field('Language', _languageCtrl, tt)),
+              Expanded(child: _field(l.languageLabel, _languageCtrl, tt)),
             ]),
-            _field('Genres', _genresCtrl, tt, hint: 'Comma separated'),
+            _field(l.genresLabel, _genresCtrl, tt, hint: l.commaSeparated),
             Row(children: [
-              Expanded(child: _field('ASIN', _asinCtrl, tt)),
+              Expanded(child: _field(l.asinLabel, _asinCtrl, tt)),
               const SizedBox(width: 12),
-              Expanded(child: _field('ISBN', _isbnCtrl, tt)),
+              Expanded(child: _field(l.isbnLabel, _isbnCtrl, tt)),
             ]),
 
             const SizedBox(height: 20),
-            Text('Cover Image', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            Text(l.coverImage, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
                 child: TextField(
                   controller: _coverUrlCtrl,
                   decoration: InputDecoration(
-                    labelText: 'Cover URL',
-                    hintText: 'https://...',
+                    labelText: l.coverUrlLabel,
+                    hintText: l.coverUrlHint,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     isDense: true,
@@ -684,12 +692,12 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
                 ),
               ),
               const SizedBox(width: 8),
-              Text('or', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+              Text(l.or, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
               const SizedBox(width: 8),
               FilledButton.tonalIcon(
                 onPressed: _pickCoverImage,
                 icon: const Icon(Icons.image_rounded, size: 18),
-                label: const Text('File'),
+                label: Text(l.file),
               ),
             ]),
             if (_coverFilePath != null)

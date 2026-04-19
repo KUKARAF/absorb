@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../l10n/app_localizations.dart';
 
 /// Lightweight HTML-to-RichText widget with clickable links.
 ///
@@ -37,6 +38,7 @@ class _HtmlDescriptionState extends State<HtmlDescription> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     final baseStyle = widget.style ?? Theme.of(context).textTheme.bodySmall?.copyWith(
       color: cs.onSurface.withValues(alpha: 0.7), height: 1.5);
     final linkColor = widget.linkColor ?? cs.primary;
@@ -68,7 +70,7 @@ class _HtmlDescriptionState extends State<HtmlDescription> {
               child: GestureDetector(
                 onTap: () => setState(() => _expanded = !_expanded),
                 child: Text(
-                  _expanded ? 'Show less' : 'Show more',
+                  _expanded ? l.showLess : l.showMore,
                   style: TextStyle(fontSize: 12, color: linkColor, fontWeight: FontWeight.w500),
                 ),
               ),

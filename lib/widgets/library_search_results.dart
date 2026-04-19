@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
@@ -29,11 +30,12 @@ class BookResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     final itemId = item['id'] as String?;
     final media = item['media'] as Map<String, dynamic>? ?? {};
     final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-    final title = metadata['title'] as String? ?? 'Unknown';
+    final title = metadata['title'] as String? ?? l.unknown;
     final authorName = metadata['authorName'] as String? ?? '';
     final lib = context.watch<LibraryProvider>();
     final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
@@ -97,7 +99,7 @@ class BookResultTile extends StatelessWidget {
                             color: Colors.black.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Text('#$sequenceBadge',
+                          child: Text(l.librarySearchResultsSequence(sequenceBadge!),
                             style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w600)),
                         ),
                       ),
@@ -110,7 +112,7 @@ class BookResultTile extends StatelessWidget {
                             color: Colors.red.withValues(alpha: 0.85),
                             borderRadius: BorderRadius.circular(3),
                           ),
-                          child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w800)),
+                          child: Text(l.librarySearchResultsExplicitBadge, style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w800)),
                         ),
                       ),
                     if (isFinished || isDownloaded)
@@ -132,13 +134,13 @@ class BookResultTile extends StatelessWidget {
                               if (isFinished) ...[
                                 Icon(Icons.check_circle_rounded, size: 8, color: greenColor),
                                 const SizedBox(width: 2),
-                                Text('Done', style: TextStyle(fontSize: 7, fontWeight: FontWeight.w600, color: greenColor)),
+                                Text(l.librarySearchResultsDone, style: TextStyle(fontSize: 7, fontWeight: FontWeight.w600, color: greenColor)),
                               ],
                               if (isFinished && isDownloaded) const SizedBox(width: 4),
                               if (isDownloaded) ...[
                                 Icon(Icons.download_done_rounded, size: 8, color: cs.primary),
                                 const SizedBox(width: 2),
-                                Text('Saved', style: TextStyle(fontSize: 7, fontWeight: FontWeight.w600, color: cs.primary)),
+                                Text(l.librarySearchResultsSaved, style: TextStyle(fontSize: 7, fontWeight: FontWeight.w600, color: cs.primary)),
                               ],
                             ],
                           ),
@@ -216,7 +218,8 @@ class SeriesResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final seriesName = series['name'] as String? ?? 'Unknown Series';
+    final l = AppLocalizations.of(context)!;
+    final seriesName = series['name'] as String? ?? l.librarySearchResultsUnknownSeries;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -257,7 +260,7 @@ class SeriesResultCard extends StatelessWidget {
                               fontWeight: FontWeight.w600,
                               color: cs.onSurface)),
                       Text(
-                          '${books.length} book${books.length != 1 ? 's' : ''}',
+                          l.librarySearchResultsBookCount(books.length),
                           style: tt.bodySmall
                               ?.copyWith(color: cs.onSurfaceVariant)),
                     ],
@@ -303,8 +306,9 @@ class EpisodeResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
-    final episodeTitle = episode['title'] as String? ?? 'Unknown Episode';
+    final episodeTitle = episode['title'] as String? ?? l.librarySearchResultsUnknownEpisode;
     final showMedia = show['media'] as Map<String, dynamic>? ?? {};
     final showMeta = showMedia['metadata'] as Map<String, dynamic>? ?? {};
     final showTitle = showMeta['title'] as String? ?? '';
@@ -405,8 +409,9 @@ class AuthorResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
-    final name = author['name'] as String? ?? 'Unknown';
+    final name = author['name'] as String? ?? l.unknown;
     final authorId = author['id'] as String? ?? '';
     final numBooks = author['numBooks'] as int?;
 
@@ -468,7 +473,7 @@ class AuthorResultTile extends StatelessWidget {
                               color: cs.onSurface)),
                       if (numBooks != null)
                         Text(
-                            '$numBooks book${numBooks != 1 ? 's' : ''}',
+                            l.librarySearchResultsBookCount(numBooks),
                             style: tt.bodySmall
                                 ?.copyWith(color: cs.onSurfaceVariant)),
                     ],

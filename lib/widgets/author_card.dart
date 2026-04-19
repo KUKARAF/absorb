@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import 'author_books_sheet.dart';
@@ -14,10 +15,11 @@ class AuthorCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final auth = context.read<AuthProvider>();
     final lib = context.read<LibraryProvider>();
 
-    final name = author['name'] as String? ?? 'Unknown';
+    final name = author['name'] as String? ?? l.unknown;
     final authorId = author['id'] as String? ?? '';
 
     String? imageUrl;

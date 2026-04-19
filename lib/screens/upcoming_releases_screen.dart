@@ -9,6 +9,7 @@ import '../services/upcoming_releases_service.dart';
 import '../widgets/absorb_page_header.dart';
 import '../widgets/audible_series_sheet.dart';
 import '../widgets/overlay_toast.dart';
+import '../l10n/app_localizations.dart';
 
 class UpcomingReleasesScreen extends StatefulWidget {
   const UpcomingReleasesScreen({super.key});
@@ -84,17 +85,16 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
   }
 
   void _showStalePrompt() {
+    final l = AppLocalizations.of(context)!;
     final days = DateTime.now().difference(_service.cacheTime!).inDays;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Rescan?'),
-        content: Text(
-          'These results are $days days old. Release dates may have changed - would you like to rescan?',
-        ),
+        title: Text(l.upcomingReleasesRescanTitle),
+        content: Text(l.upcomingReleasesRescanContent(days)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Not now')),
-          FilledButton(onPressed: () { Navigator.pop(ctx); _rescan(); }, child: const Text('Rescan')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.upcomingReleasesNotNow)),
+          FilledButton(onPressed: () { Navigator.pop(ctx); _rescan(); }, child: Text(l.upcomingReleasesRescan)),
         ],
       ),
     );
@@ -106,25 +106,43 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
     super.dispose();
   }
 
-  String _formatDate(String dateStr) {
+  String _formatDate(String dateStr, AppLocalizations l) {
     final date = DateTime.tryParse(dateStr);
     if (date == null) return dateStr;
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+    final monthName = _monthShort(date.month, l);
+    return l.upcomingReleasesDateFormat(monthName, date.day, date.year);
   }
 
-  String _formatRuntime(dynamic minutes) {
+  String _monthShort(int m, AppLocalizations l) {
+    switch (m) {
+      case 1: return l.statsScreenMonthJan;
+      case 2: return l.statsScreenMonthFeb;
+      case 3: return l.statsScreenMonthMar;
+      case 4: return l.statsScreenMonthApr;
+      case 5: return l.statsScreenMonthMay;
+      case 6: return l.statsScreenMonthJun;
+      case 7: return l.statsScreenMonthJul;
+      case 8: return l.statsScreenMonthAug;
+      case 9: return l.statsScreenMonthSep;
+      case 10: return l.statsScreenMonthOct;
+      case 11: return l.statsScreenMonthNov;
+      case 12: return l.statsScreenMonthDec;
+    }
+    return '';
+  }
+
+  String _formatRuntime(dynamic minutes, AppLocalizations l) {
     final mins = (minutes is num) ? minutes.toInt() : 0;
     if (mins <= 0) return '';
     final h = mins ~/ 60;
     final m = mins % 60;
-    if (h > 0 && m > 0) return '${h}h ${m}m';
-    if (h > 0) return '${h}h';
-    return '${m}m';
+    if (h > 0 && m > 0) return l.statsScreenDurationHm(h, m);
+    if (h > 0) return l.statsScreenDurationShortH(h);
+    return l.statsScreenDurationShortM(m);
   }
 
   void _showBookMenu(Map<String, dynamic> book, String seriesName) {
+    final l = AppLocalizations.of(context)!;
     showAudibleBookMenu(context,
       book: book,
       seriesName: seriesName,
@@ -132,7 +150,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
       extraActions: [
         ListTile(
           leading: Icon(Icons.refresh_rounded, color: Theme.of(context).colorScheme.primary, size: 22),
-          title: const Text('Rescan Release Date', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          title: Text(l.upcomingReleasesRescanReleaseDate, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
           dense: true, visualDensity: VisualDensity.compact,
           onTap: () {
             Navigator.pop(context);
@@ -145,18 +163,19 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
 
   Future<void> _rescanBook(String asin) async {
     if (!mounted) return;
-    showOverlayToast(context, 'Rescanning...', icon: Icons.refresh_rounded);
+    final l = AppLocalizations.of(context)!;
+    showOverlayToast(context, l.upcomingReleasesRescanning, icon: Icons.refresh_rounded);
     final updated = await _service.rescanBook(asin);
     if (!mounted) return;
     if (updated != null) {
       final newDate = updated['releaseDate'] as String? ?? '';
       if (newDate.isNotEmpty) {
-        showOverlayToast(context, 'Updated - ${_formatDate(newDate)}', icon: Icons.check_rounded);
+        showOverlayToast(context, l.upcomingReleasesUpdatedWithDate(_formatDate(newDate, l)), icon: Icons.check_rounded);
       } else {
-        showOverlayToast(context, 'No release date found', icon: Icons.info_outline_rounded);
+        showOverlayToast(context, l.upcomingReleasesNoReleaseDateFound, icon: Icons.info_outline_rounded);
       }
     } else {
-      showOverlayToast(context, 'Rescan failed', icon: Icons.error_outline_rounded);
+      showOverlayToast(context, l.upcomingReleasesRescanFailed, icon: Icons.error_outline_rounded);
     }
   }
 
@@ -164,13 +183,14 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
             AbsorbPageHeader(
-              title: 'Upcoming Releases',
+              title: l.upcomingReleasesTitle,
               actions: [
                 // Sort by date toggle (only when scan is done and has results)
                 if (_service.isComplete && _service.results.isNotEmpty)
@@ -187,7 +207,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                         Icon(Icons.calendar_today_rounded, size: 13,
                           color: _sortByDate ? cs.primary : cs.onSurfaceVariant),
                         const SizedBox(width: 4),
-                        Text('Date', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                        Text(l.upcomingReleasesDateChip, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
                           color: _sortByDate ? cs.primary : cs.onSurfaceVariant)),
                       ]),
                     ),
@@ -249,8 +269,8 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                     const SizedBox(height: 6),
                     Text(
                       _service.currentSeriesName != null
-                          ? 'Checking ${_service.currentSeriesName}... (${_service.processedCount}/${_service.totalSeries})'
-                          : 'Loading series...',
+                          ? l.upcomingReleasesCheckingSeries(_service.currentSeriesName!, _service.processedCount, _service.totalSeries)
+                          : l.upcomingReleasesLoadingSeries,
                       style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 11),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -266,12 +286,12 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                 child: Row(children: [
                   Text(
-                    _buildSummary(),
+                    _buildSummary(l),
                     style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                   ),
                   if (_service.hasCachedResults && _service.cacheTime != null) ...[
                     const SizedBox(width: 6),
-                    Text(_cacheAgeLabel(), style: tt.bodySmall?.copyWith(
+                    Text(_cacheAgeLabel(l), style: tt.bodySmall?.copyWith(
                       color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 11)),
                   ],
                 ]),
@@ -281,7 +301,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
 
             // Results list
             Expanded(
-              child: _buildContent(cs, tt),
+              child: _buildContent(cs, tt, l),
             ),
           ],
         ),
@@ -289,25 +309,25 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
     );
   }
 
-  String _cacheAgeLabel() {
+  String _cacheAgeLabel(AppLocalizations l) {
     final age = DateTime.now().difference(_service.cacheTime!);
-    if (age.inDays == 0) return '(scanned today)';
-    if (age.inDays == 1) return '(scanned yesterday)';
-    return '(scanned ${age.inDays} days ago)';
+    if (age.inDays == 0) return l.upcomingReleasesScannedToday;
+    if (age.inDays == 1) return l.upcomingReleasesScannedYesterday;
+    return l.upcomingReleasesScannedDaysAgo(age.inDays);
   }
 
-  String _buildSummary() {
+  String _buildSummary(AppLocalizations l) {
     final totalUpcoming = _service.results.fold<int>(0, (sum, r) => sum + r.upcomingBooks.length);
     final totalRecent = _service.results.fold<int>(0, (sum, r) => sum + r.recentBooks.length);
     final parts = <String>[];
-    if (totalUpcoming > 0) parts.add('$totalUpcoming upcoming');
-    if (totalRecent > 0) parts.add('$totalRecent recent');
-    if (parts.isEmpty) return 'No upcoming or recent releases found';
+    if (totalUpcoming > 0) parts.add(l.upcomingReleasesUpcomingCount(totalUpcoming));
+    if (totalRecent > 0) parts.add(l.upcomingReleasesRecentCount(totalRecent));
+    if (parts.isEmpty) return l.upcomingReleasesNoneFound;
     final seriesCount = _service.results.length;
-    return '${parts.join(', ')} across $seriesCount series';
+    return l.upcomingReleasesAcrossSeries(parts.join(', '), seriesCount);
   }
 
-  Widget _buildContent(ColorScheme cs, TextTheme tt) {
+  Widget _buildContent(ColorScheme cs, TextTheme tt, AppLocalizations l) {
     if (_service.error != null) {
       return Center(
         child: Padding(
@@ -329,10 +349,10 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.event_available_rounded, size: 48, color: cs.primary.withValues(alpha: 0.5)),
             const SizedBox(height: 12),
-            Text('No upcoming or recent releases found', style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant),
+            Text(l.upcomingReleasesNoneFound, style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant),
               textAlign: TextAlign.center),
             const SizedBox(height: 4),
-            Text('Checked ${_service.totalSeries} series on Audible',
+            Text(l.upcomingReleasesCheckedSeries(_service.totalSeries),
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
               textAlign: TextAlign.center),
           ]),
@@ -345,7 +365,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
     }
 
     if (_sortByDate && !_service.isRunning) {
-      return _buildDateSortedList(cs, tt);
+      return _buildDateSortedList(cs, tt, l);
     }
 
     return ListView.builder(
@@ -358,12 +378,12 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
-        return _buildSeriesSection(cs, tt, _service.results[index]);
+        return _buildSeriesSection(cs, tt, l, _service.results[index]);
       },
     );
   }
 
-  Widget _buildDateSortedList(ColorScheme cs, TextTheme tt) {
+  Widget _buildDateSortedList(ColorScheme cs, TextTheme tt, AppLocalizations l) {
     // Flatten all books with their series name and upcoming/recent status
     final allBooks = <({Map<String, dynamic> book, String seriesName, bool isUpcoming})>[];
     for (final result in _service.results) {
@@ -387,19 +407,19 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
       itemCount: allBooks.length,
       itemBuilder: (context, index) {
         final entry = allBooks[index];
-        return _buildDateSortedCard(cs, tt, entry.book, entry.seriesName, entry.isUpcoming);
+        return _buildDateSortedCard(cs, tt, l, entry.book, entry.seriesName, entry.isUpcoming);
       },
     );
   }
 
-  Widget _buildDateSortedCard(ColorScheme cs, TextTheme tt, Map<String, dynamic> book, String seriesName, bool isUpcoming) {
+  Widget _buildDateSortedCard(ColorScheme cs, TextTheme tt, AppLocalizations l, Map<String, dynamic> book, String seriesName, bool isUpcoming) {
     final title = book['title'] as String? ?? '';
     final subtitle = book['subtitle'] as String? ?? '';
     final authors = book['authors'] as String? ?? '';
     final sequence = book['sequence'] as String? ?? '';
     final coverUrl = book['coverUrl'] as String? ?? '';
     final releaseDate = book['releaseDate'] as String? ?? '';
-    final runtime = _formatRuntime(book['runtimeMinutes']);
+    final runtime = _formatRuntime(book['runtimeMinutes'], l);
     final isOwned = book['_owned'] == true;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final downloadGreen = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
@@ -440,7 +460,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(6)),
-                          child: Text('#$sequence', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600)),
+                          child: Text(l.upcomingReleasesSequenceLabel(sequence), style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600)),
                         ),
                       ),
                     if (isUpcoming)
@@ -448,7 +468,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.9), borderRadius: BorderRadius.circular(6)),
-                          child: const Text('UPCOMING', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
+                          child: Text(l.upcomingReleasesBadgeUpcoming, style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
                         ),
                       ),
                     if (!isUpcoming)
@@ -459,7 +479,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                             color: isOwned ? downloadGreen.withValues(alpha: 0.9) : cs.error.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text(isOwned ? 'ADDED' : 'MISSING',
+                          child: Text(isOwned ? l.upcomingReleasesBadgeAdded : l.upcomingReleasesBadgeMissing,
                             style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
                         ),
                       ),
@@ -496,7 +516,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                           Icon(isUpcoming ? Icons.event_rounded : Icons.calendar_today_rounded,
                             size: 11, color: isUpcoming ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.5)),
                           const SizedBox(width: 3),
-                          Text(_formatDate(releaseDate),
+                          Text(_formatDate(releaseDate, l),
                             style: TextStyle(fontSize: 10,
                               fontWeight: isUpcoming ? FontWeight.w600 : FontWeight.w400,
                               color: isUpcoming ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.5))),
@@ -523,7 +543,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
     );
   }
 
-  Widget _buildSeriesSection(ColorScheme cs, TextTheme tt, UpcomingSeriesResult result) {
+  Widget _buildSeriesSection(ColorScheme cs, TextTheme tt, AppLocalizations l, UpcomingSeriesResult result) {
     final totalCount = result.upcomingBooks.length + result.recentBooks.length;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -557,15 +577,15 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
             ]),
           ),
           // Upcoming books
-          ...result.upcomingBooks.map((book) => _buildBookCard(cs, tt, book, result.seriesName, isUpcoming: true)),
+          ...result.upcomingBooks.map((book) => _buildBookCard(cs, tt, l, book, result.seriesName, isUpcoming: true)),
           // Recent releases
-          ...result.recentBooks.map((book) => _buildBookCard(cs, tt, book, result.seriesName, isUpcoming: false)),
+          ...result.recentBooks.map((book) => _buildBookCard(cs, tt, l, book, result.seriesName, isUpcoming: false)),
         ],
       ),
     );
   }
 
-  Widget _buildBookCard(ColorScheme cs, TextTheme tt, Map<String, dynamic> book, String seriesName, {required bool isUpcoming}) {
+  Widget _buildBookCard(ColorScheme cs, TextTheme tt, AppLocalizations l, Map<String, dynamic> book, String seriesName, {required bool isUpcoming}) {
     final title = book['title'] as String? ?? '';
     final subtitle = book['subtitle'] as String? ?? '';
     final authors = book['authors'] as String? ?? '';
@@ -573,7 +593,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
     final sequence = book['sequence'] as String? ?? '';
     final coverUrl = book['coverUrl'] as String? ?? '';
     final releaseDate = book['releaseDate'] as String? ?? '';
-    final runtime = _formatRuntime(book['runtimeMinutes']);
+    final runtime = _formatRuntime(book['runtimeMinutes'], l);
     final isOwned = book['_owned'] == true;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final downloadGreen = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
@@ -614,7 +634,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(6)),
-                          child: Text('#$sequence', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600)),
+                          child: Text(l.upcomingReleasesSequenceLabel(sequence), style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600)),
                         ),
                       ),
                     if (isUpcoming)
@@ -622,7 +642,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.9), borderRadius: BorderRadius.circular(6)),
-                          child: const Text('UPCOMING', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
+                          child: Text(l.upcomingReleasesBadgeUpcoming, style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
                         ),
                       ),
                     if (!isUpcoming)
@@ -636,7 +656,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            isOwned ? 'ADDED' : 'MISSING',
+                            isOwned ? l.upcomingReleasesBadgeAdded : l.upcomingReleasesBadgeMissing,
                             style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700),
                           ),
                         ),
@@ -665,7 +685,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                         Text(authors, maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 11)),
                       if (narrators.isNotEmpty)
-                        Text('Narrated by $narrators', maxLines: 1, overflow: TextOverflow.ellipsis,
+                        Text(l.narratedBy(narrators), maxLines: 1, overflow: TextOverflow.ellipsis,
                           style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 10)),
                       const SizedBox(height: 4),
                       Row(children: [
@@ -673,7 +693,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                           Icon(isUpcoming ? Icons.event_rounded : Icons.calendar_today_rounded,
                             size: 11, color: isUpcoming ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.5)),
                           const SizedBox(width: 3),
-                          Text(_formatDate(releaseDate),
+                          Text(_formatDate(releaseDate, l),
                             style: TextStyle(fontSize: 10,
                               fontWeight: isUpcoming ? FontWeight.w600 : FontWeight.w400,
                               color: isUpcoming ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.5))),

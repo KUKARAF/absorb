@@ -55,3 +55,6 @@ android/key.properties
 
 # Tests (local only)
 /test/
+
+# Battery profiling output
+/battery-reports/

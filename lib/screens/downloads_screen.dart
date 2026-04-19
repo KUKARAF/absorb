@@ -6,6 +6,7 @@ import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
 import '../widgets/absorb_page_header.dart';
+import '../l10n/app_localizations.dart';
 
 class DownloadsScreen extends StatefulWidget {
   const DownloadsScreen({super.key});
@@ -72,21 +73,22 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   Future<void> _deleteSelected() async {
     if (_selected.isEmpty) return;
 
+    final l = AppLocalizations.of(context)!;
     final count = _selected.length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.delete_outline_rounded),
-        title: Text('Delete $count download${count == 1 ? '' : 's'}?'),
-        content: const Text('Downloaded files will be removed from this device.'),
+        title: Text(l.downloadsDeleteCount(count)),
+        content: Text(l.downloadsDeleteContent),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(l.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(l.delete),
           ),
         ],
       ),
@@ -103,7 +105,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Deleted $count download${count == 1 ? '' : 's'}'),
+        content: Text(l.downloadsDeletedCount(count)),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ));
@@ -111,20 +113,21 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   }
 
   Future<void> _deleteSingle(DownloadInfo info) async {
+    final l = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.delete_outline_rounded),
-        title: const Text('Remove download?'),
-        content: Text('Delete "${info.title}" from this device?'),
+        title: Text(l.downloadsRemoveTitle),
+        content: Text(l.downloadsRemoveContent(info.title ?? '')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(l.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(l.delete),
           ),
         ],
       ),
@@ -134,7 +137,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     await _load();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('"${info.title}" removed'),
+        content: Text(l.downloadsRemovedTitle(info.title ?? '')),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ));
@@ -154,6 +157,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -166,9 +170,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
                     child: Row(children: [
-                      const Expanded(
+                      Expanded(
                         child: AbsorbPageHeader(
-                          title: 'Downloads',
+                          title: l.downloadsTitle,
                           padding: EdgeInsets.zero,
                         ),
                       ),
@@ -176,7 +180,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                         IconButton(
                           icon: Icon(Icons.close_rounded,
                               color: cs.onSurfaceVariant),
-                          tooltip: 'Cancel selection',
+                          tooltip: l.downloadsCancelSelection,
                           onPressed: _exitSelection,
                         )
                       else ...[
@@ -184,7 +188,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                           IconButton(
                             icon: Icon(Icons.checklist_rounded,
                                 color: cs.onSurfaceVariant),
-                            tooltip: 'Select',
+                            tooltip: l.downloadsSelect,
                             onPressed: () =>
                                 setState(() => _selecting = true),
                           ),
@@ -228,7 +232,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                                     color: cs.onSurfaceVariant
                                         .withValues(alpha: 0.4)),
                                 const SizedBox(height: 12),
-                                Text('No downloads',
+                                Text(l.downloadsNoDownloads,
                                     style: tt.bodyLarge?.copyWith(
                                         color: cs.onSurfaceVariant)),
                               ],
@@ -243,7 +247,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                             if (active.isNotEmpty) ...[
                               Padding(
                                 padding: const EdgeInsets.only(left: 4, bottom: 8),
-                                child: Text('Downloading',
+                                child: Text(l.downloadsDownloading,
                                     style: tt.labelMedium?.copyWith(
                                         color: cs.primary,
                                         fontWeight: FontWeight.w600)),
@@ -261,7 +265,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                             if (queued.isNotEmpty) ...[
                               Padding(
                                 padding: const EdgeInsets.only(left: 4, top: 4, bottom: 8),
-                                child: Text('Queued',
+                                child: Text(l.downloadsQueued,
                                     style: tt.labelMedium?.copyWith(
                                         color: cs.onSurfaceVariant,
                                         fontWeight: FontWeight.w600)),
@@ -281,7 +285,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                               if (active.isNotEmpty || queued.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(left: 4, top: 4, bottom: 8),
-                                  child: Text('Completed',
+                                  child: Text(l.downloadsCompleted,
                                       style: tt.labelMedium?.copyWith(
                                           color: cs.onSurfaceVariant,
                                           fontWeight: FontWeight.w600)),
@@ -324,7 +328,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                         top: false,
                         child: Row(children: [
                           Text(
-                            '${_selected.length} selected',
+                            l.downloadsSelectedCount(_selected.length),
                             style: tt.bodyMedium
                                 ?.copyWith(color: cs.onSurface),
                           ),
@@ -333,7 +337,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                             icon: const Icon(
                                 Icons.delete_outline_rounded,
                                 size: 18),
-                            label: const Text('Delete'),
+                            label: Text(l.delete),
                             style: FilledButton.styleFrom(
                               backgroundColor: cs.errorContainer,
                               foregroundColor: cs.onErrorContainer,
@@ -379,6 +383,7 @@ class _DownloadCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
@@ -423,7 +428,7 @@ class _DownloadCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        info.title ?? 'Unknown',
+                        info.title ?? l.unknown,
                         style: tt.titleSmall
                             ?.copyWith(fontWeight: FontWeight.w600),
                         maxLines: 1,
@@ -458,7 +463,7 @@ class _DownloadCard extends StatelessWidget {
                   IconButton(
                     icon: Icon(Icons.delete_outline_rounded,
                         color: cs.error, size: 22),
-                    tooltip: 'Delete',
+                    tooltip: l.delete,
                     onPressed: onDelete,
                   ),
               ],
@@ -533,6 +538,7 @@ class _ActiveDownloadCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final progress = info.progress;
     final pct = (progress * 100).round();
 
@@ -562,14 +568,14 @@ class _ActiveDownloadCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      info.title ?? 'Unknown',
+                      info.title ?? l.unknown,
                       style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     if (isQueued)
-                      Text('Waiting...',
+                      Text(l.downloadsWaiting,
                           style: tt.bodySmall?.copyWith(
                               color: cs.onSurfaceVariant))
                     else ...[
@@ -601,7 +607,7 @@ class _ActiveDownloadCard extends StatelessWidget {
               IconButton(
                 icon: Icon(Icons.close_rounded,
                     color: cs.onSurfaceVariant, size: 20),
-                tooltip: 'Cancel',
+                tooltip: l.cancel,
                 onPressed: onCancel,
               ),
             ],

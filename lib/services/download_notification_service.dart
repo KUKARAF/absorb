@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../l10n/app_localizations.dart';
+import '../main.dart' show rootNavigatorKey;
 
 /// Manages notifications for audiobook downloads.
 /// Uses an Android **foreground service** for a summary notification so the OS
@@ -18,13 +20,22 @@ class DownloadNotificationService {
 
   // Foreground service / progress channel
   static const _progressChannelId = 'absorb_downloads';
-  static const _progressChannelName = 'Download Progress';
-  static const _progressChannelDesc = 'Shows progress during audiobook downloads';
+  String get _progressChannelName =>
+      _l()?.downloadNotifProgressChannelName ?? 'Download Progress';
+  String get _progressChannelDesc =>
+      _l()?.downloadNotifProgressChannelDesc ?? 'Shows progress during audiobook downloads';
 
   // Alert channel for completion / error (heads-up + sound)
   static const _alertChannelId = 'absorb_download_alerts';
-  static const _alertChannelName = 'Download Alerts';
-  static const _alertChannelDesc = 'Notifications when downloads finish or fail';
+  String get _alertChannelName =>
+      _l()?.downloadNotifAlertChannelName ?? 'Download Alerts';
+  String get _alertChannelDesc =>
+      _l()?.downloadNotifAlertChannelDesc ?? 'Notifications when downloads finish or fail';
+
+  AppLocalizations? _l() {
+    final ctx = rootNavigatorKey.currentContext;
+    return ctx != null ? AppLocalizations.of(ctx) : null;
+  }
 
   // Notification IDs
   static const _foregroundNotifId = 9000; // summary foreground service
@@ -54,7 +65,7 @@ class DownloadNotificationService {
       // Progress channel — default importance so the foreground service
       // notification stays visible in the shade without making noise.
       await androidPlugin.createNotificationChannel(
-        const AndroidNotificationChannel(
+        AndroidNotificationChannel(
           _progressChannelId,
           _progressChannelName,
           description: _progressChannelDesc,
@@ -65,7 +76,7 @@ class DownloadNotificationService {
 
       // High-importance alert channel for completion / errors
       await androidPlugin.createNotificationChannel(
-        const AndroidNotificationChannel(
+        AndroidNotificationChannel(
           _alertChannelId,
           _alertChannelName,
           description: _alertChannelDesc,
@@ -152,14 +163,15 @@ class DownloadNotificationService {
     }
 
     // Show alert
+    final l = _l();
     if (success) {
       await _showAlert(
-        title: 'Download Complete',
-        body: '$title is ready to listen offline',
+        title: l?.downloadNotifCompleteTitle ?? 'Download Complete',
+        body: l?.downloadNotifCompleteBody(title) ?? '$title is ready to listen offline',
       );
     } else {
       await _showAlert(
-        title: 'Download Failed',
+        title: l?.downloadNotifFailedTitle ?? 'Download Failed',
         body: errorMessage ?? title,
       );
     }
@@ -197,7 +209,7 @@ class DownloadNotificationService {
   // ── Private helpers ──
 
   Future<void> _startForeground() async {
-    const androidDetails = AndroidNotificationDetails(
+    final androidDetails = AndroidNotificationDetails(
       _progressChannelId,
       _progressChannelName,
       channelDescription: _progressChannelDesc,
@@ -210,14 +222,18 @@ class DownloadNotificationService {
       icon: 'drawable/ic_notification',
     );
 
+    final l = _l();
+    final title = l?.downloadNotifDownloadingTitle ?? 'Downloading...';
+    final subtitle = l?.downloadNotifActiveCount(1) ?? '1 download active';
+
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
       try {
         await androidPlugin.startForegroundService(
           _foregroundNotifId,
-          'Downloading...',
-          '1 download active',
+          title,
+          subtitle,
           notificationDetails: androidDetails,
           payload: 'download',
         );
@@ -227,9 +243,9 @@ class DownloadNotificationService {
         debugPrint('[DownloadNotif] Foreground service failed, falling back: $e');
         await _plugin.show(
           _foregroundNotifId,
-          'Downloading...',
-          '1 download active',
-          const NotificationDetails(android: androidDetails),
+          title,
+          subtitle,
+          NotificationDetails(android: androidDetails),
         );
         _foregroundActive = false;
       }
@@ -238,7 +254,9 @@ class DownloadNotificationService {
 
   Future<void> _updateForegroundSummary() async {
     if (_activeCount <= 0) return;
-    final subtitle = '$_activeCount download${_activeCount == 1 ? '' : 's'} active';
+    final l = _l();
+    final subtitle = l?.downloadNotifActiveCount(_activeCount)
+        ?? '$_activeCount download${_activeCount == 1 ? '' : 's'} active';
 
     final androidDetails = AndroidNotificationDetails(
       _progressChannelId,
@@ -255,7 +273,7 @@ class DownloadNotificationService {
 
     await _plugin.show(
       _foregroundNotifId,
-      'Downloading...',
+      l?.downloadNotifDownloadingTitle ?? 'Downloading...',
       subtitle,
       NotificationDetails(android: androidDetails),
     );
@@ -289,9 +307,11 @@ class DownloadNotificationService {
     required int percent,
     bool starting = false,
   }) async {
+    final l = _l();
+    final startingLabel = l?.downloadNotifStartingLabel ?? 'Starting\u2026';
     final subtitle = starting
-        ? (author != null && author.isNotEmpty ? '$author • Starting…' : 'Starting…')
-        : (author != null && author.isNotEmpty ? '$author • $percent%' : '$percent%');
+        ? (author != null && author.isNotEmpty ? '$author \u2022 $startingLabel' : startingLabel)
+        : (author != null && author.isNotEmpty ? '$author \u2022 $percent%' : '$percent%');
 
     final androidDetails = AndroidNotificationDetails(
       _progressChannelId,
@@ -311,7 +331,7 @@ class DownloadNotificationService {
 
     await _plugin.show(
       _progressNotifId(slot),
-      'Downloading: $title',
+      l?.downloadNotifSlotTitle(title) ?? 'Downloading: $title',
       subtitle,
       NotificationDetails(
         android: androidDetails,
@@ -324,7 +344,7 @@ class DownloadNotificationService {
     required String title,
     required String body,
   }) async {
-    const androidDetails = AndroidNotificationDetails(
+    final androidDetails = AndroidNotificationDetails(
       _alertChannelId,
       _alertChannelName,
       channelDescription: _alertChannelDesc,
@@ -345,9 +365,9 @@ class DownloadNotificationService {
       alertId,
       title,
       body,
-      const NotificationDetails(
+      NotificationDetails(
         android: androidDetails,
-        iOS: DarwinNotificationDetails(),
+        iOS: const DarwinNotificationDetails(),
       ),
     );
   }

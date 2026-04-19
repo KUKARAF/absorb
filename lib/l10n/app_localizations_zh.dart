@@ -2066,10 +2066,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get welcomeQueueModeManual => '手动 - 自动播放队列中的下一张卡片';
 
   @override
-  String get welcomeQueueModeAuto => '自动续听 - 自动查找并播放系列中的下一本书';
+  String get welcomeQueueModeAuto => '系列 - 自动查找并播放系列中的下一本书';
 
   @override
   String get welcomeManagingQueueTitle => '管理你的队列';
+
+  @override
+  String get welcomeManagingCoverTap => '点击封面以播放/暂停（可在设置中切换）';
+
+  @override
+  String get welcomeManagingSwipeUp => '向上滑动卡片打开全屏播放器，向下滑动关闭';
+
+  @override
+  String get welcomeManagingSwipeRight => '在列表中向右滑动任意书籍，即可快速加入队列';
 
   @override
   String get welcomeManagingReorder => '点击排序图标拖动卡片到你喜欢的顺序，或滑动移除';
@@ -2078,7 +2087,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get welcomeManagingAdd => '从任何书籍的详情页手动添加书籍';
 
   @override
-  String get welcomeManagingFinish => '当书籍听完时，选择重新收听、移除或让它自动释放';
+  String get welcomeManagingRemoveFinished => '播放完成的书籍会自动从队列中移除';
 
   @override
   String get welcomeMergeLibrariesTitle => '合并媒体库';
@@ -2176,4 +2185,2340 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get openLibrary => '打开媒体库';
+
+  @override
+  String get root => 'Root';
+
+  @override
+  String get coverPlayPause => 'Cover play/pause';
+
+  @override
+  String get coverPlayPauseOnSubtitle => 'On - tap cover art to play/pause';
+
+  @override
+  String get coverPlayPauseOffSubtitle =>
+      'Off - dedicated play/pause button in controls';
+
+  @override
+  String get queueModeMergedSubtitle =>
+      'Playback stops, manual queue, or auto-absorbs next item';
+
+  @override
+  String get queueModeSeriesLabel => 'Series';
+
+  @override
+  String get queueModeShowLabel => 'Show';
+
+  @override
+  String get queueModeInfoSeries => 'Series';
+
+  @override
+  String get queueModeInfoSeriesDesc =>
+      'Automatically plays the next book in a series or the next episode in a podcast show.';
+
+  @override
+  String get resetButtonGridQuestion => 'Reset button grid?';
+
+  @override
+  String get resetButtonGridContent =>
+      'This will restore the default button layout, order, and toggle settings.';
+
+  @override
+  String get reset => 'Reset';
+
+  @override
+  String get buttonGridReset => 'Button grid reset';
+
+  @override
+  String get resetButtonGrid => 'Reset button grid';
+
+  @override
+  String get chapterBarrierOnRewind => 'Chapter barrier on rewind';
+
+  @override
+  String get chapterBarrierInfoTitle => 'Chapter barrier';
+
+  @override
+  String get chapterBarrierInfoContent =>
+      'When skipping back, the playback will snap to the start of the current chapter instead of crossing into the previous one.\n\nDouble-tap the skip back button within 2 seconds to break through the barrier.';
+
+  @override
+  String get chapterBarrierOnRewindOnSubtitle =>
+      'On - rewind snaps to chapter start';
+
+  @override
+  String get chapterBarrierOnRewindOffSubtitle =>
+      'Off - rewind crosses chapter boundaries';
+
+  @override
+  String autoRewindOnSubtitleFormat(String min, String max) {
+    return 'On -${min}s to ${max}s based on pause length';
+  }
+
+  @override
+  String get rewindOnSessionStart => 'Rewind on session start';
+
+  @override
+  String get rewindOnSessionStartInfoContent =>
+      'Normal auto-rewind triggers when you resume from a pause within an active session. This setting adds a rewind when starting a completely new session - for example after the app was closed, playback was stopped, or you open the app fresh.\n\nWhen enabled, playback rewinds by the full max rewind amount at the start of every new session so you can re-hear where you left off.';
+
+  @override
+  String rewindOnSessionStartOnSubtitle(String seconds) {
+    return 'On - rewinds ${seconds}s when starting a new session';
+  }
+
+  @override
+  String rewindActivationDelayValue(String seconds) {
+    return '${seconds}s+';
+  }
+
+  @override
+  String rewindRangeValue(String min, String max) {
+    return '${min}s – ${max}s';
+  }
+
+  @override
+  String rewindSecondsPause(String seconds) {
+    return '${seconds}s pause';
+  }
+
+  @override
+  String rewindMinPause(String minutes) {
+    return '$minutes min pause';
+  }
+
+  @override
+  String rewindHrPause(String hours) {
+    return '$hours hr pause';
+  }
+
+  @override
+  String get rewindOneHrPause => '1 hr pause';
+
+  @override
+  String speedValue(String speed) {
+    return '${speed}x';
+  }
+
+  @override
+  String secondsValue(String seconds) {
+    return '${seconds}s';
+  }
+
+  @override
+  String minutesValue(int minutes) {
+    return '$minutes min';
+  }
+
+  @override
+  String get chimeBeforeSleep => 'Chime before sleep';
+
+  @override
+  String get chimeBeforeSleepOnSubtitle =>
+      'Plays a gentle bell when the timer is about to end';
+
+  @override
+  String get chimeBeforeSleepOffSubtitle => 'No sound warning before sleep';
+
+  @override
+  String get windDownDuration => 'Wind-down duration';
+
+  @override
+  String windDownDurationSubtitle(int seconds) {
+    return 'Fade and chime start ${seconds}s before sleep';
+  }
+
+  @override
+  String fadeVolumeOnSubtitleDynamic(int seconds) {
+    return 'Gradually lowers volume over the last ${seconds}s';
+  }
+
+  @override
+  String autoSleepTimerEnabledSubtitle(
+      String start, String end, String duration) {
+    return '$start – $end · $duration';
+  }
+
+  @override
+  String get endOfChapterShort => 'End of chapter';
+
+  @override
+  String get endOfChapterOnSubtitle => 'Stop at the end of the current chapter';
+
+  @override
+  String get endOfChapterOffSubtitle => 'Use a timed sleep timer';
+
+  @override
+  String get showExplicitBadge => 'Show explicit badge';
+
+  @override
+  String get showExplicitBadgeOnSubtitle =>
+      'Explicit items show an \"E\" badge';
+
+  @override
+  String get showExplicitBadgeOffSubtitle => 'Off - explicit badge hidden';
+
+  @override
+  String get libraryFallback => 'Library';
+
+  @override
+  String get preReleaseUpdatesInfoTitle => 'Pre-release Updates';
+
+  @override
+  String get preReleaseUpdatesInfoContent =>
+      'When enabled, the update checker will also notify you about alpha and pre-release builds from GitHub. These may be less stable but include the latest features and fixes.';
+
+  @override
+  String get includePreReleases => 'Include pre-releases';
+
+  @override
+  String get includePreReleasesOnSubtitle =>
+      'On - checking for alpha & pre-release builds';
+
+  @override
+  String get includePreReleasesOffSubtitle => 'Off - stable releases only';
+
+  @override
+  String get setTooltip => 'Set';
+
+  @override
+  String get saveAbsorbBackup => 'Save Absorb backup';
+
+  @override
+  String get checkForUpdate => 'Check for update';
+
+  @override
+  String get onLatestVersion => 'You\'re on the latest version';
+
+  @override
+  String get updateAvailable => 'Update available';
+
+  @override
+  String get preReleaseAvailable => 'Pre-release available';
+
+  @override
+  String updateDialogContent(String kind, String latest, String current) {
+    return 'A new $kind of Absorb is available: $latest\n\nYou are on $current.';
+  }
+
+  @override
+  String get updateKindPreRelease => 'pre-release';
+
+  @override
+  String get updateKindVersion => 'version';
+
+  @override
+  String get downloadButton => 'Download';
+
+  @override
+  String libraryCountOne(int count) {
+    return '$count library';
+  }
+
+  @override
+  String libraryCountOther(int count) {
+    return '$count libraries';
+  }
+
+  @override
+  String serverVersionLabel(String version) {
+    return 'Server $version';
+  }
+
+  @override
+  String appVersionServerSuffix(String version) {
+    return '  ·  Server $version';
+  }
+
+  @override
+  String backupDateFormat(int month, int day, int year) {
+    return '$month/$day/$year';
+  }
+
+  @override
+  String get backupDetailsSeparator => ' · ';
+
+  @override
+  String get bookmarksSortedByPositionReversed =>
+      'Sorted by position (reversed)';
+
+  @override
+  String bookmarksJumpShortContent(String title, String position) {
+    return '\"$title\" at $position';
+  }
+
+  @override
+  String get deleteBookmarkQuestion => 'Delete bookmark?';
+
+  @override
+  String bookmarkAtPosition(String position) {
+    return 'Bookmark at $position';
+  }
+
+  @override
+  String get cardIconsOnlyChip => 'Icons only';
+
+  @override
+  String get cardMoreInGridChip => '\"More\" in grid';
+
+  @override
+  String get cardLayoutHidden => 'Hidden';
+
+  @override
+  String get speed => 'Speed';
+
+  @override
+  String get details => 'Details';
+
+  @override
+  String get episodeDetailsLabel => 'Episode Details';
+
+  @override
+  String get bookDetailsLabel => 'Book Details';
+
+  @override
+  String get equalizerShort => 'EQ';
+
+  @override
+  String get equalizerLabel => 'Equalizer';
+
+  @override
+  String get cast => 'Cast';
+
+  @override
+  String castingToDevice(String device) {
+    return 'Casting to $device';
+  }
+
+  @override
+  String castToDeviceNamed(String device) {
+    return 'Cast to $device';
+  }
+
+  @override
+  String get historyShort => 'History';
+
+  @override
+  String atPosition(String position) {
+    return 'at $position';
+  }
+
+  @override
+  String chaptersChip(int count) {
+    return '$count chapters';
+  }
+
+  @override
+  String chapterNumber(int number) {
+    return 'Chapter $number';
+  }
+
+  @override
+  String kbpsValue(int value) {
+    return '$value kbps';
+  }
+
+  @override
+  String get resetMayNotHaveSynced =>
+      'Reset may not have synced - check your server';
+
+  @override
+  String failedToDownloadEbook(int code) {
+    return 'Failed to download ebook ($code)';
+  }
+
+  @override
+  String get serverReturnedErrorPage =>
+      'Server returned an error page instead of the ebook file';
+
+  @override
+  String ebookSaved(String filename) {
+    return 'Saved: $filename';
+  }
+
+  @override
+  String errorSavingEbook(String error) {
+    return 'Error saving ebook: $error';
+  }
+
+  @override
+  String failedToSaveError(String error) {
+    return 'Failed to save: $error';
+  }
+
+  @override
+  String get adminBackupsLabel => 'Backups';
+
+  @override
+  String get adminListeningNow => 'Listening Now';
+
+  @override
+  String get adminLibraries => 'Libraries';
+
+  @override
+  String get adminLibraryShows => 'shows';
+
+  @override
+  String get adminLibraryBooks => 'books';
+
+  @override
+  String get adminLibraryFolders => 'folders';
+
+  @override
+  String get adminLibrarySize => 'size';
+
+  @override
+  String get adminLibraryDuration => 'duration';
+
+  @override
+  String get adminMatchAction => 'Match';
+
+  @override
+  String adminMatchingStarted(String name) {
+    return 'Matching started for $name';
+  }
+
+  @override
+  String get adminMatchFailed => 'Failed';
+
+  @override
+  String adminScanFailed(String name) {
+    return 'Failed to scan $name';
+  }
+
+  @override
+  String get adminPurgeCacheFailed => 'Failed';
+
+  @override
+  String get adminUsersRootBadge => 'root';
+
+  @override
+  String get adminUsersAdminBadge => 'admin';
+
+  @override
+  String get adminUsersDisabledBadge => 'disabled';
+
+  @override
+  String get adminUsersEditUserTooltip => 'Edit user';
+
+  @override
+  String get adminUsersOnlineNow => 'Online now';
+
+  @override
+  String adminUsersLastSeen(String time) {
+    return 'Last seen $time';
+  }
+
+  @override
+  String get adminUsersNever => 'Never';
+
+  @override
+  String get adminUsersTotal => 'Total';
+
+  @override
+  String get adminUsersNoReadingActivity => 'No reading activity';
+
+  @override
+  String get adminUsersLoadingDots => 'Loading...';
+
+  @override
+  String get adminUsersLoadMoreSessions => 'Load more sessions';
+
+  @override
+  String get adminUsersNoRecentSessions => 'No recent sessions';
+
+  @override
+  String get adminUsersLibraryProgress => 'Library Progress';
+
+  @override
+  String adminUsersLoadMoreRemaining(int count) {
+    return 'Load More ($count remaining)';
+  }
+
+  @override
+  String adminUsersMonthsAgo(int count) {
+    return '${count}mo ago';
+  }
+
+  @override
+  String get adminUsersNewUser => 'New User';
+
+  @override
+  String get adminUsersEditUser => 'Edit User';
+
+  @override
+  String get adminUsersUsername => 'Username';
+
+  @override
+  String get adminUsersEnterUsername => 'Enter username';
+
+  @override
+  String get adminUsersPassword => 'Password';
+
+  @override
+  String get adminUsersNewPassword => 'New Password';
+
+  @override
+  String get adminUsersEnterPassword => 'Enter password';
+
+  @override
+  String get adminUsersLeaveBlankToKeep => 'Leave blank to keep current';
+
+  @override
+  String get adminUsersAccountType => 'Account Type';
+
+  @override
+  String get adminUsersTypeGuest => 'Guest';
+
+  @override
+  String get adminUsersTypeUser => 'User';
+
+  @override
+  String get adminUsersTypeAdmin => 'Admin';
+
+  @override
+  String get adminUsersStatus => 'Status';
+
+  @override
+  String get adminUsersAccountActive => 'Account Active';
+
+  @override
+  String get adminUsersAccountActiveSub => 'Disabled accounts cannot log in';
+
+  @override
+  String get adminUsersLocked => 'Locked';
+
+  @override
+  String get adminUsersLockedSub => 'Prevents password changes';
+
+  @override
+  String get adminUsersPermissions => 'Permissions';
+
+  @override
+  String get adminUsersPermDownload => 'Download';
+
+  @override
+  String get adminUsersPermUpdate => 'Update';
+
+  @override
+  String get adminUsersPermUpdateSub => 'Edit metadata and library items';
+
+  @override
+  String get adminUsersPermDelete => 'Delete';
+
+  @override
+  String get adminUsersPermUpload => 'Upload';
+
+  @override
+  String get adminUsersPermExplicit => 'Explicit Content';
+
+  @override
+  String get adminUsersLibraryAccess => 'Library Access';
+
+  @override
+  String get adminUsersAccessAllLibraries => 'Access All Libraries';
+
+  @override
+  String get adminUsersCreateUser => 'Create User';
+
+  @override
+  String get adminUsersSaveChanges => 'Save Changes';
+
+  @override
+  String get adminUsersUsernameRequired => 'Username is required';
+
+  @override
+  String get adminUsersPasswordRequired => 'Password is required';
+
+  @override
+  String get adminUsersUserCreated => 'User created';
+
+  @override
+  String get adminUsersUserUpdated => 'User updated';
+
+  @override
+  String get adminUsersFailedCreate => 'Failed to create user';
+
+  @override
+  String get adminUsersFailedUpdate => 'Failed to update user';
+
+  @override
+  String get adminUsersThisUser => 'this user';
+
+  @override
+  String get adminUsersDeleteUserTitle => 'Delete User?';
+
+  @override
+  String adminUsersDeleteUserContent(String name) {
+    return 'Permanently delete $name?';
+  }
+
+  @override
+  String adminUsersUserDeleted(String name) {
+    return '$name deleted';
+  }
+
+  @override
+  String get adminUsersFailedDelete => 'Failed to delete user';
+
+  @override
+  String adminUsersByAuthor(String author) {
+    return 'by $author';
+  }
+
+  @override
+  String get adminUsersListened => 'Listened';
+
+  @override
+  String get adminUsersStartedAtPosition => 'Started at position';
+
+  @override
+  String get adminUsersEndedAtPosition => 'Ended at position';
+
+  @override
+  String get adminUsersTotalDuration => 'Total duration';
+
+  @override
+  String get adminUsersStarted => 'Started';
+
+  @override
+  String get adminUsersUpdated => 'Updated';
+
+  @override
+  String get adminUsersClient => 'Client';
+
+  @override
+  String get adminUsersDevice => 'Device';
+
+  @override
+  String get adminUsersOs => 'OS';
+
+  @override
+  String get adminUsersPlayMethod => 'Play method';
+
+  @override
+  String get adminUsersPlayDirect => 'Direct play';
+
+  @override
+  String get adminUsersPlayDirectStream => 'Direct stream';
+
+  @override
+  String get adminUsersPlayTranscode => 'Transcode';
+
+  @override
+  String get adminUsersPlayLocal => 'Local';
+
+  @override
+  String get adminPodcastsCheckNewEpisodesTitle => 'Check for New Episodes';
+
+  @override
+  String get adminPodcastsCheckNewEpisodesContent =>
+      'This will check RSS feeds for all podcasts and download any new episodes found (if auto-download is enabled).';
+
+  @override
+  String get adminPodcastsCheckNewEpisodesSubtitle =>
+      'Scan RSS feed and download new episodes';
+
+  @override
+  String get adminPodcastsCheck => 'Check';
+
+  @override
+  String get adminPodcastsCheckingForNew => 'Checking for new episodes…';
+
+  @override
+  String get adminPodcastsCheckingForNewDots => 'Checking for new episodes...';
+
+  @override
+  String get adminPodcastsFailedCheckEpisodes => 'Failed to check episodes';
+
+  @override
+  String get adminPodcastsCheckFeedsTooltip => 'Check feeds for new episodes';
+
+  @override
+  String get adminPodcastsNoPodcastsYet => 'No podcasts yet';
+
+  @override
+  String get adminPodcastsTapPlusHint => 'Tap + to search and add shows';
+
+  @override
+  String adminPodcastsEpisodesCount(int count) {
+    return '$count episodes';
+  }
+
+  @override
+  String get adminPodcastsAddPodcast => 'Add Podcast';
+
+  @override
+  String get adminPodcastsCouldNotFindFeed => 'Could not find podcast feed';
+
+  @override
+  String get adminPodcastsSearchHint => 'Search for podcasts…';
+
+  @override
+  String get adminPodcastsSearchItunesHint => 'Search iTunes...';
+
+  @override
+  String get adminPodcastsNoPodcastsFound => 'No podcasts found';
+
+  @override
+  String get adminPodcastsRelToday => 'Today';
+
+  @override
+  String adminPodcastsWeeksAgo(int count) {
+    return '${count}w ago';
+  }
+
+  @override
+  String adminPodcastsMonthsAgo(int count) {
+    return '${count}mo ago';
+  }
+
+  @override
+  String adminPodcastsYearsAgo(int count) {
+    return '${count}y ago';
+  }
+
+  @override
+  String adminPodcastsUpdated(String when) {
+    return 'Updated $when';
+  }
+
+  @override
+  String get adminPodcastsGenreAll => 'All';
+
+  @override
+  String get adminPodcastsGenreArts => 'Arts';
+
+  @override
+  String get adminPodcastsGenreComedy => 'Comedy';
+
+  @override
+  String get adminPodcastsGenreEducation => 'Education';
+
+  @override
+  String get adminPodcastsGenreTvFilm => 'TV & Film';
+
+  @override
+  String get adminPodcastsGenreMusic => 'Music';
+
+  @override
+  String get adminPodcastsGenreNews => 'News';
+
+  @override
+  String get adminPodcastsGenreReligion => 'Religion';
+
+  @override
+  String get adminPodcastsGenreScience => 'Science';
+
+  @override
+  String get adminPodcastsGenreSports => 'Sports';
+
+  @override
+  String get adminPodcastsGenreTechnology => 'Technology';
+
+  @override
+  String get adminPodcastsGenreBusiness => 'Business';
+
+  @override
+  String get adminPodcastsGenreFiction => 'Fiction';
+
+  @override
+  String get adminPodcastsGenreSocietyCulture => 'Society & Culture';
+
+  @override
+  String get adminPodcastsGenreHealthFitness => 'Health & Fitness';
+
+  @override
+  String get adminPodcastsGenreTrueCrime => 'True Crime';
+
+  @override
+  String get adminPodcastsGenreHistory => 'History';
+
+  @override
+  String get adminPodcastsGenreKidsFamily => 'Kids & Family';
+
+  @override
+  String get adminPodcastsPodcastFallback => 'Podcast';
+
+  @override
+  String get adminPodcastsEpisodeFallback => 'Episode';
+
+  @override
+  String get adminPodcastsNoFeedFound => 'No feed URL found';
+
+  @override
+  String get adminPodcastsNoFeedAvailable => 'No feed URL available';
+
+  @override
+  String adminPodcastsAddedToLibrary(String title) {
+    return '$title added to library';
+  }
+
+  @override
+  String adminPodcastsFailedToAdd(String title) {
+    return 'Failed to add $title';
+  }
+
+  @override
+  String adminPodcastsEpisodesInFeed(int count) {
+    return '$count episodes in feed';
+  }
+
+  @override
+  String adminPodcastsMoreEpisodes(int count) {
+    return '+ $count more episodes';
+  }
+
+  @override
+  String get adminPodcastsAdding => 'Adding…';
+
+  @override
+  String get adminPodcastsAddToLibrary => 'Add to Library';
+
+  @override
+  String get adminPodcastsRemoveShowTitle => 'Remove Show?';
+
+  @override
+  String adminPodcastsRemoveShowContent(String title) {
+    return 'Remove \"$title\" and all its episodes from the server? This cannot be undone.';
+  }
+
+  @override
+  String adminPodcastsRemovedShow(String title) {
+    return 'Removed \"$title\"';
+  }
+
+  @override
+  String get adminPodcastsFailedRemoveShow => 'Failed to remove show';
+
+  @override
+  String get adminPodcastsRemoveShowTooltip => 'Remove show';
+
+  @override
+  String get adminPodcastsSelectMultipleTooltip => 'Select multiple';
+
+  @override
+  String adminPodcastsDownloadedCount(int count) {
+    return '$count downloaded';
+  }
+
+  @override
+  String get adminPodcastsTabDownloaded => 'Downloaded';
+
+  @override
+  String get adminPodcastsTabFeed => 'Feed';
+
+  @override
+  String get adminPodcastsTabSettings => 'Settings';
+
+  @override
+  String adminPodcastsDownloadingEpisode(String title) {
+    return 'Downloading \"$title\"';
+  }
+
+  @override
+  String get adminPodcastsFailedDownload => 'Failed to download';
+
+  @override
+  String get adminPodcastsDeleteEpisodeTitle => 'Delete Episode?';
+
+  @override
+  String adminPodcastsDeleteEpisodeContent(String title) {
+    return 'Delete \"$title\"?';
+  }
+
+  @override
+  String get adminPodcastsDeleted => 'Deleted';
+
+  @override
+  String get adminPodcastsFailed => 'Failed';
+
+  @override
+  String get adminPodcastsDeleteEpisodesTitle => 'Delete Episodes?';
+
+  @override
+  String adminPodcastsDeleteEpisodesContent(int count) {
+    return 'Delete $count episode(s) from the server?';
+  }
+
+  @override
+  String adminPodcastsDeletedEpisodes(int count) {
+    return 'Deleted $count episode(s)';
+  }
+
+  @override
+  String get adminPodcastsBrowseFeedToDownload => 'Browse feed to download';
+
+  @override
+  String get adminPodcastsDownloadingDots => 'Downloading...';
+
+  @override
+  String adminPodcastsDeleteEpisodesCount(int count) {
+    return 'Delete $count episode(s)';
+  }
+
+  @override
+  String adminPodcastsDownloadingCount(int count) {
+    return 'Downloading $count episode(s)';
+  }
+
+  @override
+  String adminPodcastsDownloadEpisodesCount(int count) {
+    return 'Download $count episode(s)';
+  }
+
+  @override
+  String get adminPodcastsLookForEpisodesAfter => 'Look for episodes after';
+
+  @override
+  String get adminPodcastsSelectDate => 'Select date';
+
+  @override
+  String get adminPodcastsMaxEpisodes => 'Max episodes to download';
+
+  @override
+  String adminPodcastsNoNewEpisodesAfter(String date) {
+    return 'No new episodes found after $date';
+  }
+
+  @override
+  String adminPodcastsFoundNewEpisodes(int count) {
+    return 'Found $count new episode(s) - downloading';
+  }
+
+  @override
+  String get adminPodcastsFailedToCheckNew =>
+      'Failed to check for new episodes';
+
+  @override
+  String get adminPodcastsCheckAndDownload => 'Check & Download';
+
+  @override
+  String get adminPodcastsMatchPodcast => 'Match Podcast';
+
+  @override
+  String get adminPodcastsMatchPodcastSubtitle =>
+      'Search iTunes to update cover and metadata';
+
+  @override
+  String get adminPodcastsAutoDownloadNewEpisodes =>
+      'Auto-Download New Episodes';
+
+  @override
+  String get adminPodcastsAutoDownloadOnSubtitle =>
+      'Server downloads new episodes automatically';
+
+  @override
+  String get adminPodcastsAutoDownloadOffSubtitle =>
+      'New episodes are not auto-downloaded';
+
+  @override
+  String get adminPodcastsFailedAutoDownloadUpdate =>
+      'Failed to update auto-download setting';
+
+  @override
+  String get adminPodcastsCheckSchedule => 'Check Schedule';
+
+  @override
+  String get adminPodcastsFrequency => 'Frequency';
+
+  @override
+  String get adminPodcastsFreqHourly => 'Hourly';
+
+  @override
+  String get adminPodcastsFreqDaily => 'Daily';
+
+  @override
+  String get adminPodcastsFreqWeekly => 'Weekly';
+
+  @override
+  String get adminPodcastsDay => 'Day';
+
+  @override
+  String get adminPodcastsTime => 'Time';
+
+  @override
+  String get adminPodcastsDaySun => 'Sun';
+
+  @override
+  String get adminPodcastsDayMon => 'Mon';
+
+  @override
+  String get adminPodcastsDayTue => 'Tue';
+
+  @override
+  String get adminPodcastsDayWed => 'Wed';
+
+  @override
+  String get adminPodcastsDayThu => 'Thu';
+
+  @override
+  String get adminPodcastsDayFri => 'Fri';
+
+  @override
+  String get adminPodcastsDaySat => 'Sat';
+
+  @override
+  String get adminPodcastsFeedUrl => 'Feed URL';
+
+  @override
+  String get adminPodcastsBack => 'Back';
+
+  @override
+  String get adminPodcastsRootOnly => 'Root Only';
+
+  @override
+  String get adminPodcastsDeleting => 'Deleting...';
+
+  @override
+  String get adminPodcastsDeleteEpisode => 'Delete Episode';
+
+  @override
+  String adminPodcastsSeasonChip(String season) {
+    return 'Season $season';
+  }
+
+  @override
+  String adminPodcastsEpChip(String number) {
+    return 'Ep. $number';
+  }
+
+  @override
+  String get adminPodcastsApplyingMatch => 'Applying match...';
+
+  @override
+  String get adminPodcastsNoResults => 'No results';
+
+  @override
+  String get adminPodcastsPodcastMatched => 'Podcast matched and updated';
+
+  @override
+  String get adminPodcastsFailedMatch => 'Failed to match podcast';
+
+  @override
+  String get episodeListEpisodeFallback => 'Episode';
+
+  @override
+  String get episodeListUnknownPodcast => 'Unknown Podcast';
+
+  @override
+  String episodeListMarkedFinished(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count episodes marked as finished',
+      one: '1 episode marked as finished',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String episodeListMarkedUnfinished(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count episodes marked as unfinished',
+      one: '1 episode marked as unfinished',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get episodeListUnsubscribeFromNewEpisodes =>
+      'Unsubscribe from New Episodes';
+
+  @override
+  String get episodeListSubscribeToNewEpisodes => 'Subscribe to New Episodes';
+
+  @override
+  String get episodeListSubscribeTitle => 'Subscribe to this podcast?';
+
+  @override
+  String get episodeListSubscribeContent =>
+      'New episodes will be automatically downloaded and added to your absorbing queue when they appear on the server.';
+
+  @override
+  String get episodeListSubscribe => 'Subscribe';
+
+  @override
+  String get episodeListShowFinishedEpisodes => 'Show Finished Episodes';
+
+  @override
+  String get episodeListHideFinishedEpisodes => 'Hide Finished Episodes';
+
+  @override
+  String get episodeListPlaysNewerToOlder => 'Plays newer to older episodes';
+
+  @override
+  String get episodeListPlaysOlderToNewer => 'Plays older to newer episodes';
+
+  @override
+  String episodeListEpisodeCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count episodes',
+      one: '1 episode',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get episodeListAutoDownloadChip => 'Auto-Download';
+
+  @override
+  String get episodeListSubscribedChip => 'Subscribed';
+
+  @override
+  String get episodeListExplicitChip => 'Explicit';
+
+  @override
+  String get episodeListSortNewest => 'Newest';
+
+  @override
+  String get episodeListSortOldest => 'Oldest';
+
+  @override
+  String episodeListAddedToAbsorbing(String title) {
+    return 'Added \"$title\" to Absorbing';
+  }
+
+  @override
+  String get episodeDetailEpisodeFallback => 'Episode';
+
+  @override
+  String get episodeDetailMarkedNotFinished => 'Marked as not finished';
+
+  @override
+  String get episodeDetailMarkedFinishedNice => 'Marked as finished - nice!';
+
+  @override
+  String get episodeDetailMarkAbsorbedContent =>
+      'This will set your progress to 100% for this episode.';
+
+  @override
+  String get episodeDetailResetProgressContent =>
+      'This will erase all progress for this episode and set it back to the beginning. This can\'t be undone.';
+
+  @override
+  String get episodeDetailToday => 'Today';
+
+  @override
+  String get episodeDetailYesterday => 'Yesterday';
+
+  @override
+  String episodeDetailDaysAgo(int count) {
+    return '${count}d ago';
+  }
+
+  @override
+  String episodeDetailWeeksAgo(int count) {
+    return '${count}w ago';
+  }
+
+  @override
+  String episodeDetailDurationHm(int hours, int minutes) {
+    return '${hours}h ${minutes}m';
+  }
+
+  @override
+  String episodeDetailDurationM(int minutes) {
+    return '${minutes}m';
+  }
+
+  @override
+  String get episodeDetailResume => 'Resume';
+
+  @override
+  String get episodeDetailPlayEpisode => 'Play Episode';
+
+  @override
+  String episodeDetailEpisodeNumber(String number) {
+    return 'Episode $number';
+  }
+
+  @override
+  String episodeDetailSeasonNumber(String number) {
+    return 'Season $number';
+  }
+
+  @override
+  String get editMetadataUpdatedFromMatch => 'Metadata updated from match';
+
+  @override
+  String editMetadataConfirmMatch(String title) {
+    return 'This will update the server metadata for this book using:\n\n\"$title\"\n\nAll fields and the cover will be overwritten on the server.';
+  }
+
+  @override
+  String editMetadataConfirmMatchWithAuthor(String title, String author) {
+    return 'This will update the server metadata for this book using:\n\n\"$title\" by $author\n\nAll fields and the cover will be overwritten on the server.';
+  }
+
+  @override
+  String get seriesBooksFindMissingTitle => 'Find Missing Books';
+
+  @override
+  String get seriesBooksFindMissingContent =>
+      'This searches Audible to find books in this series that may be missing from your library.\n\nBooks are matched by ASIN first (depending on whether your server has ASINs for its books), then falls back to title matching. Results may not be perfectly accurate.';
+
+  @override
+  String get seriesBooksCouldNotFindOnAudible =>
+      'Could not find this series on Audible';
+
+  @override
+  String seriesBooksMarkAllNotFinishedContent(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'This will clear the finished status for all $count books in this series.',
+      one: 'This will clear the finished status for the 1 book in this series.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String seriesBooksFullyAbsorbContent(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'This will mark all $count books in this series as finished.',
+      one: 'This will mark the 1 book in this series as finished.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get seriesBooksUnmarkAll => 'Unmark All';
+
+  @override
+  String get seriesBooksShowAllBooks => 'Show all books';
+
+  @override
+  String get seriesBooksGroupBySubSeries => 'Group by sub-series';
+
+  @override
+  String get seriesBooksLoadingSubSeries => 'Loading sub-series...';
+
+  @override
+  String seriesBooksBookCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count books',
+      one: '1 book',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get seriesBooksDone => 'Done';
+
+  @override
+  String get seriesBooksExplicitBadge => 'E';
+
+  @override
+  String get expandedCardStreaming => 'Streaming';
+
+  @override
+  String get expandedCardDeviceFallback => 'Device';
+
+  @override
+  String bookmarksScreenPositionInBook(String position, String bookTitle) {
+    return '$position in $bookTitle';
+  }
+
+  @override
+  String get bookmarksScreenClose => 'Close';
+
+  @override
+  String get bookmarksScreenSortNewest => 'Newest';
+
+  @override
+  String get bookmarksScreenSortPosition => 'Position';
+
+  @override
+  String statsScreenStreakDays(int count) {
+    return '${count}d';
+  }
+
+  @override
+  String statsScreenSessionCountOne(int count) {
+    return '$count session';
+  }
+
+  @override
+  String statsScreenSessionCountOther(int count) {
+    return '$count sessions';
+  }
+
+  @override
+  String get statsScreenDayMon => 'Mon';
+
+  @override
+  String get statsScreenDayTue => 'Tue';
+
+  @override
+  String get statsScreenDayWed => 'Wed';
+
+  @override
+  String get statsScreenDayThu => 'Thu';
+
+  @override
+  String get statsScreenDayFri => 'Fri';
+
+  @override
+  String get statsScreenDaySat => 'Sat';
+
+  @override
+  String get statsScreenDaySun => 'Sun';
+
+  @override
+  String statsScreenDurationHm(int h, int m) {
+    return '${h}h ${m}m';
+  }
+
+  @override
+  String statsScreenDurationM(int m) {
+    return '${m}m';
+  }
+
+  @override
+  String get statsScreenDurationLessThanMin => '<1m';
+
+  @override
+  String get statsScreenDurationZero => '0m';
+
+  @override
+  String statsScreenDurationShortH(int h) {
+    return '${h}h';
+  }
+
+  @override
+  String statsScreenDurationShortM(int m) {
+    return '${m}m';
+  }
+
+  @override
+  String get statsScreenCouldNotLoadItem => 'Could not load item';
+
+  @override
+  String get statsScreenCouldNotFindEpisode => 'Could not find episode';
+
+  @override
+  String statsScreenByAuthor(String author) {
+    return 'by $author';
+  }
+
+  @override
+  String get statsScreenListened => 'Listened';
+
+  @override
+  String get statsScreenStartedAtPosition => 'Started at position';
+
+  @override
+  String get statsScreenEndedAtPosition => 'Ended at position';
+
+  @override
+  String get statsScreenTotalDuration => 'Total duration';
+
+  @override
+  String get statsScreenStarted => 'Started';
+
+  @override
+  String get statsScreenUpdated => 'Updated';
+
+  @override
+  String get statsScreenClient => 'Client';
+
+  @override
+  String get statsScreenDevice => 'Device';
+
+  @override
+  String get statsScreenOs => 'OS';
+
+  @override
+  String get statsScreenPlayMethod => 'Play method';
+
+  @override
+  String get statsScreenLoading => 'Loading...';
+
+  @override
+  String statsScreenJumpToSessionStart(String position) {
+    return 'Jump to session start ($position)';
+  }
+
+  @override
+  String get statsScreenPlayMethodDirect => 'Direct play';
+
+  @override
+  String get statsScreenPlayMethodDirectStream => 'Direct stream';
+
+  @override
+  String get statsScreenPlayMethodTranscode => 'Transcode';
+
+  @override
+  String get statsScreenPlayMethodLocal => 'Local';
+
+  @override
+  String get statsScreenAmLabel => 'AM';
+
+  @override
+  String get statsScreenPmLabel => 'PM';
+
+  @override
+  String statsScreenDateAtTime(
+      String month, int day, int year, int hour, String minute, String ampm) {
+    return '$month $day, $year at $hour:$minute $ampm';
+  }
+
+  @override
+  String get statsScreenMonthJan => 'Jan';
+
+  @override
+  String get statsScreenMonthFeb => 'Feb';
+
+  @override
+  String get statsScreenMonthMar => 'Mar';
+
+  @override
+  String get statsScreenMonthApr => 'Apr';
+
+  @override
+  String get statsScreenMonthMay => 'May';
+
+  @override
+  String get statsScreenMonthJun => 'Jun';
+
+  @override
+  String get statsScreenMonthJul => 'Jul';
+
+  @override
+  String get statsScreenMonthAug => 'Aug';
+
+  @override
+  String get statsScreenMonthSep => 'Sep';
+
+  @override
+  String get statsScreenMonthOct => 'Oct';
+
+  @override
+  String get statsScreenMonthNov => 'Nov';
+
+  @override
+  String get statsScreenMonthDec => 'Dec';
+
+  @override
+  String get upcomingReleasesTitle => 'Upcoming Releases';
+
+  @override
+  String get upcomingReleasesRescanTitle => 'Rescan?';
+
+  @override
+  String upcomingReleasesRescanContent(int days) {
+    return 'These results are $days days old. Release dates may have changed - would you like to rescan?';
+  }
+
+  @override
+  String get upcomingReleasesNotNow => 'Not now';
+
+  @override
+  String get upcomingReleasesRescan => 'Rescan';
+
+  @override
+  String get upcomingReleasesRescanReleaseDate => 'Rescan Release Date';
+
+  @override
+  String get upcomingReleasesRescanning => 'Rescanning...';
+
+  @override
+  String upcomingReleasesUpdatedWithDate(String date) {
+    return 'Updated - $date';
+  }
+
+  @override
+  String get upcomingReleasesNoReleaseDateFound => 'No release date found';
+
+  @override
+  String get upcomingReleasesRescanFailed => 'Rescan failed';
+
+  @override
+  String get upcomingReleasesDateChip => 'Date';
+
+  @override
+  String upcomingReleasesCheckingSeries(String name, int processed, int total) {
+    return 'Checking $name... ($processed/$total)';
+  }
+
+  @override
+  String get upcomingReleasesLoadingSeries => 'Loading series...';
+
+  @override
+  String get upcomingReleasesScannedToday => '(scanned today)';
+
+  @override
+  String get upcomingReleasesScannedYesterday => '(scanned yesterday)';
+
+  @override
+  String upcomingReleasesScannedDaysAgo(int days) {
+    return '(scanned $days days ago)';
+  }
+
+  @override
+  String upcomingReleasesUpcomingCount(int count) {
+    return '$count upcoming';
+  }
+
+  @override
+  String upcomingReleasesRecentCount(int count) {
+    return '$count recent';
+  }
+
+  @override
+  String get upcomingReleasesNoneFound =>
+      'No upcoming or recent releases found';
+
+  @override
+  String upcomingReleasesAcrossSeries(String summary, int count) {
+    return '$summary across $count series';
+  }
+
+  @override
+  String upcomingReleasesCheckedSeries(int count) {
+    return 'Checked $count series on Audible';
+  }
+
+  @override
+  String upcomingReleasesDateFormat(String month, int day, int year) {
+    return '$month $day, $year';
+  }
+
+  @override
+  String upcomingReleasesSequenceLabel(String sequence) {
+    return '#$sequence';
+  }
+
+  @override
+  String get upcomingReleasesBadgeUpcoming => 'UPCOMING';
+
+  @override
+  String get upcomingReleasesBadgeAdded => 'ADDED';
+
+  @override
+  String get upcomingReleasesBadgeMissing => 'MISSING';
+
+  @override
+  String get homeScreenEpisodeFallback => 'Episode';
+
+  @override
+  String get libraryScreenUnknownTitle => 'Unknown Title';
+
+  @override
+  String get playlistDetailDefaultName => 'Playlist';
+
+  @override
+  String playlistDetailItemCount(int count) {
+    return '$count items';
+  }
+
+  @override
+  String get playlistDetailUnfinished => 'Unfinished';
+
+  @override
+  String get playlistDetailRemoveFromPlaylist => 'Remove from playlist';
+
+  @override
+  String get playlistDetailDone => 'Done';
+
+  @override
+  String playlistDetailItemsMarkedFinished(int count) {
+    return '$count items marked finished';
+  }
+
+  @override
+  String playlistDetailItemsMarkedUnfinished(int count) {
+    return '$count items marked unfinished';
+  }
+
+  @override
+  String playlistDetailItemsRemoved(int count) {
+    return '$count items removed';
+  }
+
+  @override
+  String playlistDetailAddedToAbsorbing(String title) {
+    return 'Added \"$title\" to Absorbing';
+  }
+
+  @override
+  String get collectionDetailDefaultName => 'Collection';
+
+  @override
+  String collectionDetailBookCount(int count) {
+    return '$count books';
+  }
+
+  @override
+  String get collectionDetailDone => 'Done';
+
+  @override
+  String collectionDetailAddedToAbsorbing(String title) {
+    return 'Added \"$title\" to Absorbing';
+  }
+
+  @override
+  String get audibleSeriesNoBooksFound => 'No books found on Audible';
+
+  @override
+  String get audibleSeriesFailedToLoad => 'Failed to load series from Audible';
+
+  @override
+  String audibleSeriesSummary(int total, int missing) {
+    return '$total on Audible · $missing missing';
+  }
+
+  @override
+  String audibleSeriesSummaryWithUpcoming(
+      int total, int missing, int upcoming) {
+    return '$total on Audible · $missing missing · $upcoming upcoming';
+  }
+
+  @override
+  String audibleSeriesFilterMissing(int count) {
+    return 'Missing ($count)';
+  }
+
+  @override
+  String audibleSeriesFilterUpcoming(int count) {
+    return 'Upcoming ($count)';
+  }
+
+  @override
+  String audibleSeriesFilterAll(int count) {
+    return 'All ($count)';
+  }
+
+  @override
+  String get audibleSeriesSearching => 'Searching Audible...';
+
+  @override
+  String get audibleSeriesCompleteSeries => 'You have the complete series!';
+
+  @override
+  String get audibleSeriesNoUpcoming => 'No upcoming releases found';
+
+  @override
+  String get audibleSeriesUpcomingBadge => 'UPCOMING';
+
+  @override
+  String get audibleSeriesAbridged => 'Abridged';
+
+  @override
+  String get audibleSeriesRegionTitle => 'Audible Region';
+
+  @override
+  String get audibleSeriesOpenOnAudible => 'Open on Audible';
+
+  @override
+  String get audibleSeriesAddToCalendar => 'Add to Calendar';
+
+  @override
+  String get audibleSeriesCouldNotOpenAudible => 'Could not open Audible';
+
+  @override
+  String get audibleSeriesCouldNotOpenCalendar => 'Could not open calendar';
+
+  @override
+  String audibleSeriesCalendarDescription(String seriesName) {
+    return 'New audiobook release in the $seriesName series';
+  }
+
+  @override
+  String get authorBooksGroupBySeries => 'Group by series';
+
+  @override
+  String get authorBooksList => 'List';
+
+  @override
+  String get authorBooksGrid => 'Grid';
+
+  @override
+  String authorBooksBookCount(int count) {
+    return '$count books';
+  }
+
+  @override
+  String get metadataLookupCover => 'Cover';
+
+  @override
+  String get metadataLookupChooseFields => 'Choose Fields to Apply';
+
+  @override
+  String metadataLookupApplyFields(int count) {
+    return 'Apply $count fields';
+  }
+
+  @override
+  String metadataLookupFieldsSavedLocally(int count) {
+    return '$count fields saved locally';
+  }
+
+  @override
+  String get metadataLookupOverrideLocalDisplay => 'Override local display';
+
+  @override
+  String get equalizerPresetFlat => 'Flat';
+
+  @override
+  String get equalizerPresetVoiceBoost => 'Voice Boost';
+
+  @override
+  String get equalizerPresetBassBoost => 'Bass Boost';
+
+  @override
+  String get equalizerPresetTrebleBoost => 'Treble Boost';
+
+  @override
+  String get equalizerPresetPodcast => 'Podcast';
+
+  @override
+  String get equalizerPresetAudiobook => 'Audiobook';
+
+  @override
+  String get equalizerPresetReduceNoise => 'Reduce Noise';
+
+  @override
+  String get equalizerPresetLoudness => 'Loudness';
+
+  @override
+  String equalizerEditingSavedNamed(String title) {
+    return 'Editing saved EQ for \"$title\"';
+  }
+
+  @override
+  String get equalizerEditingSavedGeneric => 'Editing saved EQ';
+
+  @override
+  String get equalizerPerBookEq => 'Per-book EQ';
+
+  @override
+  String get notesDeleteNoteQuestion => 'Delete note?';
+
+  @override
+  String notesDeleteNoteContent(String title) {
+    return 'Delete \"$title\"?';
+  }
+
+  @override
+  String get notesExport => 'Export';
+
+  @override
+  String get notesNewNote => 'New note';
+
+  @override
+  String get librarySortFilterUpcomingReleases => 'Upcoming Releases';
+
+  @override
+  String get librarySortFilterUpcomingReleasesSubtitle =>
+      'Scan Audible for new releases in your series';
+
+  @override
+  String sleepTimerSheetChaptersLeft(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count chapters left',
+      one: '1 chapter left',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String sleepTimerSheetAddMinutesChip(int minutes) {
+    return '+${minutes}m';
+  }
+
+  @override
+  String sleepTimerSheetAddChaptersChip(int count) {
+    return '+$count ch';
+  }
+
+  @override
+  String sleepTimerSheetMinShort(int minutes) {
+    return '${minutes}m';
+  }
+
+  @override
+  String sleepTimerSheetSecondsShort(int seconds) {
+    return '${seconds}s';
+  }
+
+  @override
+  String sleepTimerSheetMinSecShort(int minutes, int seconds) {
+    return '${minutes}m ${seconds}s';
+  }
+
+  @override
+  String sleepTimerSheetChaptersValue(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count chapters',
+      one: '1 chapter',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String sleepTimerSheetChaptersChip(int count) {
+    return '$count ch';
+  }
+
+  @override
+  String sleepTimerSheetStartChapterSleep(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Sleep after $count chapters',
+      one: 'Sleep after 1 chapter',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get sleepTimerSheetRewindOnSleep => 'Rewind on sleep';
+
+  @override
+  String get sleepTimerSheetShake => 'Shake';
+
+  @override
+  String sleepTimerSheetAddsMinutes(int minutes) {
+    return 'Adds $minutes min';
+  }
+
+  @override
+  String get sleepTimerSheetAddsOneChapter => 'Adds 1 chapter';
+
+  @override
+  String get sleepTimerSheetResetsToFull => 'Resets to full duration';
+
+  @override
+  String get collectionPickerCollectionFallback => 'Collection';
+
+  @override
+  String collectionPickerNameWithCount(String name, int count) {
+    return '$name ($count)';
+  }
+
+  @override
+  String get playlistPickerPlaylistFallback => 'Playlist';
+
+  @override
+  String playlistPickerNameWithCount(String name, int count) {
+    return '$name ($count)';
+  }
+
+  @override
+  String get cardChaptersPlayFromChapterTitle => 'Play from chapter?';
+
+  @override
+  String cardChaptersPlayFromChapterContent(String title) {
+    return 'Start playing from \"$title\"?';
+  }
+
+  @override
+  String get cardChaptersPlay => 'Play';
+
+  @override
+  String get absorbingSharedToday => 'Today';
+
+  @override
+  String get absorbingSharedYesterday => 'Yesterday';
+
+  @override
+  String get absorbingSharedMonday => 'Monday';
+
+  @override
+  String get absorbingSharedTuesday => 'Tuesday';
+
+  @override
+  String get absorbingSharedWednesday => 'Wednesday';
+
+  @override
+  String get absorbingSharedThursday => 'Thursday';
+
+  @override
+  String get absorbingSharedFriday => 'Friday';
+
+  @override
+  String get absorbingSharedSaturday => 'Saturday';
+
+  @override
+  String get absorbingSharedSunday => 'Sunday';
+
+  @override
+  String get absorbingSharedAm => 'AM';
+
+  @override
+  String get absorbingSharedPm => 'PM';
+
+  @override
+  String sectionDetailAddedToAbsorbing(String title) {
+    return 'Added \"$title\" to Absorbing';
+  }
+
+  @override
+  String get sectionDetailDoneBadge => 'Done';
+
+  @override
+  String get homeCustomizeAddGenreTitle => 'Add Genre Section';
+
+  @override
+  String get homeCustomizeAddGenreSubtitle =>
+      'Pick a genre to show on your home screen';
+
+  @override
+  String get homeSectionDoneBadge => 'Done';
+
+  @override
+  String get tipsSheetQuickBookmarksTitle => 'Quick Bookmarks';
+
+  @override
+  String get tipsSheetQuickBookmarksDesc =>
+      'Long-press the bookmark button on any card to instantly drop a bookmark at your current position without opening the bookmark sheet.';
+
+  @override
+  String get tipsSheetEditBookmarksTitle => 'Edit Bookmarks';
+
+  @override
+  String get tipsSheetEditBookmarksDesc =>
+      'Long-press any bookmark in the bookmark sheet to edit its title and add notes.';
+
+  @override
+  String get tipsSheetCoverPlayPauseTitle => 'Cover Play/Pause';
+
+  @override
+  String get tipsSheetCoverPlayPauseDesc =>
+      'Tap the cover art on any card to play or pause. Toggle this in Settings under Absorbing Cards. A faint pause icon shows when playing so you know it\'s tappable.';
+
+  @override
+  String get tipsSheetFullScreenPlayerTitle => 'Full Screen Player';
+
+  @override
+  String get tipsSheetFullScreenPlayerDesc =>
+      'Swipe up on any absorbing card to open the full screen player. Swipe down to dismiss it.';
+
+  @override
+  String get tipsSheetQuickAddAbsorbingTitle => 'Quick Add to Absorbing';
+
+  @override
+  String get tipsSheetQuickAddAbsorbingDesc =>
+      'Swipe right on any book in a list sheet (series, author, search results) to instantly add it to your absorbing queue.';
+
+  @override
+  String get tipsSheetShakeExtendSleepTitle => 'Shake to Extend Sleep';
+
+  @override
+  String get tipsSheetShakeExtendSleepDesc =>
+      'If you have a sleep timer running and shake your phone, it\'ll add extra minutes. Configure the amount in Settings under Sleep Timer.';
+
+  @override
+  String get tipsSheetSeriesNavigationTitle => 'Series Navigation';
+
+  @override
+  String get tipsSheetSeriesNavigationDesc =>
+      'Tap the series name in any book\'s detail popup to see all books in the series, sorted in reading order with sequence badges on each cover.';
+
+  @override
+  String get tipsSheetSwipeBetweenBooksTitle => 'Swipe Between Books';
+
+  @override
+  String get tipsSheetSwipeBetweenBooksDesc =>
+      'On the Absorbing screen, swipe left and right to switch between your in-progress books. The dots at the top show which book you\'re viewing.';
+
+  @override
+  String get tipsSheetTapToSeekTitle => 'Tap to Seek';
+
+  @override
+  String get tipsSheetTapToSeekDesc =>
+      'Tap anywhere on the chapter or book progress bar to jump directly to that position. You can also drag the bars for fine-grained control.';
+
+  @override
+  String get tipsSheetSpeedAdjustedTimeTitle => 'Speed-Adjusted Time';
+
+  @override
+  String get tipsSheetSpeedAdjustedTimeDesc =>
+      'Time remaining and chapter times automatically adjust based on your playback speed. Listening at 1.5x? The time shown reflects how long it\'ll actually take you.';
+
+  @override
+  String get tipsSheetPlaybackHistoryTitle => 'Playback History';
+
+  @override
+  String get tipsSheetPlaybackHistoryDesc =>
+      'Tap the History button on any card to see a timeline of every play, pause, seek, and speed change. Tap any event to jump back to that position.';
+
+  @override
+  String get tipsSheetAutoRewindTitle => 'Auto-Rewind';
+
+  @override
+  String get tipsSheetAutoRewindDesc =>
+      'When you resume after a pause, Absorb automatically rewinds a few seconds so you don\'t lose your place. The rewind amount scales with how long you were away. Configure it in Settings.';
+
+  @override
+  String get tipsSheetSeriesQueueModeTitle => 'Series Queue Mode';
+
+  @override
+  String get tipsSheetSeriesQueueModeDesc =>
+      'When you finish a book that\'s part of a series, Absorb can automatically play the next book. Set queue mode to \"Series\" in Settings.';
+
+  @override
+  String get tipsSheetOfflineModeTitle => 'Offline Mode';
+
+  @override
+  String get tipsSheetOfflineModeDesc =>
+      'Tap the airplane button on the Absorbing screen to enter offline mode. This stops syncing, saves data, and only shows your downloaded books. Great for flights or low signal areas.';
+
+  @override
+  String get tipsSheetStopPlaybackTitle => 'Stop Playback';
+
+  @override
+  String get tipsSheetStopPlaybackDesc =>
+      'The Stop button in the Absorbing header ends your listening session and saves your progress. Your progress syncs automatically in the background.';
+
+  @override
+  String get tipsSheetDownloadOfflineTitle => 'Download for Offline';
+
+  @override
+  String get tipsSheetDownloadOfflineDesc =>
+      'Tap the download button in any book\'s detail popup to save it for offline listening. Downloaded books are available in offline mode without any internet connection.';
+
+  @override
+  String get tipsSheetCustomizeHomeTitle => 'Customize Home';
+
+  @override
+  String get tipsSheetCustomizeHomeDesc =>
+      'Tap the edit button in the top right of the Home screen to rearrange, hide, or show sections. Drag sections into your preferred order.';
+
+  @override
+  String get tipsSheetPlaylistsTitle => 'Playlists';
+
+  @override
+  String get tipsSheetPlaylistsDesc =>
+      'Create and manage playlists on your Audiobookshelf server and they\'ll appear as sections on your Home screen. Add books to playlists from any book\'s detail popup.';
+
+  @override
+  String get tipsSheetCollectionsTitle => 'Collections';
+
+  @override
+  String get tipsSheetCollectionsDesc =>
+      'Collections group related books together and show up as Home sections. Root admins can add books and edit collections from the detail popup.';
+
+  @override
+  String get bookCardUnknownTitle => 'Unknown Title';
+
+  @override
+  String get bookCardExplicitBadge => 'E';
+
+  @override
+  String get bookCardDone => 'Done';
+
+  @override
+  String get bookCardSaved => 'Saved';
+
+  @override
+  String get episodeRowEpisode => 'Episode';
+
+  @override
+  String get episodeRowToday => 'Today';
+
+  @override
+  String get episodeRowYesterday => 'Yesterday';
+
+  @override
+  String episodeRowDaysAgo(int count) {
+    return '${count}d ago';
+  }
+
+  @override
+  String episodeRowWeeksAgo(int count) {
+    return '${count}w ago';
+  }
+
+  @override
+  String episodeRowDurationHm(int hours, int minutes) {
+    return '${hours}h ${minutes}m';
+  }
+
+  @override
+  String episodeRowDurationM(int minutes) {
+    return '${minutes}m';
+  }
+
+  @override
+  String episodeRowSeasonShort(String number) {
+    return 'S$number';
+  }
+
+  @override
+  String episodeRowEpisodeShort(String number) {
+    return 'E$number';
+  }
+
+  @override
+  String get librarySearchResultsExplicitBadge => 'E';
+
+  @override
+  String get librarySearchResultsDone => 'Done';
+
+  @override
+  String get librarySearchResultsSaved => 'Saved';
+
+  @override
+  String librarySearchResultsSequence(String number) {
+    return '#$number';
+  }
+
+  @override
+  String get librarySearchResultsUnknownSeries => 'Unknown Series';
+
+  @override
+  String get librarySearchResultsUnknownEpisode => 'Unknown Episode';
+
+  @override
+  String librarySearchResultsBookCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count books',
+      one: '1 book',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get libraryGridTilesExplicitBadge => 'E';
+
+  @override
+  String get libraryGridTilesDone => 'Done';
+
+  @override
+  String get libraryGridTilesSaved => 'Saved';
+
+  @override
+  String libraryGridTilesSequence(String number) {
+    return '#$number';
+  }
+
+  @override
+  String get libraryGridTilesUnknownSeries => 'Unknown Series';
+
+  @override
+  String get seriesCardUnknownSeries => 'Unknown Series';
+
+  @override
+  String seriesCardBookCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count books',
+      one: '1 book',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get cardProgressFineScrubbing => 'Fine Scrubbing';
+
+  @override
+  String get cardProgressQuarterSpeed => 'Quarter Speed';
+
+  @override
+  String get cardProgressHalfSpeed => 'Half Speed';
+
+  @override
+  String cardProgressChapterPrefix(String number) {
+    return 'Chapter $number';
+  }
+
+  @override
+  String get cardEdgeProgressFineScrubbing => 'Fine Scrubbing';
+
+  @override
+  String get cardEdgeProgressQuarterSpeed => 'Quarter Speed';
+
+  @override
+  String get cardEdgeProgressHalfSpeed => 'Half Speed';
+
+  @override
+  String get authSessionExpired => 'Session expired. Please log in again.';
+
+  @override
+  String authCannotReachServer(String url) {
+    return 'Cannot reach server at $url';
+  }
+
+  @override
+  String get authInvalidUsernameOrPassword => 'Invalid username or password';
+
+  @override
+  String get authLoginFailedDetail =>
+      'Login failed - check your server address and credentials';
+
+  @override
+  String get authUnexpectedServerResponse => 'Unexpected server response';
+
+  @override
+  String get authSsoUnexpectedResponse => 'SSO returned an unexpected response';
+
+  @override
+  String get authSwitchedToLocalServer => 'Switched to local server';
+
+  @override
+  String get authSwitchedToRemoteServer => 'Switched to remote server';
+
+  @override
+  String get lpDeletedFinishedDownload => 'Deleted finished download';
+
+  @override
+  String lpSubscribedPodcastDownloading(String showTitle, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count new episodes downloading',
+      one: '1 new episode downloading',
+    );
+    return '$showTitle: $_temp0';
+  }
+
+  @override
+  String lpQueueDownloadingItems(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Queue: downloading $count items',
+      one: 'Queue: downloading 1 item',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String lpDownloadingBooks(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Downloading $count books',
+      one: 'Downloading 1 book',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String lpDownloadingEpisodes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Downloading $count episodes',
+      one: 'Downloading 1 episode',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get downloadNotifProgressChannelName => 'Download Progress';
+
+  @override
+  String get downloadNotifProgressChannelDesc =>
+      'Shows progress during audiobook downloads';
+
+  @override
+  String get downloadNotifAlertChannelName => 'Download Alerts';
+
+  @override
+  String get downloadNotifAlertChannelDesc =>
+      'Notifications when downloads finish or fail';
+
+  @override
+  String get downloadNotifDownloadingTitle => 'Downloading…';
+
+  @override
+  String downloadNotifActiveCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count downloads active',
+      one: '1 download active',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String downloadNotifSlotTitle(String title) {
+    return 'Downloading: $title';
+  }
+
+  @override
+  String get downloadNotifStartingLabel => 'Starting…';
+
+  @override
+  String get downloadNotifCompleteTitle => 'Download Complete';
+
+  @override
+  String downloadNotifCompleteBody(String title) {
+    return '$title is ready to listen offline';
+  }
+
+  @override
+  String get downloadNotifFailedTitle => 'Download Failed';
+
+  @override
+  String get upcomingNotifChannelName => 'Upcoming Release Scan';
+
+  @override
+  String get upcomingNotifChannelDesc =>
+      'Shows progress while scanning for upcoming releases';
+
+  @override
+  String get upcomingNotifScanTitle => 'Scanning for upcoming releases';
+
+  @override
+  String get upcomingNotifStartingScan => 'Starting scan…';
+
+  @override
+  String upcomingNotifCheckingSeries(
+      String seriesName, int current, int total) {
+    return 'Checking $seriesName… ($current/$total)';
+  }
+
+  @override
+  String get upcomingNotifFoundTitle => 'Upcoming releases found!';
+
+  @override
+  String upcomingNotifFoundBody(int books, int series) {
+    String _temp0 = intl.Intl.pluralLogic(
+      series,
+      locale: localeName,
+      other: '$series series',
+      one: '1 series',
+    );
+    return '$books upcoming across $_temp0';
+  }
+
+  @override
+  String get androidAutoTabContinue => 'Continue';
+
+  @override
+  String get androidAutoTabLibrary => 'Library';
+
+  @override
+  String get androidAutoTabDownloads => 'Downloads';
+
+  @override
+  String get androidAutoCatBooks => 'Books';
+
+  @override
+  String get androidAutoCatSeries => 'Series';
+
+  @override
+  String get androidAutoCatAuthors => 'Authors';
 }

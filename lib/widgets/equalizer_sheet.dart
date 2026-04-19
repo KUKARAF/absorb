@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../services/equalizer_service.dart';
 
 /// Show the equalizer & audio enhancements bottom sheet.
@@ -234,15 +235,29 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
     }
   }
 
+  String _presetLabel(AppLocalizations l, String name) {
+    switch (name) {
+      case 'flat': return l.equalizerPresetFlat;
+      case 'voice boost': return l.equalizerPresetVoiceBoost;
+      case 'bass boost': return l.equalizerPresetBassBoost;
+      case 'treble boost': return l.equalizerPresetTrebleBoost;
+      case 'podcast': return l.equalizerPresetPodcast;
+      case 'audiobook': return l.equalizerPresetAudiobook;
+      case 'reduce noise': return l.equalizerPresetReduceNoise;
+      case 'loudness': return l.equalizerPresetLoudness;
+      default: return name[0].toUpperCase() + name.substring(1);
+    }
+  }
+
   /// Shown only in preview mode (per-book EQ on, viewing a non-playing book's
   /// settings). The sliders already reflect the correct book's EQ, but we
   /// still surface the fact that edits won't hit live playback right now.
-  Widget _buildScopeBanner(ColorScheme cs, TextTheme tt, Color accent) {
+  Widget _buildScopeBanner(ColorScheme cs, TextTheme tt, Color accent, AppLocalizations l) {
     if (!_previewMode) return const SizedBox.shrink();
 
     final message = widget.openedForItemTitle != null
-        ? 'Editing saved EQ for "${widget.openedForItemTitle}" - applies when it plays'
-        : 'Editing saved EQ for this book - applies when it plays';
+        ? l.equalizerEditingSavedNamed(widget.openedForItemTitle!)
+        : l.equalizerEditingSavedGeneric;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
@@ -269,6 +284,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final accent = widget.accent;
 
     return Container(
@@ -294,7 +310,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
               children: [
                 Icon(Icons.equalizer_rounded, size: 22, color: accent),
                 const SizedBox(width: 10),
-                Text('Audio Enhancements', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+                Text(l.audioEnhancements, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
                 const Spacer(),
                 // Master toggle
                 Transform.scale(
@@ -326,7 +342,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                     color: _eq.perItem ? accent : cs.onSurfaceVariant),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text('Per-book EQ',
+                    child: Text(l.equalizerPerBookEq,
                       style: tt.labelMedium?.copyWith(
                         color: _eq.perItem ? accent : cs.onSurface.withValues(alpha: 0.75),
                         fontWeight: FontWeight.w600)),
@@ -343,7 +359,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
               ),
             ),
           ),
-          _buildScopeBanner(cs, tt, accent),
+          _buildScopeBanner(cs, tt, accent, l),
           const SizedBox(height: 4),
           // Content
           Expanded(
@@ -353,7 +369,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
               children: [
                 const SizedBox(height: 8),
                 // ── Presets ──
-                Text('PRESETS', style: tt.labelSmall?.copyWith(
+                Text(l.presets, style: tt.labelSmall?.copyWith(
                   color: cs.onSurface.withValues(alpha: 0.3), letterSpacing: 1.5, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 10),
                 Wrap(
@@ -373,7 +389,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                           ),
                         ),
                         child: Text(
-                          name[0].toUpperCase() + name.substring(1),
+                          _presetLabel(l, name),
                           style: TextStyle(
                             color: _vEnabled
                                 ? (isActive ? accent : cs.onSurface.withValues(alpha: 0.7))
@@ -398,7 +414,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: accent.withValues(alpha: 0.5)),
                         ),
-                        child: Text('Custom', style: TextStyle(
+                        child: Text(l.custom, style: TextStyle(
                           color: accent, fontSize: 12, fontWeight: FontWeight.w700)),
                       ),
                     ),
@@ -406,7 +422,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                 const SizedBox(height: 20),
 
                 // ── EQ Bands ──
-                Text('EQUALIZER', style: tt.labelSmall?.copyWith(
+                Text(l.equalizer, style: tt.labelSmall?.copyWith(
                   color: cs.onSurface.withValues(alpha: 0.3), letterSpacing: 1.5, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -431,14 +447,14 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                 const SizedBox(height: 20),
 
                 // ── Audio Effects ──
-                Text('EFFECTS', style: tt.labelSmall?.copyWith(
+                Text(l.effects, style: tt.labelSmall?.copyWith(
                   color: cs.onSurface.withValues(alpha: 0.3), letterSpacing: 1.5, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 12),
 
                 // Bass Boost
                 _EffectRow(
                   icon: Icons.speaker_rounded,
-                  label: 'Bass Boost',
+                  label: l.bassBoost,
                   value: _vBass,
                   accent: accent,
                   enabled: _vEnabled,
@@ -450,7 +466,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                 if (Platform.isAndroid) ...[
                   _EffectRow(
                     icon: Icons.surround_sound_rounded,
-                    label: 'Surround',
+                    label: l.surround,
                     value: _vVirt,
                     accent: accent,
                     enabled: _vEnabled,
@@ -462,7 +478,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                 // Loudness
                 _EffectRow(
                   icon: Icons.volume_up_rounded,
-                  label: 'Loudness',
+                  label: l.loudness,
                   value: _vLoud,
                   accent: accent,
                   enabled: _vEnabled,
@@ -483,7 +499,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                         color: _vMono ? accent.withValues(alpha: 0.7) : cs.onSurface.withValues(alpha: 0.2)),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text('Mono Audio', style: TextStyle(
+                        child: Text(l.monoAudio, style: TextStyle(
                           color: _vMono ? cs.onSurface.withValues(alpha: 0.7) : cs.onSurface.withValues(alpha: 0.24),
                           fontSize: 12, fontWeight: FontWeight.w500)),
                       ),
@@ -507,7 +523,7 @@ class _EqualizerSheetContentState extends State<_EqualizerSheetContent> {
                     onPressed: _vEnabled ? () => _resetAll() : null,
                     icon: Icon(Icons.refresh_rounded, size: 18,
                       color: _vEnabled ? cs.onSurfaceVariant : cs.onSurface.withValues(alpha: 0.12)),
-                    label: Text('Reset All', style: TextStyle(
+                    label: Text(l.resetAll, style: TextStyle(
                       color: _vEnabled ? cs.onSurfaceVariant : cs.onSurface.withValues(alpha: 0.12),
                       fontSize: 13)),
                   ),

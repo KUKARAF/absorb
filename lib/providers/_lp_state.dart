@@ -251,6 +251,14 @@ mixin _StateMixin on ChangeNotifier {
       ));
   }
 
+  /// Look up [AppLocalizations] via the root navigator. Returns null if no
+  /// context is mounted (e.g. very early startup); callers should provide
+  /// English fallbacks.
+  AppLocalizations? _l() {
+    final ctx = rootNavigatorKey.currentContext;
+    return ctx != null ? AppLocalizations.of(ctx) : null;
+  }
+
   String? getCoverUrl(String? itemId, {int width = 400}) {
     if (itemId == null) return null;
 

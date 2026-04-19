@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'overlay_toast.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -123,6 +124,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.read<LibraryProvider>();
     final headers = lib.mediaHeaders;
 
@@ -130,7 +132,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(cs, tt, headers),
+          _buildHeader(cs, tt, headers, l),
           const Expanded(child: Center(child: CircularProgressIndicator())),
         ],
       );
@@ -138,13 +140,13 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
 
     final bottomPad = 24 + MediaQuery.of(context).viewPadding.bottom;
     final hasDesc = _description != null && _description!.isNotEmpty;
-    final sections = _buildSections();
+    final sections = _buildSections(l);
 
     // Header + description are always at the top
     final headerWidgets = <Widget>[
-      _buildHeader(cs, tt, headers),
-      if (hasDesc) _buildDescription(cs, tt),
-      if (_books.isNotEmpty) _buildViewModeBar(cs),
+      _buildHeader(cs, tt, headers, l),
+      if (hasDesc) _buildDescription(cs, tt, l),
+      if (_books.isNotEmpty) _buildViewModeBar(cs, l),
     ];
 
     if (_books.isEmpty) {
@@ -156,7 +158,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
           Center(
             child: Padding(
               padding: const EdgeInsets.only(top: 48),
-              child: Text('No books found',
+              child: Text(l.noBooksFound,
                   style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
             ),
           ),
@@ -165,12 +167,12 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
     }
 
     if (_layout == _AuthorLayout.list) {
-      return _buildListView(cs, tt, lib, sections, headerWidgets, bottomPad);
+      return _buildListView(cs, tt, lib, sections, headerWidgets, bottomPad, l);
     }
-    return _buildGridView(cs, tt, lib, sections, headerWidgets, bottomPad);
+    return _buildGridView(cs, tt, lib, sections, headerWidgets, bottomPad, l);
   }
 
-  List<_BookSection> _buildSections() {
+  List<_BookSection> _buildSections(AppLocalizations l) {
     final seriesMap = <String, _BookSection>{};
     final standalones = <Map<String, dynamic>>[];
 
@@ -237,7 +239,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
 
     final allSections = <_BookSection>[...seriesSections];
     if (standalones.isNotEmpty) {
-      allSections.add(_BookSection(label: 'Standalone', books: standalones));
+      allSections.add(_BookSection(label: l.standalone, books: standalones, isStandalone: true));
     }
     return allSections;
   }
@@ -269,7 +271,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
     return double.maxFinite;
   }
 
-  Widget _buildViewModeBar(ColorScheme cs) {
+  Widget _buildViewModeBar(ColorScheme cs, AppLocalizations l) {
     Widget layoutBtn(IconData icon, _AuthorLayout mode, String tooltip) {
       final active = _layout == mode;
       return IconButton(
@@ -289,7 +291,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
           IconButton(
             icon: Icon(Icons.collections_bookmark_rounded, size: 20,
               color: _groupBySeries ? cs.primary : cs.onSurfaceVariant),
-            tooltip: 'Group by series',
+            tooltip: l.authorBooksGroupBySeries,
             visualDensity: VisualDensity.compact,
             onPressed: () {
               setState(() => _groupBySeries = !_groupBySeries);
@@ -297,8 +299,8 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
             },
           ),
           const Spacer(),
-          layoutBtn(Icons.view_list_rounded, _AuthorLayout.list, 'List'),
-          layoutBtn(Icons.apps_rounded, _AuthorLayout.grid, 'Grid'),
+          layoutBtn(Icons.view_list_rounded, _AuthorLayout.list, l.authorBooksList),
+          layoutBtn(Icons.apps_rounded, _AuthorLayout.grid, l.authorBooksGrid),
         ],
       ),
     );
@@ -308,7 +310,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
   List<dynamic> _buildCollapsedItems(List<_BookSection> sections) {
     final items = <dynamic>[];
     for (final section in sections) {
-      if (section.label == 'Standalone') {
+      if (section.isStandalone) {
         items.addAll(section.books);
       } else {
         items.add(section); // collapsed series
@@ -318,23 +320,23 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
   }
 
   Widget _buildListView(ColorScheme cs, TextTheme tt, LibraryProvider lib,
-      List<_BookSection> sections, List<Widget> headerWidgets, double bottomPad) {
+      List<_BookSection> sections, List<Widget> headerWidgets, double bottomPad, AppLocalizations l) {
     final items = <Widget>[...headerWidgets];
     if (_groupBySeries) {
       // Collapsed: series as tappable rows, standalones as book tiles
       final collapsed = _buildCollapsedItems(sections);
       for (final item in collapsed) {
         if (item is _BookSection) {
-          items.add(_collapsedSeriesTile(cs, tt, lib, item));
+          items.add(_collapsedSeriesTile(cs, tt, lib, item, l));
         } else if (item is Map<String, dynamic>) {
-          items.add(_dismissibleBookTile(lib, cs, item, 'Standalone'));
+          items.add(_dismissibleBookTile(lib, cs, item, l.standalone, l));
         }
       }
     } else {
       for (final section in sections) {
         items.add(_sectionDivider(cs, tt, section.label));
         for (final book in section.books) {
-          items.add(_dismissibleBookTile(lib, cs, book, section.label));
+          items.add(_dismissibleBookTile(lib, cs, book, section.label, l));
         }
       }
     }
@@ -347,7 +349,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
   }
 
   Widget _buildGridView(ColorScheme cs, TextTheme tt, LibraryProvider lib,
-      List<_BookSection> sections, List<Widget> headerWidgets, double bottomPad) {
+      List<_BookSection> sections, List<Widget> headerWidgets, double bottomPad, AppLocalizations l) {
     if (_groupBySeries) {
       // Collapsed: mix series tiles and standalone book tiles in a grid
       final collapsed = _buildCollapsedItems(sections);
@@ -400,7 +402,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
     );
   }
 
-  Widget _collapsedSeriesTile(ColorScheme cs, TextTheme tt, LibraryProvider lib, _BookSection section) {
+  Widget _collapsedSeriesTile(ColorScheme cs, TextTheme tt, LibraryProvider lib, _BookSection section, AppLocalizations l) {
     final bookCount = section.books.length;
     final headers = lib.mediaHeaders;
     final coverUrls = section.books.take(3).map((b) {
@@ -451,7 +453,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
                 children: [
                   Text(section.label, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                     maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text('$bookCount ${bookCount == 1 ? 'book' : 'books'}',
+                  Text(l.authorBooksBookCount(bookCount),
                     style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                 ],
               )),
@@ -498,9 +500,9 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
     );
   }
 
-  Widget _dismissibleBookTile(LibraryProvider lib, ColorScheme cs, Map<String, dynamic> book, String sectionLabel) {
+  Widget _dismissibleBookTile(LibraryProvider lib, ColorScheme cs, Map<String, dynamic> book, String sectionLabel, AppLocalizations l) {
     final bookId = book['id'] as String? ?? '';
-    final bookTitle = (book['media'] as Map<String, dynamic>?)?['metadata']?['title'] as String? ?? 'Unknown';
+    final bookTitle = (book['media'] as Map<String, dynamic>?)?['metadata']?['title'] as String? ?? l.unknown;
     final isOnAbsorbing = lib.isOnAbsorbingList(bookId);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -512,7 +514,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
           lib.absorbingItemCache[bookId] = Map<String, dynamic>.from(book);
           HapticFeedback.mediumImpact();
           if (context.mounted) {
-            showOverlayToast(context, 'Added "$bookTitle" to Absorbing', icon: Icons.add_circle_outline_rounded);
+            showOverlayToast(context, l.sectionDetailAddedToAbsorbing(bookTitle), icon: Icons.add_circle_outline_rounded);
           }
           return false;
         },
@@ -536,7 +538,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
     );
   }
 
-  Widget _buildHeader(ColorScheme cs, TextTheme tt, Map<String, String> headers) {
+  Widget _buildHeader(ColorScheme cs, TextTheme tt, Map<String, String> headers, AppLocalizations l) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
       child: Row(
@@ -572,7 +574,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
-                      '${_books.length} ${_books.length == 1 ? 'book' : 'books'}',
+                      l.authorBooksBookCount(_books.length),
                       style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                     ),
                   ),
@@ -584,7 +586,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
     );
   }
 
-  Widget _buildDescription(ColorScheme cs, TextTheme tt) {
+  Widget _buildDescription(ColorScheme cs, TextTheme tt, AppLocalizations l) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
       child: GestureDetector(
@@ -603,7 +605,7 @@ class _AuthorBooksSheetState extends State<AuthorBooksSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              _descExpanded ? 'Show less' : 'Read more',
+              _descExpanded ? l.showLess : l.readMore,
               style: tt.labelSmall?.copyWith(
                 color: cs.primary,
                 fontWeight: FontWeight.w500,
@@ -627,5 +629,6 @@ class _BookSection {
   final String label;
   final String? seriesId;
   final List<Map<String, dynamic>> books;
-  _BookSection({required this.label, this.seriesId, required this.books});
+  final bool isStandalone;
+  _BookSection({required this.label, this.seriesId, required this.books, this.isStandalone = false});
 }

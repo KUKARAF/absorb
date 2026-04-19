@@ -15,7 +15,8 @@ import '../services/chromecast_service.dart';
 import '../services/bookmark_service.dart';
 import '../services/session_cache.dart';
 import '../services/socket_service.dart';
-import '../main.dart' show scaffoldMessengerKey;
+import '../l10n/app_localizations.dart';
+import '../main.dart' show scaffoldMessengerKey, rootNavigatorKey;
 
 part '_lp_state.dart';
 part '_lp_core.dart';

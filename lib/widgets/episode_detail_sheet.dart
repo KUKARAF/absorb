@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
@@ -58,7 +59,11 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
     return meta['title'] as String? ?? '';
   }
 
-  String get _episodeTitle => widget.episode['title'] as String? ?? 'Episode';
+  String get _episodeTitle {
+    final t = widget.episode['title'] as String?;
+    if (t != null && t.isNotEmpty) return t;
+    return mounted ? AppLocalizations.of(context)!.episodeDetailEpisodeFallback : 'Episode';
+  }
   String get _episodeId => widget.episode['id'] as String? ?? '';
   double get _duration {
     final d = (widget.episode['duration'] as num?)?.toDouble() ?? 0;
@@ -141,17 +146,18 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
     final isFinished = progressData?['isFinished'] == true;
     final currentTime = (progressData?['currentTime'] as num?)?.toDouble() ?? 0;
 
+    final l = AppLocalizations.of(context)!;
     try {
       if (isFinished) {
         // Confirm before un-finishing
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Mark as Not Finished?'),
-            content: const Text('This will clear the finished status but keep your current position.'),
+            title: Text(l.markAsNotFinishedQuestion),
+            content: Text(l.markAsNotFinishedContent),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Unmark')),
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.unmark)),
             ],
           ),
         );
@@ -166,7 +172,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
         await lib.refresh();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('Marked as not finished'),
+            content: Text(l.episodeDetailMarkedNotFinished),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -177,11 +183,11 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Mark as Fully Absorbed?'),
-            content: const Text('This will set your progress to 100% for this episode.'),
+            title: Text(l.markAsFullyAbsorbedQuestion),
+            content: Text(l.episodeDetailMarkAbsorbedContent),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Fully Absorb')),
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.fullyAbsorbAction)),
             ],
           ),
         );
@@ -196,7 +202,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
         lib.markFinishedLocally(key, skipAutoAdvance: true);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('Marked as finished — nice!'),
+            content: Text(l.episodeDetailMarkedFinishedNice),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -205,30 +211,31 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Failed to update — check your connection')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.failedToUpdateCheckConnection)));
       }
     }
   }
 
   void _confirmDeleteDownload(BuildContext context, String dlKey) {
+    final l = AppLocalizations.of(context)!;
     showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Remove download?'),
-      content: const Text('This will be removed from your device.'),
+      title: Text(l.removeDownloadQuestion),
+      content: Text(l.removeDownloadContent),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
         TextButton(onPressed: () {
           DownloadService().deleteDownload(dlKey);
           Navigator.pop(ctx);
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
-            ..showSnackBar(const SnackBar(
-              content: Text('Download removed'),
-              duration: Duration(seconds: 2),
+            ..showSnackBar(SnackBar(
+              content: Text(l.downloadRemoved),
+              duration: const Duration(seconds: 2),
               behavior: SnackBarBehavior.floating,
             ));
         },
-          child: const Text('Remove', style: TextStyle(color: Colors.redAccent))),
+          child: Text(l.remove, style: const TextStyle(color: Colors.redAccent))),
       ],
     ));
   }
@@ -242,6 +249,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
     final coverUrl = _coverUrl;
 
@@ -255,10 +263,10 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
     if (_publishedAt > 0) {
       final date = DateTime.fromMillisecondsSinceEpoch(_publishedAt);
       final diff = DateTime.now().difference(date);
-      if (diff.inDays == 0) dateLabel = 'Today';
-      else if (diff.inDays == 1) dateLabel = 'Yesterday';
-      else if (diff.inDays < 7) dateLabel = '${diff.inDays}d ago';
-      else if (diff.inDays < 30) dateLabel = '${(diff.inDays / 7).floor()}w ago';
+      if (diff.inDays == 0) dateLabel = l.episodeDetailToday;
+      else if (diff.inDays == 1) dateLabel = l.episodeDetailYesterday;
+      else if (diff.inDays < 7) dateLabel = l.episodeDetailDaysAgo(diff.inDays);
+      else if (diff.inDays < 30) dateLabel = l.episodeDetailWeeksAgo((diff.inDays / 7).floor());
       else dateLabel = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     }
 
@@ -266,7 +274,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
     if (_duration > 0) {
       final h = (_duration / 3600).floor();
       final m = ((_duration % 3600) / 60).floor();
-      durationLabel = h > 0 ? '${h}h ${m}m' : '${m}m';
+      durationLabel = h > 0 ? l.episodeDetailDurationHm(h, m) : l.episodeDetailDurationM(m);
     }
 
     return Container(
@@ -331,7 +339,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                     isFinished ? cs.primary.withValues(alpha: 0.4) : cs.primary),
                 )),
               const SizedBox(height: 4),
-              Text('${(progress * 100).toStringAsFixed(1)}% complete', textAlign: TextAlign.center,
+              Text(l.percentComplete((progress * 100).toStringAsFixed(1)), textAlign: TextAlign.center,
                 style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
               const SizedBox(height: 12),
             ],
@@ -344,7 +352,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                 size: 24,
               ),
               label: Text(
-                progress > 0 && !isFinished ? 'Resume' : 'Play Episode',
+                progress > 0 && !isFinished ? l.episodeDetailResume : l.episodeDetailPlayEpisode,
                 style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onPrimary),
               ),
               style: FilledButton.styleFrom(
@@ -368,7 +376,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                   final Color color;
                   if (downloaded) {
                     icon = Icons.download_done_rounded;
-                    label = 'Saved';
+                    label = l.saved;
                     color = (Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent : Colors.green.shade700).withValues(alpha: 0.7);
                   } else if (downloading) {
                     icon = Icons.downloading_rounded;
@@ -376,7 +384,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                     color = cs.primary;
                   } else {
                     icon = Icons.download_outlined;
-                    label = 'Download';
+                    label = l.download;
                     color = cs.onSurfaceVariant;
                   }
 
@@ -433,7 +441,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      isFinished ? 'Fully Absorbed' : 'Fully Absorb',
+                      isFinished ? l.fullyAbsorbed : l.fullyAbsorbAction,
                       style: TextStyle(
                         color: isFinished ? Colors.green : cs.onSurfaceVariant,
                         fontSize: 12, fontWeight: FontWeight.w500,
@@ -462,8 +470,8 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
             Wrap(spacing: 8, runSpacing: 8, children: [
               if (dateLabel.isNotEmpty) _chip(Icons.calendar_today_rounded, dateLabel),
               if (durationLabel.isNotEmpty) _chip(Icons.schedule_rounded, durationLabel),
-              if (_episodeNumber != null) _chip(Icons.tag_rounded, 'Episode $_episodeNumber'),
-              if (_season != null) _chip(Icons.layers_rounded, 'Season $_season'),
+              if (_episodeNumber != null) _chip(Icons.tag_rounded, l.episodeDetailEpisodeNumber(_episodeNumber!)),
+              if (_season != null) _chip(Icons.layers_rounded, l.episodeDetailSeasonNumber(_season!)),
             ]),
 
             // All Episodes button (series-style)
@@ -482,7 +490,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                 child: Row(children: [
                   Icon(Icons.podcasts_rounded, size: 16, color: cs.primary.withValues(alpha: 0.7)),
                   const SizedBox(width: 8),
-                  Expanded(child: Text('All Episodes',
+                  Expanded(child: Text(l.allEpisodes,
                     style: tt.bodySmall?.copyWith(color: cs.primary.withValues(alpha: 0.9), fontWeight: FontWeight.w500))),
                   Icon(Icons.chevron_right_rounded, size: 18, color: cs.primary.withValues(alpha: 0.5)),
                 ]),
@@ -493,7 +501,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
             if (_chapters.isNotEmpty) ...[const SizedBox(height: 16),
               GestureDetector(onTap: () => setState(() => _chaptersExpanded = !_chaptersExpanded),
                 child: Row(children: [
-                  Text('Chapters (${_chapters.length})', style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
+                  Text(l.chaptersCount(_chapters.length), style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
                   const Spacer(), Icon(_chaptersExpanded ? Icons.expand_less : Icons.expand_more, color: cs.onSurface.withValues(alpha: 0.3), size: 20)])),
               if (_chaptersExpanded) ...[const SizedBox(height: 8),
                 ..._chapters.asMap().entries.map((e) {
@@ -501,7 +509,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                   return Padding(padding: const EdgeInsets.symmetric(vertical: 3),
                     child: Row(children: [
                       SizedBox(width: 28, child: Text('${e.key + 1}', style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.3)))),
-                      Expanded(child: Text(ch['title'] as String? ?? 'Chapter ${e.key + 1}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.6)))),
+                      Expanded(child: Text(ch['title'] as String? ?? l.chapterNumber(e.key + 1), maxLines: 1, overflow: TextOverflow.ellipsis, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.6)))),
                       Text(_fmtDur(((ch['end'] as num?)?.toDouble() ?? 0) - ((ch['start'] as num?)?.toDouble() ?? 0)), style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.3))),
                     ]));
                 })]],
@@ -509,7 +517,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
             // Description
             if (_rawDescription.isNotEmpty) ...[
               const SizedBox(height: 16),
-              Text('About This Episode', style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
+              Text(l.aboutThisEpisode, style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
               HtmlDescription(
                 html: _rawDescription,
@@ -526,6 +534,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
 
   void _showMoreSheet(BuildContext context, LibraryProvider lib, String dlKey, double progress, bool isFinished) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).bottomSheetTheme.backgroundColor,
@@ -541,7 +550,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                 decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
               _moreItem(cs, lib.isOnAbsorbingList(dlKey)
                   ? Icons.remove_circle_outline_rounded : Icons.add_circle_outline_rounded,
-                lib.isOnAbsorbingList(dlKey) ? 'Remove from Absorbing' : 'Add to Absorbing',
+                lib.isOnAbsorbingList(dlKey) ? l.removeFromAbsorbing : l.addToAbsorbing,
                 onTap: () async {
                   Navigator.pop(ctx);
                   if (lib.isOnAbsorbingList(dlKey)) {
@@ -549,7 +558,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                         duration: const Duration(seconds: 3),
-                        content: const Text('Removed from Absorbing'),
+                        content: Text(l.removedFromAbsorbing),
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
                     }
@@ -562,14 +571,14 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                         duration: const Duration(seconds: 3),
-                        content: const Text('Added to Absorbing'),
+                        content: Text(l.addedToAbsorbing),
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
                     }
                   }
                 }),
               if (!lib.isOffline)
-                _moreItem(cs, Icons.playlist_add_rounded, 'Add to Playlist',
+                _moreItem(cs, Icons.playlist_add_rounded, l.addToPlaylist,
                   onTap: () {
                     Navigator.pop(ctx);
                     PlaylistPickerSheet.show(
@@ -579,7 +588,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
                     );
                   }),
               if (progress > 0 || isFinished)
-                _moreItem(cs, Icons.restart_alt_rounded, 'Reset Progress',
+                _moreItem(cs, Icons.restart_alt_rounded, l.resetProgress,
                   onTap: () { Navigator.pop(ctx); _resetProgress(context); }),
             ]),
           ),
@@ -607,16 +616,17 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
   }
 
   Future<void> _resetProgress(BuildContext context) async {
+    final l = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Reset Progress?'),
-        content: const Text('This will erase all progress for this episode and set it back to the beginning. This can\'t be undone.'),
+        title: Text(l.resetProgressQuestion),
+        content: Text(l.episodeDetailResetProgressContent),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
           FilledButton(onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
-            child: const Text('Reset')),
+            child: Text(l.reset)),
         ],
       ),
     );
@@ -645,7 +655,7 @@ class _EpisodeDetailSheetState extends State<EpisodeDetailSheet> {
       context.read<LibraryProvider>().resetProgressFor(compoundKey);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         duration: const Duration(seconds: 3),
-        content: Text(ok ? 'Progress reset — fresh start!' : 'Reset may not have synced — check your server'),
+        content: Text(ok ? l.progressResetFreshStart : l.resetMayNotHaveSynced),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
     }

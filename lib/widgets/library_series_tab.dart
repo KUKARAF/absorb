@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../screens/library_screen.dart';
 import 'library_grid_tiles.dart';
 
@@ -26,6 +27,7 @@ class LibrarySeriesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     if (seriesItems.isEmpty && isLoadingSeriesPage) {
       return const Center(child: CircularProgressIndicator());
@@ -44,7 +46,7 @@ class LibrarySeriesTab extends StatelessWidget {
                     Icon(Icons.collections_bookmark_outlined,
                         size: 56, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
                     const SizedBox(height: 12),
-                    Text('No series found',
+                    Text(l.libraryNoSeriesFound,
                         style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
                   ],
                 ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/library_provider.dart';
 import '../services/download_service.dart';
 import 'episode_detail_sheet.dart';
@@ -30,10 +31,11 @@ class _EpisodeRowState extends State<EpisodeRow> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
     final ep = widget.episode;
 
-    final title = ep['title'] as String? ?? 'Episode';
+    final title = ep['title'] as String? ?? l.episodeRowEpisode;
     final episodeId = ep['id'] as String? ?? '';
     final duration = (ep['duration'] as num?)?.toDouble() ?? 0;
     final publishedAt = (ep['publishedAt'] as num?)?.toInt() ?? 0;
@@ -55,13 +57,13 @@ class _EpisodeRowState extends State<EpisodeRow> {
       final now = DateTime.now();
       final diff = now.difference(date);
       if (diff.inDays == 0) {
-        dateLabel = 'Today';
+        dateLabel = l.episodeRowToday;
       } else if (diff.inDays == 1) {
-        dateLabel = 'Yesterday';
+        dateLabel = l.episodeRowYesterday;
       } else if (diff.inDays < 7) {
-        dateLabel = '${diff.inDays}d ago';
+        dateLabel = l.episodeRowDaysAgo(diff.inDays);
       } else if (diff.inDays < 30) {
-        dateLabel = '${(diff.inDays / 7).floor()}w ago';
+        dateLabel = l.episodeRowWeeksAgo((diff.inDays / 7).floor());
       } else {
         dateLabel = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       }
@@ -73,9 +75,9 @@ class _EpisodeRowState extends State<EpisodeRow> {
       final h = (duration / 3600).floor();
       final m = ((duration % 3600) / 60).floor();
       if (h > 0) {
-        durationLabel = '${h}h ${m}m';
+        durationLabel = l.episodeRowDurationHm(h, m);
       } else {
-        durationLabel = '${m}m';
+        durationLabel = l.episodeRowDurationM(m);
       }
     }
 
@@ -130,8 +132,8 @@ class _EpisodeRowState extends State<EpisodeRow> {
                         const SizedBox(height: 2),
                         Text(
                           [
-                            if (season != null) 'S$season',
-                            if (episodeNumber != null) 'E$episodeNumber',
+                            if (season != null) l.episodeRowSeasonShort(season),
+                            if (episodeNumber != null) l.episodeRowEpisodeShort(episodeNumber),
                           ].join(' '),
                           style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
                         ),
@@ -252,9 +254,10 @@ class SelectableEpisodeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
 
-    final title = episode['title'] as String? ?? 'Episode';
+    final title = episode['title'] as String? ?? l.episodeRowEpisode;
     final episodeId = episode['id'] as String? ?? '';
     final duration = (episode['duration'] as num?)?.toDouble() ?? 0;
 
@@ -265,7 +268,7 @@ class SelectableEpisodeRow extends StatelessWidget {
     if (duration > 0) {
       final h = (duration / 3600).floor();
       final m = ((duration % 3600) / 60).floor();
-      durationLabel = h > 0 ? '${h}h ${m}m' : '${m}m';
+      durationLabel = h > 0 ? l.episodeRowDurationHm(h, m) : l.episodeRowDurationM(m);
     }
 
     return Row(children: [

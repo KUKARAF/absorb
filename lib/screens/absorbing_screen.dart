@@ -10,6 +10,7 @@ import '../services/scoped_prefs.dart';
 import '../widgets/absorb_page_header.dart';
 import '../main.dart' show oledNotifier;
 import '../widgets/absorbing_card.dart';
+import '../l10n/app_localizations.dart';
 
 class AbsorbingScreen extends StatefulWidget {
   const AbsorbingScreen({super.key});
@@ -452,6 +453,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
     _loadQueueMode(); // refresh for current library type
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final lowerFade = Color.lerp(cs.surface, scaffoldBg, 0.55) ?? scaffoldBg;
     final lib = context.watch<LibraryProvider>();
@@ -518,7 +520,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
           children: [
             // ── Header ──
             AbsorbPageHeader(
-              title: 'Absorbing',
+              title: l.absorbingTitle,
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
               trailing: GestureDetector(
                 onTap: () {
@@ -563,7 +565,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                             else
                               Icon(Icons.stop_rounded, size: 18, color: muted),
                             const SizedBox(width: 4),
-                            Text('Stop', style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500)),
+                            Text(l.absorbingStop, style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
@@ -608,8 +610,8 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                           const SizedBox(width: 4),
                           Text(
                             _queueMode == 'auto_next'
-                                ? (_mergeLibraries ? 'Auto' : lib.isPodcastLibrary ? 'Show' : 'Series')
-                                : 'Manual',
+                                ? (_mergeLibraries ? l.queueModeAuto : lib.isPodcastLibrary ? l.queueModeShowLabel : l.queueModeSeriesLabel)
+                                : l.queueModeManual,
                             style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cs.primary),
                           ),
                         ],
@@ -631,7 +633,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
               child: showBlockingLoader
                   ? Center(child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurface.withValues(alpha: 0.24)))
                   : books.isEmpty
-                      ? _emptyState(cs, tt, effectiveOffline)
+                      ? _emptyState(cs, tt, effectiveOffline, l)
                       : books.length == 1
                           ? LayoutBuilder(
                               builder: (context, constraints) {
@@ -701,7 +703,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
     );
   }
 
-  Widget _emptyState(ColorScheme cs, TextTheme tt, bool isOffline) {
+  Widget _emptyState(ColorScheme cs, TextTheme tt, bool isOffline, AppLocalizations l) {
     final lib = context.read<LibraryProvider>();
     final isPod = lib.isPodcastLibrary;
     return Center(
@@ -713,13 +715,13 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
             size: 64, color: cs.onSurface.withValues(alpha: 0.15)),
           const SizedBox(height: 16),
           Text(isOffline
-              ? (isPod ? 'No downloaded episodes' : 'No downloaded books')
-              : (isPod ? 'Nothing playing yet' : 'Nothing absorbing yet'),
+              ? (isPod ? l.absorbingNoDownloadedEpisodes : l.absorbingNoDownloadedBooks)
+              : (isPod ? l.absorbingNothingPlayingYet : l.absorbingNothingAbsorbingYet),
             style: tt.titleMedium?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(height: 8),
           Text(isOffline
-              ? (isPod ? 'Download episodes to listen offline' : 'Download books to listen offline')
-              : (isPod ? 'Start an episode from the Shows tab' : 'Start a book from the Library tab'),
+              ? (isPod ? l.absorbingDownloadEpisodesToListen : l.absorbingDownloadBooksToListen)
+              : (isPod ? l.absorbingStartEpisodeFromShows : l.absorbingStartBookFromLibrary),
             style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24))),
         ],
       ),
@@ -870,6 +872,7 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final bottomInset = MediaQuery.of(context).viewPadding.bottom;
 
     return Container(
@@ -891,14 +894,14 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
           child: Row(children: [
-            Expanded(child: Text('Manage Queue',
+            Expanded(child: Text(l.absorbingManageQueue,
               style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600))),
             TextButton(
               onPressed: () {
                 widget.lib.reorderAbsorbing(_order);
                 Navigator.pop(context);
               },
-              child: const Text('Done'),
+              child: Text(l.absorbingDone),
             ),
           ]),
         ),
@@ -907,10 +910,10 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: SegmentedButton<String>(
             segments: [
-              const ButtonSegment(value: 'off', icon: Icon(Icons.stop_rounded, size: 16), label: Text('Off')),
-              const ButtonSegment(value: 'manual', icon: Icon(Icons.queue_music_rounded, size: 16), label: Text('Manual')),
+              ButtonSegment(value: 'off', icon: const Icon(Icons.stop_rounded, size: 16), label: Text(l.queueModeOff)),
+              ButtonSegment(value: 'manual', icon: const Icon(Icons.queue_music_rounded, size: 16), label: Text(l.queueModeManual)),
               ButtonSegment(value: 'auto_next', icon: const Icon(Icons.skip_next_rounded, size: 16),
-                label: Text(widget.isMerged ? 'Auto' : widget.isPodcast ? 'Show' : 'Series')),
+                label: Text(widget.isMerged ? l.queueModeAuto : widget.isPodcast ? l.queueModeShowLabel : l.queueModeSeriesLabel)),
             ],
             selected: {_queueMode},
             onSelectionChanged: (v) {
@@ -955,7 +958,7 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
 
               final media = book['media'] as Map<String, dynamic>? ?? {};
               final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-              final title = metadata['title'] as String? ?? 'Unknown';
+              final title = metadata['title'] as String? ?? l.unknown;
               final author = metadata['authorName'] as String? ?? '';
               final re = book['recentEpisode'] as Map<String, dynamic>?;
               final epTitle = re?['title'] as String?;

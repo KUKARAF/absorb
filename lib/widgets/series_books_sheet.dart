@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'overlay_toast.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -405,6 +406,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
 
   Widget _buildGroupedList(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
     final parsed = _buildSubSeriesGroups();
+    final l = AppLocalizations.of(context)!;
 
     return ListView(
       controller: widget.scrollController,
@@ -451,7 +453,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(seriesName, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
                           const SizedBox(height: 2),
-                          Text('$numBooks book${numBooks != 1 ? 's' : ''}',
+                          Text(l.seriesBooksBookCount(numBooks),
                             style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 11)),
                         ])),
                       ]),
@@ -596,17 +598,15 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
   }
 
   Future<void> _findOnAudible() async {
+    final l = AppLocalizations.of(context)!;
     final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Find Missing Books'),
-        content: const Text(
-          'This searches Audible to find books in this series that may be missing from your library.\n\n'
-          'Books are matched by ASIN first (depending on whether your server has ASINs for its books), '
-          'then falls back to title matching. Results may not be perfectly accurate.'),
+        title: Text(l.seriesBooksFindMissingTitle),
+        content: Text(l.seriesBooksFindMissingContent),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Search')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.search)),
         ],
       ),
     );
@@ -679,7 +679,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
     if (!mounted) return;
 
     if (seriesAsin == null) {
-      showOverlayToast(context, 'Could not find this series on Audible', icon: Icons.search_off_rounded);
+      showOverlayToast(context, l.seriesBooksCouldNotFindOnAudible, icon: Icons.search_off_rounded);
       return;
     }
 
@@ -719,6 +719,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
   }
 
   void _showSeriesMoreSheet(ColorScheme cs, bool allDownloaded, int downloaded, bool allDone, bool hasSeriesId) {
+    final l = AppLocalizations.of(context)!;
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).bottomSheetTheme.backgroundColor,
@@ -734,22 +735,22 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                 decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
               if (!allDownloaded)
                 _moreItem(cs, Icons.download_rounded,
-                  downloaded > 0 ? 'Download Remaining (${(_totalBooks > 0 ? _totalBooks : _books.length) - downloaded})' : 'Download All',
+                  downloaded > 0 ? l.downloadRemainingCount((_totalBooks > 0 ? _totalBooks : _books.length) - downloaded) : l.downloadAll,
                   onTap: () { Navigator.pop(ctx); _downloadAll(); }),
               _moreItem(cs,
                 allDone ? Icons.remove_done_rounded : Icons.done_all_rounded,
-                allDone ? 'Mark All Not Finished' : 'Mark All Finished',
+                allDone ? l.markAllNotFinished : l.markAllFinished,
                 onTap: () async {
                   Navigator.pop(ctx);
                   if (allDone) {
                     final confirmed = await showDialog<bool>(
                       context: context,
                       builder: (dlg) => AlertDialog(
-                        title: const Text('Mark All Not Finished?'),
-                        content: Text('This will clear the finished status for all ${_books.length} books in this series.'),
+                        title: Text(l.markAllNotFinishedQuestion),
+                        content: Text(l.seriesBooksMarkAllNotFinishedContent(_books.length)),
                         actions: [
-                          TextButton(onPressed: () => Navigator.pop(dlg, false), child: const Text('Cancel')),
-                          FilledButton(onPressed: () => Navigator.pop(dlg, true), child: const Text('Unmark All')),
+                          TextButton(onPressed: () => Navigator.pop(dlg, false), child: Text(l.cancel)),
+                          FilledButton(onPressed: () => Navigator.pop(dlg, true), child: Text(l.seriesBooksUnmarkAll)),
                         ],
                       ),
                     );
@@ -758,11 +759,11 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                     final confirmed = await showDialog<bool>(
                       context: context,
                       builder: (dlg) => AlertDialog(
-                        title: const Text('Fully Absorb Series?'),
-                        content: Text('This will mark all ${_books.length} books in this series as finished.'),
+                        title: Text(l.fullyAbsorbSeries),
+                        content: Text(l.seriesBooksFullyAbsorbContent(_books.length)),
                         actions: [
-                          TextButton(onPressed: () => Navigator.pop(dlg, false), child: const Text('Cancel')),
-                          FilledButton(onPressed: () => Navigator.pop(dlg, true), child: const Text('Fully Absorb')),
+                          TextButton(onPressed: () => Navigator.pop(dlg, false), child: Text(l.cancel)),
+                          FilledButton(onPressed: () => Navigator.pop(dlg, true), child: Text(l.fullyAbsorbAction)),
                         ],
                       ),
                     );
@@ -772,14 +773,14 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
               if (hasSeriesId)
                 _moreItem(cs,
                   _autoDownloadEnabled ? Icons.downloading_rounded : Icons.download_outlined,
-                  _autoDownloadEnabled ? 'Turn Auto-Download Off' : 'Turn Auto-Download On',
+                  _autoDownloadEnabled ? l.turnAutoDownloadOff : l.turnAutoDownloadOn,
                   onTap: () async {
                     Navigator.pop(ctx);
                     final lib = context.read<LibraryProvider>();
                     await lib.toggleRollingDownload(widget.seriesId!);
                     setState(() => _autoDownloadEnabled = lib.isRollingDownloadEnabled(widget.seriesId!));
                   }),
-              _moreItem(cs, Icons.search_rounded, 'Find Missing Books',
+              _moreItem(cs, Icons.search_rounded, l.seriesBooksFindMissingTitle,
                 onTap: () { Navigator.pop(ctx); _findOnAudible(); }),
             ]),
           ),
@@ -808,14 +809,15 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
     // Offer to enable auto-download if not already on
     final seriesId = widget.seriesId;
     if (seriesId != null && seriesId.isNotEmpty && !_autoDownloadEnabled) {
+      final l = AppLocalizations.of(context)!;
       final enable = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Auto-Download This Series?'),
-          content: const Text('Automatically download the next books as you listen.'),
+          title: Text(l.autoDownloadThisSeries),
+          content: Text(l.autoDownloadSeriesContent),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No Thanks')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enable')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.noThanks)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.enable)),
           ],
         ),
       );
@@ -828,6 +830,8 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
 
     setState(() => _isDownloadingAll = true);
 
+    final l2 = mounted ? AppLocalizations.of(context)! : null;
+    final unknownTitle = l2?.unknown ?? 'Unknown';
     for (final book in _books) {
       if (!mounted) break;
       final bookId = book['id'] as String? ?? '';
@@ -835,7 +839,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
 
       final media = book['media'] as Map<String, dynamic>? ?? {};
       final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-      final title = metadata['title'] as String? ?? 'Unknown';
+      final title = metadata['title'] as String? ?? unknownTitle;
       final author = metadata['authorName'] as String? ?? '';
 
       await DownloadService().downloadItem(
@@ -855,6 +859,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
 
     // Calculate time-weighted series progress across all books
@@ -906,8 +911,10 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                 text: () {
                   final displayDuration = _seriesDuration > totalDuration ? _seriesDuration : totalDuration;
                   final bookCount = _totalBooks > 0 ? _totalBooks : _books.length;
-                  return '$bookCount book${bookCount != 1 ? 's' : ''} in this series'
-                    '${displayDuration > 0 ? ' · ${_formatDuration(displayDuration)}' : ''}';
+                  final base = l.booksInSeriesCount(bookCount);
+                  return displayDuration > 0
+                      ? '$base · ${_formatDuration(displayDuration)}'
+                      : base;
                 }(),
               ),
               if (_autoDownloadEnabled) ...[
@@ -940,7 +947,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  '$seriesPercent% complete',
+                  l.percentComplete(seriesPercent.toString()),
                   style: tt.labelSmall?.copyWith(
                     color: cs.primary,
                     fontWeight: FontWeight.w600,
@@ -958,7 +965,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                     icon: Icon(Icons.collections_bookmark_rounded, size: 20,
                       color: _collapseSeries ? cs.primary : cs.onSurfaceVariant),
                     visualDensity: VisualDensity.compact,
-                    tooltip: _collapseSeries ? 'Show all books' : 'Group by sub-series',
+                    tooltip: _collapseSeries ? l.seriesBooksShowAllBooks : l.seriesBooksGroupBySubSeries,
                     onPressed: () {
                       setState(() {
                         _collapseSeries = !_collapseSeries;
@@ -992,7 +999,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
         else if (_books.isEmpty)
           Expanded(
             child: Center(
-              child: Text('No books found',
+              child: Text(l.noBooksFound,
                   style: tt.bodyLarge
                       ?.copyWith(color: cs.onSurfaceVariant)),
             ),
@@ -1002,7 +1009,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
             child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
               const CircularProgressIndicator(strokeWidth: 2),
               const SizedBox(height: 12),
-              Text('Loading sub-series...', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4))),
+              Text(l.seriesBooksLoadingSubSeries, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4))),
             ])),
           )
         else if (_collapseSeries && _gridView)
@@ -1051,10 +1058,11 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
   }
 
   Widget _buildBookCard(ColorScheme cs, TextTheme tt, LibraryProvider lib, Map<String, dynamic> book) {
+    final l = AppLocalizations.of(context)!;
     final bookId = book['id'] as String? ?? '';
     final media = book['media'] as Map<String, dynamic>? ?? {};
     final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-    final bookTitle = metadata['title'] as String? ?? 'Unknown';
+    final bookTitle = metadata['title'] as String? ?? l.unknown;
     final authorName = metadata['authorName'] as String? ?? '';
     final sequence = _getSequenceString(book);
     final duration = (media['duration'] is num) ? (media['duration'] as num).toDouble() : 0.0;
@@ -1078,7 +1086,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
           lib.absorbingItemCache[bookId] = Map<String, dynamic>.from(book);
           if (context.mounted) {
             HapticFeedback.mediumImpact();
-            showOverlayToast(context, 'Added "$bookTitle" to Absorbing', icon: Icons.add_circle_outline_rounded);
+            showOverlayToast(context, l.episodeListAddedToAbsorbing(bookTitle), icon: Icons.add_circle_outline_rounded);
           }
           return false;
         },
@@ -1138,7 +1146,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                           decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(4)),
-                          child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                          child: Text(l.seriesBooksExplicitBadge, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
                         ),
                       ),
                     if (!isDownloaded && isDownloading)
@@ -1169,14 +1177,14 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                                 Icon(Icons.check_circle_rounded, size: 10,
                                   color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700),
                                 const SizedBox(width: 3),
-                                Text('Done', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600,
+                                Text(l.seriesBooksDone, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600,
                                   color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700)),
                               ]),
                             if (isDownloaded)
                               Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                                 Icon(Icons.download_done_rounded, size: 10, color: cs.primary),
                                 const SizedBox(width: 3),
-                                Text('Saved', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
+                                Text(l.saved, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
                               ]),
                           ]),
                         ),
@@ -1188,7 +1196,7 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
                       if (sequence != null && sequence.isNotEmpty)
-                        Text('Book $sequence', style: tt.labelSmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
+                        Text(l.bookNumber(sequence), style: tt.labelSmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
                       Text(bookTitle, maxLines: 2, overflow: TextOverflow.ellipsis,
                         style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
                       if (authorName.isNotEmpty) ...[

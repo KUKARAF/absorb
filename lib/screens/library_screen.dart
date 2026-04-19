@@ -20,6 +20,7 @@ import '../widgets/library_authors_tab.dart';
 import 'admin_podcasts_screen.dart';
 import 'upcoming_releases_screen.dart';
 import '../widgets/audible_series_sheet.dart' show showAudibleRegionPicker;
+import '../l10n/app_localizations.dart';
 
 /// Responsive grid column count based on available width.
 /// Returns 3 on phones, scales up on tablets/iPads.
@@ -624,6 +625,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
 
   /// Offline fallback: populate the grid from downloaded items.
   void _loadOfflinePage(LibraryProvider lib) {
+    final l = AppLocalizations.of(context)!;
     final isPodcast = lib.isPodcastLibrary;
     final downloads = DownloadService().downloadedItems
         .where((dl) => (dl.itemId.length > 36) == isPodcast)
@@ -644,7 +646,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         'id': dl.itemId,
         'media': {
           'metadata': {
-            'title': dl.title ?? 'Unknown Title',
+            'title': dl.title ?? l.libraryScreenUnknownTitle,
             'authorName': dl.author ?? '',
           },
           'duration': duration,
@@ -1038,6 +1040,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   }
 
   void _showLibraryPicker(BuildContext context, ColorScheme cs, TextTheme tt, List<dynamic> allLibraries, LibraryProvider lib) {
+    final l = AppLocalizations.of(context)!;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1060,7 +1063,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text('Select Library', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+                child: Text(l.selectLibrary, style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
               ),
               const SizedBox(height: 12),
               Flexible(
@@ -1071,7 +1074,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                   itemBuilder: (_, i) {
                     final library = allLibraries[i] as Map<String, dynamic>;
                     final id = library['id'] as String;
-                    final name = library['name'] as String? ?? 'Library';
+                    final name = library['name'] as String? ?? l.libraryFallback;
                     final mediaType = library['mediaType'] as String? ?? 'book';
                     final isSelected = id == lib.selectedLibraryId;
                     return ListTile(
@@ -1097,14 +1100,14 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     );
   }
 
-  String get _filterLabel => switch (_filter) {
-    LibraryFilter.inProgress => 'In Progress',
-    LibraryFilter.finished => 'Finished',
-    LibraryFilter.notStarted => 'Not Started',
-    LibraryFilter.downloaded => 'Downloaded',
-    LibraryFilter.inASeries => 'Series',
-    LibraryFilter.hasEbook => 'Has eBook',
-    LibraryFilter.genre => _genreFilter ?? 'Genre',
+  String _filterLabelOf(AppLocalizations l) => switch (_filter) {
+    LibraryFilter.inProgress => l.inProgress,
+    LibraryFilter.finished => l.filterFinished,
+    LibraryFilter.notStarted => l.notStarted,
+    LibraryFilter.downloaded => l.downloaded,
+    LibraryFilter.inASeries => l.libraryTabSeries,
+    LibraryFilter.hasEbook => l.hasEbook,
+    LibraryFilter.genre => _genreFilter ?? l.genre,
     LibraryFilter.none => '',
   };
 
@@ -1197,12 +1200,13 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final lowerFade = Color.lerp(cs.surface, scaffoldBg, 0.55) ?? scaffoldBg;
     final lib = context.watch<LibraryProvider>();
     final allLibraries = lib.libraries;
     final hasMultipleLibraries = allLibraries.length > 1;
-    final libraryName = lib.selectedLibrary?['name'] as String? ?? 'Library';
+    final libraryName = lib.selectedLibrary?['name'] as String? ?? l.libraryFallback;
     final hasTabs = _tabController != null && !_isInSearchMode;
 
     return Scaffold(
@@ -1241,7 +1245,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                   axisAlignment: -1.0,
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                 AbsorbPageHeader(
-                  title: 'Library',
+                  title: l.libraryTitle,
                   trailing: GestureDetector(
                     onTap: () {
                       final newVal = !lib.isManualOffline;
@@ -1301,8 +1305,8 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                     controller: _searchController,
                     focusNode: _focusNode,
                     hintText: lib.isPodcastLibrary
-                        ? 'Search shows and episodes...'
-                        : 'Search books, series, and authors...',
+                        ? l.librarySearchShowsHint
+                        : l.librarySearchBooksHint,
                     leading: const Padding(
                       padding: EdgeInsets.only(left: 8),
                       child: Icon(Icons.search_rounded),
@@ -1327,14 +1331,14 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                 ),
                 // Item count + filter badge row
                 if (!_isInSearchMode)
-                  _buildInfoRow(cs, tt),
+                  _buildInfoRow(cs, tt, l),
                 ]),
                 ),
                 Expanded(
                   child: Stack(
                     children: [
                       _isInSearchMode
-                          ? _buildSearchResults(cs, tt)
+                          ? _buildSearchResults(cs, tt, l)
                           : hasTabs
                               ? _buildTabbedContent(cs, tt)
                               : _buildGrid(),
@@ -1397,7 +1401,8 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   }
 
   Widget _buildFloatingTabBar(ColorScheme cs) {
-    const labels = ['Library', 'Series', 'Authors'];
+    final l = AppLocalizations.of(context)!;
+    final labels = [l.libraryTabLibrary, l.libraryTabSeries, l.libraryTabAuthors];
     return Center(child: ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
@@ -1488,7 +1493,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Sort',
+                  AppLocalizations.of(context)!.sort,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -1532,17 +1537,17 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     );
   }
 
-  Widget _buildInfoRow(ColorScheme cs, TextTheme tt) {
+  Widget _buildInfoRow(ColorScheme cs, TextTheme tt, AppLocalizations l) {
     String countText;
     switch (_currentTab) {
       case 1:
-        countText = '$_totalSeries series';
+        countText = l.librarySeriesCount(_totalSeries);
         break;
       case 2:
-        countText = '${_authors.length} authors';
+        countText = l.libraryAuthorsCount(_authors.length);
         break;
       default:
-        countText = '${_items.length}${_totalItems > 0 ? '/$_totalItems' : ''} books';
+        countText = l.libraryBooksCount(_items.length, _totalItems);
         break;
     }
 
@@ -1564,7 +1569,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                   children: [
                     Icon(Icons.filter_list_rounded, size: 14, color: cs.tertiary),
                     const SizedBox(width: 4),
-                    Text(_filterLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.tertiary),
+                    Text(_filterLabelOf(l), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.tertiary),
                         overflow: TextOverflow.ellipsis, maxLines: 1),
                     const SizedBox(width: 4),
                     Icon(Icons.close_rounded, size: 14, color: cs.tertiary),
@@ -1676,7 +1681,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   // ═══════════════════════════════════════════════════════════════
   // SEARCH RESULTS
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildSearchResults(ColorScheme cs, TextTheme tt) {
+  Widget _buildSearchResults(ColorScheme cs, TextTheme tt, AppLocalizations l) {
     if (_isSearching) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1690,7 +1695,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
           children: [
             Icon(Icons.search_off_rounded, size: 48, color: cs.onSurfaceVariant),
             const SizedBox(height: 12),
-            Text('No results found',
+            Text(l.libraryNoResults,
                 style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
           ],
         ),
@@ -1718,7 +1723,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
             return <Widget>[
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-                child: Text(isPodcast ? 'Shows' : 'Books',
+                child: Text(isPodcast ? l.librarySearchShows : l.librarySearchBooks,
                     style: tt.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600, color: cs.primary)),
               ),
@@ -1740,7 +1745,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
           Padding(
             padding: EdgeInsets.fromLTRB(
                 4, _searchBookResults.isNotEmpty ? 20 : 8, 4, 8),
-            child: Text('Episodes',
+            child: Text(l.librarySearchEpisodes,
                 style: tt.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600, color: cs.primary)),
           ),
@@ -1759,7 +1764,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
           Padding(
             padding: EdgeInsets.fromLTRB(
                 4, _searchBookResults.isNotEmpty ? 20 : 8, 4, 8),
-            child: Text('Series',
+            child: Text(l.librarySearchSeries,
                 style: tt.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600, color: cs.primary)),
           ),
@@ -1781,7 +1786,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
           Padding(
             padding: EdgeInsets.fromLTRB(
                 4, (_searchBookResults.isNotEmpty || _searchSeriesResults.isNotEmpty) ? 20 : 8, 4, 8),
-            child: Text('Authors',
+            child: Text(l.librarySearchAuthors,
                 style: tt.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600, color: cs.primary)),
           ),

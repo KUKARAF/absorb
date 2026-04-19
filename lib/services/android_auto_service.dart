@@ -8,6 +8,8 @@ import 'api_service.dart';
 import 'download_service.dart';
 import 'progress_sync_service.dart';
 import 'scoped_prefs.dart';
+import '../l10n/app_localizations.dart';
+import '../main.dart' show rootNavigatorKey;
 
 // ─── Media ID scheme ─────────────────────────────────────────────────
 //
@@ -484,24 +486,30 @@ class AndroidAutoService {
 
   // ─── Browse tree ───────────────────────────────────────────────────
 
+  AppLocalizations? _l() {
+    final ctx = rootNavigatorKey.currentContext;
+    return ctx != null ? AppLocalizations.of(ctx) : null;
+  }
+
   List<MediaItem> _getRootChildren() {
     // Always show all three tabs so the layout is consistent and doesn't
     // look like a missing 4th button.  Each tab fetches on-demand if its
     // cache is empty (cold start / background refresh pending).
-    return const [
+    final l = _l();
+    return [
       MediaItem(
         id: AutoMediaIds.continueListening,
-        title: 'Continue',
+        title: l?.androidAutoTabContinue ?? 'Continue',
         playable: false,
       ),
       MediaItem(
         id: AutoMediaIds.library,
-        title: 'Library',
+        title: l?.androidAutoTabLibrary ?? 'Library',
         playable: false,
       ),
       MediaItem(
         id: AutoMediaIds.downloads,
-        title: 'Downloads',
+        title: l?.androidAutoTabDownloads ?? 'Downloads',
         playable: false,
       ),
     ];
@@ -509,20 +517,21 @@ class AndroidAutoService {
 
   /// Sub-categories for a book library: Books, Series, Authors
   List<MediaItem> _getBookSubCategories(String libraryId) {
+    final l = _l();
     return [
       MediaItem(
         id: AutoMediaIds.libBooks(libraryId),
-        title: 'Books',
+        title: l?.androidAutoCatBooks ?? 'Books',
         playable: false,
       ),
       MediaItem(
         id: AutoMediaIds.libSeries(libraryId),
-        title: 'Series',
+        title: l?.androidAutoCatSeries ?? 'Series',
         playable: false,
       ),
       MediaItem(
         id: AutoMediaIds.libAuthors(libraryId),
-        title: 'Authors',
+        title: l?.androidAutoCatAuthors ?? 'Authors',
         playable: false,
       ),
     ];

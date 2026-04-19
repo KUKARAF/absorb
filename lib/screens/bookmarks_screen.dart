@@ -12,6 +12,7 @@ import '../services/scoped_prefs.dart';
 import '../widgets/card_buttons.dart';
 import '../services/download_service.dart';
 import '../widgets/absorb_page_header.dart';
+import '../l10n/app_localizations.dart';
 
 class BookmarksScreen extends StatefulWidget {
   const BookmarksScreen({super.key});
@@ -191,21 +192,22 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
   Future<void> _deleteSelected() async {
     if (_selected.isEmpty) return;
 
+    final l = AppLocalizations.of(context)!;
     final count = _selected.length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.delete_outline_rounded),
-        title: Text('Delete $count bookmark${count == 1 ? '' : 's'}?'),
-        content: const Text('This cannot be undone.'),
+        title: Text(l.bookmarksDeleteCount(count)),
+        content: Text(l.bookmarksDeleteContent),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(l.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(l.delete),
           ),
         ],
       ),
@@ -231,7 +233,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Deleted $count bookmark${count == 1 ? '' : 's'}'),
+        content: Text(l.bookmarksDeletedCount(count)),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ));
@@ -258,18 +260,19 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
   }
 
   Future<void> _editBookmark(String itemId, Bookmark bookmark) async {
+    final l = AppLocalizations.of(context)!;
     final titleC = TextEditingController(text: bookmark.title);
     final noteC = TextEditingController(text: bookmark.note ?? '');
     final result = await showDialog<Map<String, String>>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Edit Bookmark'),
+      title: Text(l.editBookmark),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: titleC, decoration: const InputDecoration(labelText: 'Title', border: OutlineInputBorder())),
+        TextField(controller: titleC, decoration: InputDecoration(labelText: l.titleLabel, border: const OutlineInputBorder())),
         const SizedBox(height: 12),
-        TextField(controller: noteC, maxLines: 3, decoration: const InputDecoration(labelText: 'Note (optional)', border: OutlineInputBorder(), alignLabelWithHint: true)),
+        TextField(controller: noteC, maxLines: 3, decoration: InputDecoration(labelText: l.noteOptionalLabel, border: const OutlineInputBorder(), alignLabelWithHint: true)),
       ]),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, {'title': titleC.text, 'note': noteC.text}), child: const Text('Save')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
+        FilledButton(onPressed: () => Navigator.pop(ctx, {'title': titleC.text, 'note': noteC.text}), child: Text(l.save)),
       ],
     ));
     if (result != null && result['title']!.isNotEmpty) {
@@ -285,6 +288,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
   Future<void> _jumpToBookmark(String itemId, Bookmark bookmark, String bookTitle) async {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -303,21 +307,21 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
             ),
             const SizedBox(height: 12),
           ],
-          Text('${bookmark.formattedPosition} in $bookTitle',
+          Text(l.bookmarksScreenPositionInBook(bookmark.formattedPosition, bookTitle),
             style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
         ]),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
+            child: Text(l.bookmarksScreenClose),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, 'edit'),
-            child: const Text('Edit'),
+            child: Text(l.edit),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, 'jump'),
-            child: const Text('Jump'),
+            child: Text(l.bookmarksJump),
           ),
         ],
       ),
@@ -347,8 +351,8 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
     // Otherwise load the book from API
     if (api == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Not connected to server'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.bookmarksNotConnected),
           behavior: SnackBarBehavior.floating,
         ));
       }
@@ -358,8 +362,8 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
     final fullItem = await api.getLibraryItem(itemId);
     if (fullItem == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not load book'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l.bookmarksCouldNotLoad),
           behavior: SnackBarBehavior.floating,
         ));
       }
@@ -396,6 +400,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -408,11 +413,11 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
                     child: Row(children: [
-                      const Expanded(child: AbsorbPageHeader(title: 'All Bookmarks', padding: EdgeInsets.zero)),
+                      Expanded(child: AbsorbPageHeader(title: l.bookmarksTitle, padding: EdgeInsets.zero)),
                       if (_selecting)
                         IconButton(
                           icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant),
-                          tooltip: 'Cancel selection',
+                          tooltip: l.bookmarksCancelSelection,
                           onPressed: _exitSelection,
                         )
                       else ...[
@@ -442,9 +447,8 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  _sort == 'newest' ? 'Newest'
-                                      : _sort == 'position' ? 'Position'
-                                      : 'Position',
+                                  _sort == 'newest' ? l.bookmarksScreenSortNewest
+                                      : l.bookmarksScreenSortPosition,
                                   style: Theme.of(context).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
                                 ),
                               ]),
@@ -452,7 +456,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                           ),
                           IconButton(
                             icon: Icon(Icons.checklist_rounded, color: cs.onSurfaceVariant),
-                            tooltip: 'Select',
+                            tooltip: l.bookmarksSelect,
                             onPressed: () => setState(() => _selecting = true),
                           ),
                         ],
@@ -474,7 +478,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                           children: [
                             Icon(Icons.bookmark_border_rounded, size: 48, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
                             const SizedBox(height: 12),
-                            Text('No bookmarks yet', style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
+                            Text(l.bookmarksNoBookmarks, style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
                           ],
                         ),
                       ),
@@ -522,13 +526,13 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                         top: false,
                         child: Row(children: [
                           Text(
-                            '${_selected.length} selected',
+                            l.bookmarksSelectedCount(_selected.length),
                             style: tt.bodyMedium?.copyWith(color: cs.onSurface),
                           ),
                           const Spacer(),
                           FilledButton.tonalIcon(
                             icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                            label: const Text('Delete'),
+                            label: Text(l.delete),
                             style: FilledButton.styleFrom(
                               backgroundColor: cs.errorContainer,
                               foregroundColor: cs.onErrorContainer,

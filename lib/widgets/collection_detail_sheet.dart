@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'overlay_toast.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -48,19 +49,20 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
   }
 
   Future<void> _deleteCollection(BuildContext context, LibraryProvider lib) async {
+    final l = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Collection'),
-        content: const Text('Are you sure you want to delete this collection?'),
+        title: Text(l.deleteCollection),
+        content: Text(l.deleteCollectionContent),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(l.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(l.delete),
           ),
         ],
       ),
@@ -102,6 +104,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
     final isRoot = context.read<AuthProvider>().isRoot;
 
@@ -110,10 +113,10 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
     ).firstOrNull;
 
     if (collection == null) {
-      return const Center(child: Text('Collection not found'));
+      return Center(child: Text(l.collectionNotFound));
     }
 
-    final name = collection['name'] as String? ?? 'Collection';
+    final name = collection['name'] as String? ?? l.collectionDetailDefaultName;
     final description = collection['description'] as String? ?? '';
     final books = (collection['books'] as List<dynamic>?) ?? [];
 
@@ -125,7 +128,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
           if (_reordering) ...[
             GestureDetector(
               onTap: _cancelReorder,
-              child: Text('Cancel', style: tt.labelMedium?.copyWith(
+              child: Text(l.cancel, style: tt.labelMedium?.copyWith(
                 color: cs.onSurfaceVariant, fontWeight: FontWeight.w500,
               )),
             ),
@@ -136,7 +139,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
             const Spacer(),
             GestureDetector(
               onTap: () => _saveReorder(lib),
-              child: Text('Done', style: tt.labelMedium?.copyWith(
+              child: Text(l.done, style: tt.labelMedium?.copyWith(
                 color: cs.primary, fontWeight: FontWeight.w600,
               )),
             ),
@@ -156,7 +159,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
                 fontWeight: FontWeight.w600, color: cs.onSurface,
               )),
             ),
-            Text('${books.length} book${books.length == 1 ? '' : 's'}',
+            Text(l.collectionDetailBookCount(books.length),
               style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
             ),
             const SizedBox(width: 12),
@@ -193,15 +196,15 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
       // Content
       Expanded(
         child: _reordering
-            ? _buildReorderList(cs, tt, lib)
+            ? _buildReorderList(cs, tt, lib, l)
             : _gridView
-                ? _buildGrid(cs, tt, lib, books)
-                : _buildItemList(cs, tt, lib, books, isRoot: isRoot),
+                ? _buildGrid(cs, tt, lib, books, l)
+                : _buildItemList(cs, tt, lib, books, l, isRoot: isRoot),
       ),
     ]);
   }
 
-  Widget _buildReorderList(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
+  Widget _buildReorderList(ColorScheme cs, TextTheme tt, LibraryProvider lib, AppLocalizations l) {
     final items = _reorderItems!;
     return ReorderableListView.builder(
       padding: EdgeInsets.only(top: 8, bottom: 8 + MediaQuery.of(context).viewPadding.bottom),
@@ -219,7 +222,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
         final itemId = book['id'] as String? ?? '';
         final media = book['media'] as Map<String, dynamic>? ?? {};
         final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final title = metadata['title'] as String? ?? 'Unknown';
+        final title = metadata['title'] as String? ?? l.unknown;
         final coverUrl = lib.getCoverUrl(itemId);
 
         return Container(
@@ -266,7 +269,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
     );
   }
 
-  Widget _buildItemList(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> books, {required bool isRoot}) {
+  Widget _buildItemList(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> books, AppLocalizations l, {required bool isRoot}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final doneColor = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
 
@@ -279,7 +282,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
         final itemId = book['id'] as String? ?? '';
         final media = book['media'] as Map<String, dynamic>? ?? {};
         final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final title = metadata['title'] as String? ?? 'Unknown';
+        final title = metadata['title'] as String? ?? l.unknown;
         final author = metadata['authorName'] as String? ?? '';
         final coverUrl = lib.getCoverUrl(itemId);
         final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
@@ -325,7 +328,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
                               color: Colors.red.withValues(alpha: 0.85),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                            child: Text(l.bookCardExplicitBadge, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
                           ),
                         ),
                       if (progress > 0 && !isFinished)
@@ -358,13 +361,13 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
                                 Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                                   Icon(Icons.check_circle_rounded, size: 10, color: doneColor),
                                   const SizedBox(width: 3),
-                                  Text('Done', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
+                                  Text(l.collectionDetailDone, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
                                 ]),
                               if (isDownloaded)
                                 Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                                   Icon(Icons.download_done_rounded, size: 10, color: cs.primary),
                                   const SizedBox(width: 3),
-                                  Text('Saved', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
+                                  Text(l.saved, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
                                 ]),
                             ]),
                           ),
@@ -406,7 +409,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
               lib.absorbingItemCache[itemId] = Map<String, dynamic>.from(book);
               HapticFeedback.mediumImpact();
               if (context.mounted) {
-                showOverlayToast(context, 'Added "$title" to Absorbing', icon: Icons.add_circle_outline_rounded);
+                showOverlayToast(context, l.collectionDetailAddedToAbsorbing(title), icon: Icons.add_circle_outline_rounded);
               }
               return false;
             },
@@ -432,7 +435,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
               lib.absorbingItemCache[itemId] = Map<String, dynamic>.from(book);
               HapticFeedback.mediumImpact();
               if (context.mounted) {
-                showOverlayToast(context, 'Added "$title" to Absorbing', icon: Icons.add_circle_outline_rounded);
+                showOverlayToast(context, l.collectionDetailAddedToAbsorbing(title), icon: Icons.add_circle_outline_rounded);
               }
               return false;
             }
@@ -460,7 +463,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
     );
   }
 
-  Widget _buildGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> books) {
+  Widget _buildGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib, List<dynamic> books, AppLocalizations l) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final doneColor = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
 
@@ -480,7 +483,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
         final itemId = book['id'] as String? ?? '';
         final media = book['media'] as Map<String, dynamic>? ?? {};
         final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final title = metadata['title'] as String? ?? 'Unknown';
+        final title = metadata['title'] as String? ?? l.unknown;
         final author = metadata['authorName'] as String? ?? '';
         final coverUrl = lib.getCoverUrl(itemId);
         final isExplicit = PlayerSettings.showExplicitBadge && metadata['explicit'] == true;
@@ -520,7 +523,7 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
                             color: Colors.red.withValues(alpha: 0.85),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                          child: Text(l.bookCardExplicitBadge, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
                         ),
                       ),
                     if (progress > 0 && !isFinished)
@@ -553,13 +556,13 @@ class _CollectionDetailSheetState extends State<CollectionDetailSheet> {
                               Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                                 Icon(Icons.check_circle_rounded, size: 10, color: doneColor),
                                 const SizedBox(width: 3),
-                                Text('Done', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
+                                Text(l.collectionDetailDone, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: doneColor)),
                               ]),
                             if (isDownloaded)
                               Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
                                 Icon(Icons.download_done_rounded, size: 10, color: cs.primary),
                                 const SizedBox(width: 3),
-                                Text('Saved', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
+                                Text(l.saved, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: cs.primary)),
                               ]),
                           ]),
                         ),

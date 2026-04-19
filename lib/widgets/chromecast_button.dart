@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
+import '../l10n/app_localizations.dart';
 import '../services/chromecast_service.dart';
 import '../services/api_service.dart';
 
@@ -25,6 +26,7 @@ void showCastDevicePicker(
     ),
     builder: (ctx) {
       final cs = Theme.of(ctx).colorScheme;
+      final l = AppLocalizations.of(ctx)!;
       return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -33,7 +35,7 @@ void showCastDevicePicker(
           children: [
             Container(width: 36, height: 4, decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 16),
-            Text('Cast to Device', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: cs.onSurface)),
+            Text(l.castToDevice, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: cs.onSurface)),
             const SizedBox(height: 16),
             Flexible(
               child: StreamBuilder<List<GoogleCastDevice>>(
@@ -47,7 +49,7 @@ void showCastDevicePicker(
                         children: [
                           SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurfaceVariant)),
                           const SizedBox(height: 12),
-                          Text('Searching for Cast devices...', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+                          Text(l.searchingForCastDevices, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
                         ],
                       ),
                     );
@@ -127,6 +129,7 @@ class CastControlSheet extends StatelessWidget {
       builder: (context, _) {
         final cast = ChromecastService();
         final accent = Theme.of(context).colorScheme.primary;
+        final l = AppLocalizations.of(context)!;
 
         return SafeArea(
           child: Padding(
@@ -140,7 +143,7 @@ class CastControlSheet extends StatelessWidget {
                 Row(children: [
                   Icon(Icons.cast_connected_rounded, size: 20, color: accent),
                   const SizedBox(width: 10),
-                  Expanded(child: Text(cast.connectedDeviceName ?? 'Cast Device',
+                  Expanded(child: Text(cast.connectedDeviceName ?? l.castDevice,
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: accent), overflow: TextOverflow.ellipsis)),
                 ]),
 
@@ -152,14 +155,14 @@ class CastControlSheet extends StatelessWidget {
                   if (cast.isCasting) ...[
                     Expanded(child: OutlinedButton.icon(
                       onPressed: () { cast.stopCasting(); Navigator.of(context).pop(); },
-                      icon: const Icon(Icons.stop_rounded, size: 18), label: const Text('Stop Casting'),
+                      icon: const Icon(Icons.stop_rounded, size: 18), label: Text(l.stopCasting),
                       style: OutlinedButton.styleFrom(foregroundColor: Colors.white60, side: const BorderSide(color: Colors.white12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),
                     const SizedBox(width: 12),
                   ],
                   Expanded(child: OutlinedButton.icon(
                     onPressed: () { cast.disconnect(); Navigator.of(context).pop(); },
-                    icon: const Icon(Icons.close_rounded, size: 18), label: const Text('Disconnect'),
+                    icon: const Icon(Icons.close_rounded, size: 18), label: Text(l.disconnect),
                     style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent.withValues(alpha: 0.8),
                       side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.3)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),

@@ -1,11 +1,44 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 
 class CardButtonDef {
   final String id;
   final String label;
   final IconData icon;
   const CardButtonDef(this.id, this.label, this.icon);
+}
+
+/// Localized label for a card button id. Falls back to the English label
+/// stored on the [CardButtonDef] if no mapping exists.
+String localizedCardButtonLabel(AppLocalizations l, CardButtonDef def) {
+  switch (def.id) {
+    case 'chapters':
+      return l.chapters;
+    case 'speed':
+      return l.speed;
+    case 'sleep':
+      return l.timer;
+    case 'bookmarks':
+      return l.bookmarks;
+    case 'details':
+      return l.bookDetailsLabel;
+    case 'equalizer':
+      return l.equalizerLabel;
+    case 'cast':
+      return l.castToDevice;
+    case 'history':
+      return l.playbackHistory;
+    case 'remove':
+      return l.removeFromAbsorbing;
+    case 'car':
+      return l.carModeTitle;
+    case 'notes':
+      return l.notes;
+    case 'download':
+      return l.download;
+  }
+  return def.label;
 }
 
 /// Button IDs that are hidden on iOS (features not yet supported).

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/absorb_page_header.dart';
 import '../widgets/html_description.dart';
+import '../l10n/app_localizations.dart';
 
 class AdminPodcastsScreen extends StatefulWidget {
   final Map<String, dynamic> library;
@@ -43,12 +44,13 @@ class _AdminPodcastsScreenState extends State<AdminPodcastsScreen> {
   }
 
   void _confirmCheckNewEpisodes(ColorScheme cs, TextTheme tt) {
+    final l = AppLocalizations.of(context)!;
     showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Check for New Episodes'),
-      content: const Text('This will check RSS feeds for all podcasts and download any new episodes found (if auto-download is enabled).'),
+      title: Text(l.adminPodcastsCheckNewEpisodesTitle),
+      content: Text(l.adminPodcastsCheckNewEpisodesContent),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        TextButton(onPressed: () { Navigator.pop(ctx); _checkNewEpisodes(); }, child: const Text('Check')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
+        TextButton(onPressed: () { Navigator.pop(ctx); _checkNewEpisodes(); }, child: Text(l.adminPodcastsCheck)),
       ],
     ));
   }
@@ -58,9 +60,10 @@ class _AdminPodcastsScreenState extends State<AdminPodcastsScreen> {
     setState(() => _checkingEpisodes = true);
     final ok = await api.checkNewEpisodes(_libraryId);
     if (mounted) {
+      final l = AppLocalizations.of(context)!;
       setState(() => _checkingEpisodes = false);
       ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(SnackBar(
-        content: Text(ok ? 'Checking for new episodes…' : 'Failed to check episodes'),
+        content: Text(ok ? l.adminPodcastsCheckingForNew : l.adminPodcastsFailedCheckEpisodes),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
       if (ok) Future.delayed(const Duration(seconds: 3), _loadShows);
@@ -71,6 +74,7 @@ class _AdminPodcastsScreenState extends State<AdminPodcastsScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -83,13 +87,13 @@ class _AdminPodcastsScreenState extends State<AdminPodcastsScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
           child: Row(children: [
-            const Expanded(child: AbsorbPageHeader(title: 'Podcasts', padding: EdgeInsets.zero)),
+            Expanded(child: AbsorbPageHeader(title: l.adminPodcasts, padding: EdgeInsets.zero)),
             _checkingEpisodes
                 ? Padding(padding: const EdgeInsets.all(12),
                     child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.onSurfaceVariant.withValues(alpha: 0.6))))
                 : IconButton(
                     icon: Icon(Icons.cloud_download_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.6), size: 22),
-                    tooltip: 'Check feeds for new episodes',
+                    tooltip: l.adminPodcastsCheckFeedsTooltip,
                     onPressed: () => _confirmCheckNewEpisodes(cs, tt)),
             IconButton(icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.6)), onPressed: () => Navigator.pop(context)),
           ]),
@@ -107,13 +111,14 @@ class _AdminPodcastsScreenState extends State<AdminPodcastsScreen> {
   // ─── Show List ──────────────────────────────────────────────
 
   Widget _buildShowList(ColorScheme cs, TextTheme tt) {
+    final l = AppLocalizations.of(context)!;
     if (_shows.isEmpty) {
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.podcasts_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.1)),
         const SizedBox(height: 12),
-        Text('No podcasts yet', style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.3))),
+        Text(l.adminPodcastsNoPodcastsYet, style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.3))),
         const SizedBox(height: 4),
-        Text('Tap + to search and add shows', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.2))),
+        Text(l.adminPodcastsTapPlusHint, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.2))),
       ]));
     }
 
@@ -124,7 +129,7 @@ class _AdminPodcastsScreenState extends State<AdminPodcastsScreen> {
         final item = _shows[i] as Map<String, dynamic>;
         final media = item['media'] as Map<String, dynamic>? ?? {};
         final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final title = metadata['title'] as String? ?? 'Unknown';
+        final title = metadata['title'] as String? ?? l.unknown;
         final author = metadata['author'] as String? ?? '';
         final numEps = media['numEpisodes'] as int?
             ?? (media['episodes'] as List?)?.length
@@ -147,7 +152,7 @@ class _AdminPodcastsScreenState extends State<AdminPodcastsScreen> {
                   if (author.isNotEmpty) ...[const SizedBox(height: 2),
                     Text(author, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6)), maxLines: 1, overflow: TextOverflow.ellipsis)],
                   const SizedBox(height: 4),
-                  Text('$numEps episodes', style: tt.labelSmall?.copyWith(color: cs.primary.withValues(alpha: 0.7), fontSize: 11)),
+                  Text(l.adminPodcastsEpisodesCount(numEps), style: tt.labelSmall?.copyWith(color: cs.primary.withValues(alpha: 0.7), fontSize: 11)),
                 ])),
                 Icon(Icons.chevron_right_rounded, color: cs.onSurface.withValues(alpha: 0.15)),
               ]),
@@ -204,26 +209,31 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
   bool _searching = false;
   List<dynamic> _results = [];
 
-  // Discover state
-  static const _genres = <int, String>{
-    0: 'All',
-    1301: 'Arts',
-    1303: 'Comedy',
-    1304: 'Education',
-    1309: 'TV & Film',
-    1310: 'Music',
-    1311: 'News',
-    1314: 'Religion',
-    1315: 'Science',
-    1316: 'Sports',
-    1318: 'Technology',
-    1321: 'Business',
-    1323: 'Fiction',
-    1324: 'Society & Culture',
-    1325: 'Health & Fitness',
-    1326: 'True Crime',
-    1487: 'History',
-    1488: 'Kids & Family',
+  // Discover state - localized labels are read in build via _genreLabels(l).
+  static const _genreIds = <int>[
+    0, 1301, 1303, 1304, 1309, 1310, 1311, 1314, 1315, 1316,
+    1318, 1321, 1323, 1324, 1325, 1326, 1487, 1488,
+  ];
+
+  Map<int, String> _genreLabels(AppLocalizations l) => {
+    0: l.adminPodcastsGenreAll,
+    1301: l.adminPodcastsGenreArts,
+    1303: l.adminPodcastsGenreComedy,
+    1304: l.adminPodcastsGenreEducation,
+    1309: l.adminPodcastsGenreTvFilm,
+    1310: l.adminPodcastsGenreMusic,
+    1311: l.adminPodcastsGenreNews,
+    1314: l.adminPodcastsGenreReligion,
+    1315: l.adminPodcastsGenreScience,
+    1316: l.adminPodcastsGenreSports,
+    1318: l.adminPodcastsGenreTechnology,
+    1321: l.adminPodcastsGenreBusiness,
+    1323: l.adminPodcastsGenreFiction,
+    1324: l.adminPodcastsGenreSocietyCulture,
+    1325: l.adminPodcastsGenreHealthFitness,
+    1326: l.adminPodcastsGenreTrueCrime,
+    1487: l.adminPodcastsGenreHistory,
+    1488: l.adminPodcastsGenreKidsFamily,
   };
   int _selectedGenre = 0;
   bool _loadingChart = true;
@@ -275,7 +285,7 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
         }
       }
       ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(SnackBar(
-        content: const Text('Could not find podcast feed'),
+        content: Text(AppLocalizations.of(context)!.adminPodcastsCouldNotFindFeed),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
     } catch (_) {
@@ -331,6 +341,7 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Container(
       decoration: BoxDecoration(
@@ -350,7 +361,7 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text('Add Podcast', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)),
+                      child: Text(l.adminPodcastsAddPodcast, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)),
                     ),
                     IconButton(
                       icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.6), size: 20),
@@ -376,6 +387,8 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
   }
 
   Widget _buildDiscover(ColorScheme cs, TextTheme tt, ScrollController sc) {
+    final l = AppLocalizations.of(context)!;
+    final genres = _genreLabels(l);
     return Column(children: [
       // Genre chips
       SizedBox(
@@ -383,12 +396,12 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
         child: ListView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-          children: _genres.entries.map((e) {
-            final selected = _selectedGenre == e.key;
+          children: _genreIds.map((id) {
+            final selected = _selectedGenre == id;
             return Padding(
               padding: const EdgeInsets.only(right: 6),
               child: GestureDetector(
-                onTap: () { setState(() => _selectedGenre = e.key); _loadChart(); },
+                onTap: () { setState(() => _selectedGenre = id); _loadChart(); },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
@@ -396,7 +409,7 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: selected ? cs.primary.withValues(alpha: 0.4) : cs.onSurface.withValues(alpha: 0.06)),
                   ),
-                  child: Text(e.value, style: tt.labelSmall?.copyWith(
+                  child: Text(genres[id] ?? '', style: tt.labelSmall?.copyWith(
                     color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.5),
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500, fontSize: 12)),
                 ),
@@ -411,7 +424,7 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
         child: _loadingChart
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
             : _chartResults.isEmpty
-                ? Center(child: Text('No podcasts found', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24))))
+                ? Center(child: Text(l.adminPodcastsNoPodcastsFound, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24))))
                 : ListView.builder(
                     controller: sc,
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
@@ -475,6 +488,7 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
   }
 
   Widget _buildSearchBar(ColorScheme cs, TextTheme tt) {
+    final l = AppLocalizations.of(context)!;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: TextField(
@@ -483,7 +497,7 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
         style: TextStyle(color: cs.onSurface),
         onSubmitted: (_) => _search(),
         decoration: InputDecoration(
-          hintText: 'Search for podcasts…',
+          hintText: l.adminPodcastsSearchHint,
           hintStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.25)),
           prefixIcon: Icon(Icons.search_rounded, color: cs.onSurface.withValues(alpha: 0.3)),
           suffixIcon: _searching
@@ -502,13 +516,14 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
   }
 
   Widget _buildResultsList(ColorScheme cs, TextTheme tt, ScrollController sc) {
+    final l = AppLocalizations.of(context)!;
     return ListView.builder(
       controller: sc,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       itemCount: _results.length,
       itemBuilder: (_, i) {
         final pod = _extractPod(_results[i]);
-        final title = pod['title'] as String? ?? pod['trackName'] as String? ?? pod['collectionName'] as String? ?? 'Unknown';
+        final title = pod['title'] as String? ?? pod['trackName'] as String? ?? pod['collectionName'] as String? ?? l.unknown;
         final author = pod['artistName'] as String? ?? pod['author'] as String? ?? '';
         final imageUrl = _getImageUrl(pod);
         final episodeCount = pod['trackCount'] as int?;
@@ -523,23 +538,23 @@ class _PodcastSearchSheetState extends State<_PodcastSearchSheet> {
             final now = DateTime.now();
             final diff = now.difference(dt);
             if (diff.inDays < 1) {
-              releaseDateStr = 'Today';
+              releaseDateStr = l.adminPodcastsRelToday;
             } else if (diff.inDays < 7) {
-              releaseDateStr = '${diff.inDays}d ago';
+              releaseDateStr = l.daysAgo(diff.inDays);
             } else if (diff.inDays < 30) {
-              releaseDateStr = '${(diff.inDays / 7).floor()}w ago';
+              releaseDateStr = l.adminPodcastsWeeksAgo((diff.inDays / 7).floor());
             } else if (diff.inDays < 365) {
-              releaseDateStr = '${(diff.inDays / 30).floor()}mo ago';
+              releaseDateStr = l.adminPodcastsMonthsAgo((diff.inDays / 30).floor());
             } else {
-              releaseDateStr = '${(diff.inDays / 365).floor()}y ago';
+              releaseDateStr = l.adminPodcastsYearsAgo((diff.inDays / 365).floor());
             }
           } catch (_) {}
         }
 
         // Build metadata chips
         final metaParts = <String>[
-          if (episodeCount != null) '$episodeCount episodes',
-          if (releaseDateStr != null) 'Updated $releaseDateStr',
+          if (episodeCount != null) l.adminPodcastsEpisodesCount(episodeCount),
+          if (releaseDateStr != null) l.adminPodcastsUpdated(releaseDateStr),
         ];
 
         return Padding(
@@ -632,7 +647,7 @@ class _PodcastPreviewScreenState extends State<_PodcastPreviewScreen> {
   List<dynamic> _feedEpisodes = [];
 
   Map<String, dynamic> get _pod => widget.podcast;
-  String get _title => _pod['title'] as String? ?? _pod['trackName'] as String? ?? _pod['collectionName'] as String? ?? 'Podcast';
+  String get _title => _pod['title'] as String? ?? _pod['trackName'] as String? ?? _pod['collectionName'] as String? ?? AppLocalizations.of(context)!.adminPodcastsPodcastFallback;
   String get _author => _pod['artistName'] as String? ?? _pod['author'] as String? ?? '';
   String get _feedUrl => _pod['feedUrl'] as String? ?? '';
   String get _imageUrl =>
@@ -666,7 +681,8 @@ class _PodcastPreviewScreenState extends State<_PodcastPreviewScreen> {
   }
 
   Future<void> _addPodcast() async {
-    if (_feedUrl.isEmpty) { _msg('No feed URL found'); return; }
+    final l = AppLocalizations.of(context)!;
+    if (_feedUrl.isEmpty) { _msg(l.adminPodcastsNoFeedFound); return; }
     final api = context.read<AuthProvider>().apiService;
     if (api == null) return;
     setState(() => _adding = true);
@@ -677,13 +693,14 @@ class _PodcastPreviewScreenState extends State<_PodcastPreviewScreen> {
       podcastData: _pod,
     );
     if (mounted) {
+      final l2 = AppLocalizations.of(context)!;
       setState(() => _adding = false);
       if (result != null) {
         widget.onAdded();
         Navigator.pop(context);
-        _msg('$_title added to library');
+        _msg(l2.adminPodcastsAddedToLibrary(_title));
       } else {
-        _msg('Failed to add $_title');
+        _msg(l2.adminPodcastsFailedToAdd(_title));
       }
     }
   }
@@ -692,6 +709,7 @@ class _PodcastPreviewScreenState extends State<_PodcastPreviewScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -794,14 +812,14 @@ class _PodcastPreviewScreenState extends State<_PodcastPreviewScreen> {
                     )
                   else if (_feedEpisodes.isNotEmpty) ...[
                     Text(
-                      '${_feedEpisodes.length} episodes in feed',
+                      l.adminPodcastsEpisodesInFeed(_feedEpisodes.length),
                       style: tt.labelMedium?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 8),
                     // Show first 5 episodes as preview
                     ...(_feedEpisodes.take(5).map((ep) {
                       final epMap = ep as Map<String, dynamic>;
-                      final epTitle = epMap['title'] as String? ?? 'Episode';
+                      final epTitle = epMap['title'] as String? ?? l.adminPodcastsEpisodeFallback;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 4),
                         child: Container(
@@ -823,7 +841,7 @@ class _PodcastPreviewScreenState extends State<_PodcastPreviewScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
-                          '+ ${_feedEpisodes.length - 5} more episodes',
+                          l.adminPodcastsMoreEpisodes(_feedEpisodes.length - 5),
                           style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24)),
                           textAlign: TextAlign.center,
                         ),
@@ -844,7 +862,7 @@ class _PodcastPreviewScreenState extends State<_PodcastPreviewScreen> {
                   icon: _adding
                       ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurface))
                       : const Icon(Icons.add_rounded),
-                  label: Text(_adding ? 'Adding…' : 'Add to Library', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  label: Text(_adding ? l.adminPodcastsAdding : l.adminPodcastsAddToLibrary, style: const TextStyle(fontWeight: FontWeight.w700)),
                   style: FilledButton.styleFrom(
                     backgroundColor: cs.primary,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -902,7 +920,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
   Map<String, dynamic> get _media => _item['media'] as Map<String, dynamic>? ?? {};
   Map<String, dynamic> get _metadata => _media['metadata'] as Map<String, dynamic>? ?? {};
   List<dynamic> get _episodes => _media['episodes'] as List? ?? [];
-  String get _title => _metadata['title'] as String? ?? 'Podcast';
+  String get _title => _metadata['title'] as String? ?? AppLocalizations.of(context)!.adminPodcastsPodcastFallback;
   String get _feedUrl => _metadata['feedUrl'] as String? ?? _media['feedUrl'] as String? ?? '';
 
   @override
@@ -938,18 +956,20 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
   void dispose() { _pollingQueue = false; _tabCtrl.removeListener(_onTabChanged); _tabCtrl.dispose(); super.dispose(); }
 
   Future<void> _removeShow() async {
+    final l = AppLocalizations.of(context)!;
     final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Remove Show?'),
-      content: Text('Remove "$_title" and all its episodes from the server? This cannot be undone.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Remove', style: TextStyle(color: Colors.red.shade300)))],
+      title: Text(l.adminPodcastsRemoveShowTitle),
+      content: Text(l.adminPodcastsRemoveShowContent(_title)),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.remove, style: TextStyle(color: Colors.red.shade300)))],
     ));
     if (yes != true) return;
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     final ok = await api.deleteLibraryItem(_podcastId);
     if (mounted) {
-      if (ok) { _msg('Removed "$_title"'); widget.onChanged(); Navigator.pop(context); }
-      else _msg('Failed to remove show');
+      final l2 = AppLocalizations.of(context)!;
+      if (ok) { _msg(l2.adminPodcastsRemovedShow(_title)); widget.onChanged(); Navigator.pop(context); }
+      else _msg(l2.adminPodcastsFailedRemoveShow);
     }
   }
 
@@ -966,7 +986,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
   }
 
   Future<void> _loadFeed() async {
-    if (_feedUrl.isEmpty) { _msg('No feed URL available'); return; }
+    if (_feedUrl.isEmpty) { _msg(AppLocalizations.of(context)!.adminPodcastsNoFeedAvailable); return; }
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     setState(() => _loadingFeed = true);
     final result = await api.getPodcastFeed(_feedUrl);
@@ -1014,32 +1034,39 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
     setState(() => _downloading.add(epKey));
     final ok = await api.downloadPodcastEpisodes(_podcastId, [feedEp]);
     if (mounted) {
+      final l = AppLocalizations.of(context)!;
       setState(() => _downloading.remove(epKey));
-      _msg(ok ? 'Downloading "$epTitle"' : 'Failed to download');
+      _msg(ok ? l.adminPodcastsDownloadingEpisode(epTitle) : l.adminPodcastsFailedDownload);
       if (ok) _pollDownloadQueue();
     }
     widget.onChanged();
   }
 
   Future<void> _deleteEpisode(String episodeId, String epTitle) async {
+    final l = AppLocalizations.of(context)!;
     final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Delete Episode?'),
-      content: Text('Delete "$epTitle"?'),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: TextStyle(color: Colors.red.shade300)))],
+      title: Text(l.adminPodcastsDeleteEpisodeTitle),
+      content: Text(l.adminPodcastsDeleteEpisodeContent(epTitle)),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.delete, style: TextStyle(color: Colors.red.shade300)))],
     ));
     if (yes != true) return;
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     setState(() => _deleting.add(episodeId));
     final ok = await api.deletePodcastEpisode(_podcastId, episodeId);
-    if (mounted) { setState(() => _deleting.remove(episodeId)); _msg(ok ? 'Deleted' : 'Failed');
-      if (ok) { _reloadItem(); widget.onChanged(); } }
+    if (mounted) {
+      final l2 = AppLocalizations.of(context)!;
+      setState(() => _deleting.remove(episodeId));
+      _msg(ok ? l2.adminPodcastsDeleted : l2.adminPodcastsFailed);
+      if (ok) { _reloadItem(); widget.onChanged(); }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final auth = context.read<AuthProvider>();
     final coverUrl = '${auth.serverUrl}/api/items/$_podcastId/cover?token=${auth.token}';
     final author = _metadata['author'] as String? ?? '';
@@ -1059,7 +1086,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
                   color: (_isSelectingDownloaded || _isSelecting) ? cs.primary : cs.onSurface.withValues(alpha: 0.3),
                   size: 22,
                 ),
-                tooltip: 'Select multiple',
+                tooltip: l.adminPodcastsSelectMultipleTooltip,
                 onPressed: () => setState(() {
                   if (_tabCtrl.index == 0) {
                     if (_isSelectingDownloaded) _selectedDownloadedIds.clear(); else _enterDownloadedSelectMode();
@@ -1069,7 +1096,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
                 }),
               ),
             if (auth.isRoot)
-              IconButton(icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade300, size: 22), tooltip: 'Remove show', onPressed: _removeShow),
+              IconButton(icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade300, size: 22), tooltip: l.adminPodcastsRemoveShowTooltip, onPressed: _removeShow),
           ])),
 
         // Show info
@@ -1087,7 +1114,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
               if (author.isNotEmpty) ...[const SizedBox(height: 2),
                 Text(author, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6)))],
               const SizedBox(height: 6),
-              Text('${_episodes.length} downloaded', style: tt.labelSmall?.copyWith(color: cs.primary.withValues(alpha: 0.7), fontSize: 11)),
+              Text(l.adminPodcastsDownloadedCount(_episodes.length), style: tt.labelSmall?.copyWith(color: cs.primary.withValues(alpha: 0.7), fontSize: 11)),
             ])),
           ])),
 
@@ -1099,7 +1126,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
           indicatorColor: cs.primary,
           indicatorSize: TabBarIndicatorSize.label,
           dividerColor: cs.onSurface.withValues(alpha: 0.06),
-          tabs: const [Tab(text: 'Downloaded'), Tab(text: 'Feed'), Tab(text: 'Settings')],
+          tabs: [Tab(text: l.adminPodcastsTabDownloaded), Tab(text: l.adminPodcastsTabFeed), Tab(text: l.adminPodcastsTabSettings)],
           onTap: (i) {
             if (i == 1 && _feedEpisodes.isEmpty && !_loadingFeed) _loadFeed();
           },
@@ -1144,12 +1171,13 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
   Future<void> _deleteSelected() async {
     if (_selectedDownloadedIds.isEmpty) return;
     final count = _selectedDownloadedIds.length;
+    final l = AppLocalizations.of(context)!;
     final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Delete Episodes?'),
-      content: Text('Delete $count episode${count == 1 ? '' : 's'} from the server?'),
+      title: Text(l.adminPodcastsDeleteEpisodesTitle),
+      content: Text(l.adminPodcastsDeleteEpisodesContent(count)),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: TextStyle(color: Colors.red.shade300))),
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.delete, style: TextStyle(color: Colors.red.shade300))),
       ],
     ));
     if (yes != true) return;
@@ -1162,13 +1190,14 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
       if (ok) deleted++;
     }
     if (mounted) {
-      _msg('Deleted $deleted episode${deleted == 1 ? '' : 's'}');
+      _msg(AppLocalizations.of(context)!.adminPodcastsDeletedEpisodes(deleted));
       _reloadItem();
       widget.onChanged();
     }
   }
 
   Widget _buildDownloadedTab(ColorScheme cs, TextTheme tt) {
+    final l = AppLocalizations.of(context)!;
     // Build list: active downloads first, then downloaded episodes
     final queueItems = <Map<String, dynamic>>[];
     if (_currentDownload != null) queueItems.add(_currentDownload!);
@@ -1180,11 +1209,11 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.download_done_rounded, size: 40, color: cs.onSurface.withValues(alpha: 0.1)),
         const SizedBox(height: 8),
-        Text('No downloaded episodes', style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.3))),
+        Text(l.absorbingNoDownloadedEpisodes, style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.3))),
         const SizedBox(height: 8),
         GestureDetector(
           onTap: () { _tabCtrl.animateTo(1); if (_feedEpisodes.isEmpty && !_loadingFeed) _loadFeed(); },
-          child: Text('Browse feed to download', style: tt.bodySmall?.copyWith(color: cs.primary))),
+          child: Text(l.adminPodcastsBrowseFeedToDownload, style: tt.bodySmall?.copyWith(color: cs.primary))),
       ]));
     }
 
@@ -1204,7 +1233,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
             if (i < queueItems.length) {
               final q = queueItems[i];
               final isActive = i == 0 && _currentDownload != null;
-              final title = q['episodeDisplayTitle'] as String? ?? 'Downloading...';
+              final title = q['episodeDisplayTitle'] as String? ?? l.adminPodcastsDownloadingDots;
               return Padding(padding: const EdgeInsets.only(bottom: 6), child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
@@ -1221,7 +1250,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
                     Text(title, style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface),
                       maxLines: 2, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 2),
-                    Text(isActive ? 'Downloading...' : 'Queued',
+                    Text(isActive ? l.adminPodcastsDownloadingDots : l.downloadsQueued,
                       style: tt.labelSmall?.copyWith(color: cs.primary.withValues(alpha: 0.7), fontSize: 10)),
                   ])),
                 ]),
@@ -1232,7 +1261,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
             final idx = i - queueItems.length;
             final ep = sorted[idx] as Map<String, dynamic>;
             final epId = ep['id'] as String? ?? '';
-            final epTitle = ep['title']?.toString() ?? 'Episode';
+            final epTitle = ep['title']?.toString() ?? l.adminPodcastsEpisodeFallback;
             final pubAt = ep['publishedAt'] as num?;
             final duration = ep['duration'];
             final durStr = duration is num ? _fmtDur(duration.toDouble())
@@ -1308,7 +1337,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
                 child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Icon(Icons.delete_outline_rounded, size: 18, color: Colors.white),
                   const SizedBox(width: 8),
-                  Text('Delete ${_selectedDownloadedIds.length} episode${_selectedDownloadedIds.length == 1 ? '' : 's'}',
+                  Text(l.adminPodcastsDeleteEpisodesCount(_selectedDownloadedIds.length),
                     style: tt.bodySmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
                 ]),
               ),
@@ -1356,21 +1385,23 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     final ok = await api.downloadPodcastEpisodes(_podcastId, eps);
     if (mounted) {
-      _msg(ok ? 'Downloading $count episode${count == 1 ? '' : 's'}' : 'Failed to download');
+      final l = AppLocalizations.of(context)!;
+      _msg(ok ? l.adminPodcastsDownloadingCount(count) : l.adminPodcastsFailedDownload);
       if (ok) _pollDownloadQueue();
     }
     widget.onChanged();
   }
 
   Widget _buildFeedTab(ColorScheme cs, TextTheme tt) {
+    final l = AppLocalizations.of(context)!;
     if (_loadingFeed) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-    if (_feedUrl.isEmpty) return Center(child: Text('No feed URL available', style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.3))));
+    if (_feedUrl.isEmpty) return Center(child: Text(l.adminPodcastsNoFeedAvailable, style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.3))));
     if (_feedEpisodes.isEmpty) {
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('No episodes found', style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.3))),
+        Text(l.noEpisodesFound, style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.3))),
         const SizedBox(height: 8),
         GestureDetector(onTap: _loadFeed,
-          child: Text('Retry', style: tt.bodySmall?.copyWith(color: cs.primary))),
+          child: Text(l.retry, style: tt.bodySmall?.copyWith(color: cs.primary))),
       ]));
     }
 
@@ -1384,7 +1415,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
           itemCount: _feedEpisodes.length,
           itemBuilder: (_, i) {
             final ep = _feedEpisodes[i] as Map<String, dynamic>;
-            final epTitle = ep['title'] as String? ?? 'Episode';
+            final epTitle = ep['title'] as String? ?? l.adminPodcastsEpisodeFallback;
             final pubDate = ep['publishedAt'] as num? ?? ep['pubDate'] as num?;
             final already = dlTitles.contains(epTitle.toLowerCase());
             final selected = _selectedFeedIndices.contains(i);
@@ -1456,7 +1487,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
                 child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Icon(Icons.download_rounded, size: 18, color: cs.onPrimary),
                   const SizedBox(width: 8),
-                  Text('Download ${_selectedFeedIndices.length} episode${_selectedFeedIndices.length == 1 ? '' : 's'}',
+                  Text(l.adminPodcastsDownloadEpisodesCount(_selectedFeedIndices.length),
                     style: tt.bodySmall?.copyWith(color: cs.onPrimary, fontWeight: FontWeight.w700)),
                 ]),
               ),
@@ -1469,6 +1500,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
   // ─── Settings Tab ───────────────────────────────────────────
 
   Widget _buildSettingsTab(ColorScheme cs, TextTheme tt) {
+    final l = AppLocalizations.of(context)!;
     final autoDownload = _media['autoDownloadEpisodes'] == true;
 
     return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 32), children: [
@@ -1483,14 +1515,14 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
               Icon(Icons.cloud_download_rounded, size: 20, color: cs.onSurfaceVariant),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Check for New Episodes', style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+                Text(l.adminPodcastsCheckNewEpisodesTitle, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
                 const SizedBox(height: 2),
-                Text('Scan RSS feed and download new episodes', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                Text(l.adminPodcastsCheckNewEpisodesSubtitle, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
               ])),
             ]),
             const SizedBox(height: 12),
             // Date picker
-            Text('Look for episodes after', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
+            Text(l.adminPodcastsLookForEpisodesAfter, style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
             const SizedBox(height: 6),
             GestureDetector(
               onTap: () async {
@@ -1523,7 +1555,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
                   Icon(Icons.calendar_today_rounded, size: 14, color: cs.onSurfaceVariant),
                   const SizedBox(width: 8),
                   Text(
-                    _checkAfterDate != null ? _fmtDateTime(_checkAfterDate!) : 'Select date',
+                    _checkAfterDate != null ? _fmtDateTime(_checkAfterDate!) : l.adminPodcastsSelectDate,
                     style: tt.bodySmall?.copyWith(color: cs.onSurface, fontWeight: FontWeight.w500),
                   ),
                   const Spacer(),
@@ -1533,7 +1565,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
             ),
             const SizedBox(height: 12),
             // Limit chips
-            Text('Max episodes to download', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
+            Text(l.adminPodcastsMaxEpisodes, style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
             const SizedBox(height: 6),
             Wrap(spacing: 6, runSpacing: 6, children: [
               for (final n in [1, 3, 5, 10, 25])
@@ -1563,27 +1595,27 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
                     'lastEpisodeCheck': _checkAfterDate!.millisecondsSinceEpoch,
                   });
                 }
-                _msg('Checking for new episodes...');
+                _msg(l.adminPodcastsCheckingForNewDots);
                 final episodes = await api.checkNewPodcastEpisodes(_podcastId, limit: _checkLimit);
                 if (!mounted) return;
                 if (episodes != null) {
                   _reloadItem();
                   _loadFeed();
                   if (episodes.isEmpty) {
-                    _msg('No new episodes found after ${_fmtDate(_checkAfterDate!.millisecondsSinceEpoch)}');
+                    _msg(l.adminPodcastsNoNewEpisodesAfter(_fmtDate(_checkAfterDate!.millisecondsSinceEpoch)));
                   } else {
-                    _msg('Found ${episodes.length} new episode${episodes.length == 1 ? '' : 's'} - downloading');
+                    _msg(l.adminPodcastsFoundNewEpisodes(episodes.length));
                     _pollDownloadQueue();
                   }
                 } else {
-                  _msg('Failed to check for new episodes');
+                  _msg(l.adminPodcastsFailedToCheckNew);
                 }
               },
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                child: Center(child: Text('Check & Download', style: tt.bodySmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w700))),
+                child: Center(child: Text(l.adminPodcastsCheckAndDownload, style: tt.bodySmall?.copyWith(color: cs.primary, fontWeight: FontWeight.w700))),
               ),
             ),
           ]),
@@ -1601,9 +1633,9 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
             Icon(Icons.auto_fix_high_rounded, size: 20, color: cs.onSurfaceVariant),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Match Podcast', style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+              Text(l.adminPodcastsMatchPodcast, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
               const SizedBox(height: 2),
-              Text('Search iTunes to update cover and metadata', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+              Text(l.adminPodcastsMatchPodcastSubtitle, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
             ])),
             Icon(Icons.chevron_right_rounded, size: 20, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
           ]),
@@ -1621,10 +1653,10 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
             Icon(Icons.downloading_rounded, size: 20, color: cs.onSurfaceVariant),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Auto-Download New Episodes', style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+              Text(l.adminPodcastsAutoDownloadNewEpisodes, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
               const SizedBox(height: 2),
               Text(
-                isOn ? 'Server downloads new episodes automatically' : 'New episodes are not auto-downloaded',
+                isOn ? l.adminPodcastsAutoDownloadOnSubtitle : l.adminPodcastsAutoDownloadOffSubtitle,
                 style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
             ])),
@@ -1647,7 +1679,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
                         if (!v) media.remove('autoDownloadSchedule');
                       }
                     } else {
-                      _msg('Failed to update auto-download setting');
+                      _msg(l.adminPodcastsFailedAutoDownloadUpdate);
                     }
                     setLocalState(() {});
                     setState(() {});
@@ -1690,7 +1722,15 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
             });
           }
 
-          const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          final days = [
+            l.adminPodcastsDaySun,
+            l.adminPodcastsDayMon,
+            l.adminPodcastsDayTue,
+            l.adminPodcastsDayWed,
+            l.adminPodcastsDayThu,
+            l.adminPodcastsDayFri,
+            l.adminPodcastsDaySat,
+          ];
           String timeLabel(int h, int m) {
             final period = h < 12 ? 'am' : 'pm';
             final displayH = h == 0 ? 12 : h > 12 ? h - 12 : h;
@@ -1705,20 +1745,20 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
               Row(children: [
                 Icon(Icons.schedule_rounded, size: 20, color: cs.onSurfaceVariant),
                 const SizedBox(width: 12),
-                Text('Check Schedule', style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+                Text(l.adminPodcastsCheckSchedule, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
               ]),
               const SizedBox(height: 10),
               // Frequency
-              Text('Frequency', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
+              Text(l.adminPodcastsFrequency, style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
               const SizedBox(height: 6),
               Wrap(spacing: 6, runSpacing: 6, children: [
-                for (final f in [('hourly', 'Hourly'), ('daily', 'Daily'), ('weekly', 'Weekly')])
+                for (final f in [('hourly', l.adminPodcastsFreqHourly), ('daily', l.adminPodcastsFreqDaily), ('weekly', l.adminPodcastsFreqWeekly)])
                   _scheduleChip(cs, tt, f.$2, f.$1, freq, () => saveCron(f.$1, hour, minute, dayOfWeek)),
               ]),
               // Day of week (weekly only)
               if (freq == 'weekly') ...[
                 const SizedBox(height: 12),
-                Text('Day', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
+                Text(l.adminPodcastsDay, style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
                 const SizedBox(height: 6),
                 Wrap(spacing: 6, runSpacing: 6, children: [
                   for (int i = 0; i < 7; i++)
@@ -1728,7 +1768,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
               // Time (daily/weekly only)
               if (freq != 'hourly') ...[
                 const SizedBox(height: 12),
-                Text('Time', style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
+                Text(l.adminPodcastsTime, style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10)),
                 const SizedBox(height: 6),
                 GestureDetector(
                   onTap: () async {
@@ -1773,7 +1813,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
             Icon(Icons.rss_feed_rounded, size: 20, color: cs.onSurfaceVariant),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Feed URL', style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+              Text(l.adminPodcastsFeedUrl, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
               const SizedBox(height: 2),
               Text(_feedUrl, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant), maxLines: 2, overflow: TextOverflow.ellipsis),
             ])),
@@ -1820,7 +1860,7 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
 
   void _showDownloadedEpisodeDetail(Map<String, dynamic> ep) {
     final epId = ep['id']?.toString() ?? '';
-    final epTitle = ep['title']?.toString() ?? 'Episode';
+    final epTitle = ep['title']?.toString() ?? AppLocalizations.of(context)!.adminPodcastsEpisodeFallback;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1898,6 +1938,9 @@ class _PodcastDetailScreenState extends State<_PodcastDetailScreen> with SingleT
     final min = dt.minute.toString().padLeft(2, '0');
     return '${m[dt.month - 1]} ${dt.day}, ${dt.year} $h:$min $period';
   }
+  // Note: month abbreviations and AM/PM are intentionally kept inline as they
+  // are date format primitives consistent with how _fmtDate is used in
+  // similar admin/users context. Could be moved to ARB later if needed.
 
   void _msg(String s) => ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(
     SnackBar(content: Text(s), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
@@ -1919,8 +1962,9 @@ class _EpisodeDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
-    final title = episode['title']?.toString() ?? 'Episode';
+    final title = episode['title']?.toString() ?? l.adminPodcastsEpisodeFallback;
     final descriptionHtml = episode['description']?.toString() ?? episode['subtitle']?.toString() ?? '';
     final pubDateRaw = episode['publishedAt'] ?? episode['pubDate'];
     final pubDate = pubDateRaw is num ? pubDateRaw : (num.tryParse(pubDateRaw?.toString() ?? ''));
@@ -1941,8 +1985,8 @@ class _EpisodeDetailSheet extends StatelessWidget {
     if (pubDate != null) chips.add(_fmtDate(pubDate.toInt()));
     if (duration.isNotEmpty) chips.add(duration.contains(':') ? duration : _fmtDurStr(duration));
     if (sizeStr.isNotEmpty) chips.add(sizeStr);
-    if (season.isNotEmpty) chips.add('Season $season');
-    if (episodeNum.isNotEmpty) chips.add('Ep. $episodeNum');
+    if (season.isNotEmpty) chips.add(l.adminPodcastsSeasonChip(season));
+    if (episodeNum.isNotEmpty) chips.add(l.adminPodcastsEpChip(episodeNum));
     if (episodeType.isNotEmpty && episodeType != 'full') chips.add(episodeType);
 
     return Container(
@@ -2001,7 +2045,7 @@ class _EpisodeDetailSheet extends StatelessWidget {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: Text('Back', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.54), fontWeight: FontWeight.w600)),
+                child: Text(l.adminPodcastsBack, style: TextStyle(color: cs.onSurface.withValues(alpha: 0.54), fontWeight: FontWeight.w600)),
               ),
             ),
             const SizedBox(width: 12),
@@ -2009,7 +2053,7 @@ class _EpisodeDetailSheet extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: (alreadyDownloaded || !canDownload) ? null : onDownload,
                 icon: Icon(alreadyDownloaded ? Icons.check_circle_rounded : Icons.download_rounded, size: 18),
-                label: Text(alreadyDownloaded ? 'Downloaded' : !canDownload ? 'Root Only' : 'Download',
+                label: Text(alreadyDownloaded ? l.downloaded : !canDownload ? l.adminPodcastsRootOnly : l.download,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
                 style: FilledButton.styleFrom(
                   backgroundColor: alreadyDownloaded ? Colors.green.withValues(alpha: 0.15) : cs.primary,
@@ -2064,8 +2108,9 @@ class _DownloadedEpisodeDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
-    final title = episode['title']?.toString() ?? 'Episode';
+    final title = episode['title']?.toString() ?? l.adminPodcastsEpisodeFallback;
     final descriptionHtml = episode['description']?.toString() ?? episode['subtitle']?.toString() ?? '';
     final pubAt = episode['publishedAt'];
     final pubDate = pubAt is num ? pubAt : (num.tryParse(pubAt?.toString() ?? ''));
@@ -2085,8 +2130,8 @@ class _DownloadedEpisodeDetailSheet extends StatelessWidget {
     if (pubDate != null) chips.add(_fmtDate(pubDate.toInt()));
     if (durStr.isNotEmpty) chips.add(durStr);
     if (sizeStr.isNotEmpty) chips.add(sizeStr);
-    if (season.isNotEmpty) chips.add('Season $season');
-    if (episodeNum.isNotEmpty) chips.add('Ep. $episodeNum');
+    if (season.isNotEmpty) chips.add(l.adminPodcastsSeasonChip(season));
+    if (episodeNum.isNotEmpty) chips.add(l.adminPodcastsEpChip(episodeNum));
 
     return Container(
       constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
@@ -2133,7 +2178,7 @@ class _DownloadedEpisodeDetailSheet extends StatelessWidget {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: Text('Back', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.54), fontWeight: FontWeight.w600)),
+                child: Text(l.adminPodcastsBack, style: TextStyle(color: cs.onSurface.withValues(alpha: 0.54), fontWeight: FontWeight.w600)),
               ),
             ),
             const SizedBox(width: 12),
@@ -2143,7 +2188,7 @@ class _DownloadedEpisodeDetailSheet extends StatelessWidget {
                 icon: isDeleting
                   ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.onSurface.withValues(alpha: 0.54)))
                   : const Icon(Icons.delete_outline_rounded, size: 18),
-                label: Text(isDeleting ? 'Deleting...' : 'Delete Episode',
+                label: Text(isDeleting ? l.adminPodcastsDeleting : l.adminPodcastsDeleteEpisode,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.red.withValues(alpha: 0.15),
@@ -2231,17 +2276,18 @@ class _PodcastMatchSheetState extends State<_PodcastMatchSheet> {
     final author = pod['artistName'] as String? ?? pod['author'] as String?;
     final result = await api.matchLibraryItem(widget.podcastId, title: title, author: author);
     if (mounted) {
+      final l = AppLocalizations.of(context)!;
       setState(() => _applying = false);
       if (result != null) {
         widget.onMatched();
         Navigator.pop(context);
         ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(SnackBar(
-          content: const Text('Podcast matched and updated'),
+          content: Text(l.adminPodcastsPodcastMatched),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
       } else {
         ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(SnackBar(
-          content: const Text('Failed to match podcast'),
+          content: Text(l.adminPodcastsFailedMatch),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
       }
@@ -2260,6 +2306,7 @@ class _PodcastMatchSheetState extends State<_PodcastMatchSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Container(
       decoration: BoxDecoration(
@@ -2275,7 +2322,7 @@ class _PodcastMatchSheetState extends State<_PodcastMatchSheet> {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 8, 0),
             child: Row(children: [
-              Expanded(child: Text('Match Podcast', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface))),
+              Expanded(child: Text(l.adminPodcastsMatchPodcast, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface))),
               IconButton(
                 icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.6), size: 20),
                 onPressed: () => Navigator.pop(context),
@@ -2290,7 +2337,7 @@ class _PodcastMatchSheetState extends State<_PodcastMatchSheet> {
               style: TextStyle(color: cs.onSurface),
               onSubmitted: (_) => _search(),
               decoration: InputDecoration(
-                hintText: 'Search iTunes...',
+                hintText: l.adminPodcastsSearchItunesHint,
                 hintStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.25)),
                 prefixIcon: Icon(Icons.search_rounded, color: cs.onSurface.withValues(alpha: 0.3)),
                 suffixIcon: _searching
@@ -2311,19 +2358,19 @@ class _PodcastMatchSheetState extends State<_PodcastMatchSheet> {
                 ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                     const CircularProgressIndicator(strokeWidth: 2),
                     const SizedBox(height: 12),
-                    Text('Applying match...', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4))),
+                    Text(l.adminPodcastsApplyingMatch, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.4))),
                   ]))
                 : _searching
                     ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
                     : _results.isEmpty
-                        ? Center(child: Text('No results', style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24))))
+                        ? Center(child: Text(l.adminPodcastsNoResults, style: tt.bodySmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24))))
                         : ListView.builder(
                             controller: sc,
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                             itemCount: _results.length,
                             itemBuilder: (_, i) {
                               final pod = _extractPod(_results[i]);
-                              final title = pod['title'] as String? ?? pod['trackName'] as String? ?? pod['collectionName'] as String? ?? 'Unknown';
+                              final title = pod['title'] as String? ?? pod['trackName'] as String? ?? pod['collectionName'] as String? ?? l.unknown;
                               final author = pod['artistName'] as String? ?? pod['author'] as String? ?? '';
                               final imageUrl = pod['cover'] as String? ?? pod['imageUrl'] as String? ?? pod['artworkUrl600'] as String? ?? pod['artworkUrl100'] as String? ?? '';
                               final genres = (pod['genres'] as List?)?.whereType<String>().where((g) => g != 'Podcasts').toList();

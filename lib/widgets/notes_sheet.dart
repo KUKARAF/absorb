@@ -4,6 +4,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../l10n/app_localizations.dart';
 import '../services/notes_service.dart';
 
 /// Bottom sheet displaying notes for a library item.
@@ -82,14 +83,16 @@ class _NotesSheetState extends State<NotesSheet> {
   }
 
   Future<void> _deleteNote(int index) async {
+    final l = AppLocalizations.of(context)!;
+    final noteTitle = _notes[index].title.isEmpty ? l.untitledNote : _notes[index].title;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete note?'),
-        content: Text('This will delete "${_notes[index].title.isEmpty ? "Untitled note" : _notes[index].title}".'),
+        title: Text(l.notesDeleteNoteQuestion),
+        content: Text(l.notesDeleteNoteContent(noteTitle)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.delete)),
         ],
       ),
     );
@@ -100,6 +103,7 @@ class _NotesSheetState extends State<NotesSheet> {
 
   Future<void> _exportNotes(BuildContext context) async {
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     final format = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -121,15 +125,15 @@ class _NotesSheetState extends State<NotesSheet> {
             )),
             ListTile(
               leading: const Icon(Icons.description_rounded),
-              title: const Text('Markdown (.md)'),
-              subtitle: const Text('Keeps formatting intact'),
+              title: Text(l.markdownMd),
+              subtitle: Text(l.keepsFormattingIntact),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               onTap: () => Navigator.pop(ctx, 'md'),
             ),
             ListTile(
               leading: const Icon(Icons.text_snippet_rounded),
-              title: const Text('Plain Text (.txt)'),
-              subtitle: const Text('Simple text, no formatting'),
+              title: Text(l.plainTextTxt),
+              subtitle: Text(l.simpleTextNoFormatting),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               onTap: () => Navigator.pop(ctx, 'txt'),
             ),
@@ -141,10 +145,10 @@ class _NotesSheetState extends State<NotesSheet> {
 
     final buffer = StringBuffer();
     final isMd = format == 'md';
-    buffer.writeln(isMd ? '# ${widget.itemTitle} - Notes' : '${widget.itemTitle} - Notes');
+    buffer.writeln(isMd ? '# ${widget.itemTitle} - ${l.notes}' : '${widget.itemTitle} - ${l.notes}');
     buffer.writeln();
     for (final note in _notes) {
-      final title = note.title.isEmpty ? 'Untitled' : note.title;
+      final title = note.title.isEmpty ? l.untitled : note.title;
       buffer.writeln(isMd ? '## $title' : '--- $title ---');
       if (note.body.isNotEmpty) {
         buffer.writeln();
@@ -178,6 +182,7 @@ class _NotesSheetState extends State<NotesSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Container(
       decoration: BoxDecoration(
@@ -204,7 +209,7 @@ class _NotesSheetState extends State<NotesSheet> {
               Expanded(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Notes', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(l.notes, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                   Text(widget.itemTitle, maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                 ],
@@ -212,12 +217,12 @@ class _NotesSheetState extends State<NotesSheet> {
               if (_notes.isNotEmpty)
                 IconButton(
                   icon: const Icon(Icons.ios_share_rounded),
-                  tooltip: 'Export',
+                  tooltip: l.notesExport,
                   onPressed: () => _exportNotes(context),
                 ),
               IconButton(
                 icon: const Icon(Icons.add_rounded),
-                tooltip: 'New note',
+                tooltip: l.notesNewNote,
                 onPressed: _addNote,
               ),
             ]),
@@ -236,10 +241,10 @@ class _NotesSheetState extends State<NotesSheet> {
                         Icon(Icons.note_add_rounded, size: 48,
                           color: cs.onSurface.withValues(alpha: 0.15)),
                         const SizedBox(height: 12),
-                        Center(child: Text('No notes yet', style: tt.bodyMedium?.copyWith(
+                        Center(child: Text(l.noNotesYet, style: tt.bodyMedium?.copyWith(
                           color: cs.onSurface.withValues(alpha: 0.4)))),
                         const SizedBox(height: 8),
-                        Center(child: Text('Markdown is supported', style: tt.bodySmall?.copyWith(
+                        Center(child: Text(l.markdownIsSupported, style: tt.bodySmall?.copyWith(
                           color: cs.onSurface.withValues(alpha: 0.25)))),
                       ])
                     : ListView.separated(
@@ -265,10 +270,10 @@ class _NotesSheetState extends State<NotesSheet> {
                               return await showDialog<bool>(
                                 context: context,
                                 builder: (ctx) => AlertDialog(
-                                  title: const Text('Delete note?'),
+                                  title: Text(l.notesDeleteNoteQuestion),
                                   actions: [
-                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+                                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.delete)),
                                   ],
                                 ),
                               ) ?? false;
@@ -280,6 +285,11 @@ class _NotesSheetState extends State<NotesSheet> {
                             child: _NoteCard(
                               note: note,
                               accent: widget.accent,
+                              untitledLabel: l.untitled,
+                              justNowLabel: l.justNow,
+                              minutesAgoFn: l.minutesAgo,
+                              hoursAgoFn: l.hoursAgo,
+                              daysAgoFn: l.daysAgo,
                               onTap: () => _editNote(index),
                               onDelete: () => _deleteNote(index),
                             ),
@@ -298,12 +308,22 @@ class _NotesSheetState extends State<NotesSheet> {
 class _NoteCard extends StatelessWidget {
   final Note note;
   final Color accent;
+  final String untitledLabel;
+  final String justNowLabel;
+  final String Function(int) minutesAgoFn;
+  final String Function(int) hoursAgoFn;
+  final String Function(int) daysAgoFn;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
   const _NoteCard({
     required this.note,
     required this.accent,
+    required this.untitledLabel,
+    required this.justNowLabel,
+    required this.minutesAgoFn,
+    required this.hoursAgoFn,
+    required this.daysAgoFn,
     required this.onTap,
     required this.onDelete,
   });
@@ -312,7 +332,7 @@ class _NoteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final title = note.title.isEmpty ? 'Untitled' : note.title;
+    final title = note.title.isEmpty ? untitledLabel : note.title;
 
     return GestureDetector(
       onTap: onTap,
@@ -373,10 +393,10 @@ class _NoteCard extends StatelessWidget {
   String _formatDate(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-    if (diff.inDays < 1) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    if (diff.inMinutes < 1) return justNowLabel;
+    if (diff.inHours < 1) return minutesAgoFn(diff.inMinutes);
+    if (diff.inDays < 1) return hoursAgoFn(diff.inHours);
+    if (diff.inDays < 7) return daysAgoFn(diff.inDays);
     return '${dt.month}/${dt.day}/${dt.year}';
   }
 }
@@ -423,6 +443,7 @@ class _NoteEditorState extends State<_NoteEditor> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Container(
@@ -449,12 +470,12 @@ class _NoteEditorState extends State<_NoteEditor> {
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
             child: Row(children: [
               Expanded(child: Text(
-                widget.title.isEmpty ? 'New Note' : 'Edit Note',
+                widget.title.isEmpty ? l.newNote : l.editNote,
                 style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               )),
               IconButton(
                 icon: Icon(_preview ? Icons.edit_rounded : Icons.preview_rounded),
-                tooltip: _preview ? 'Edit' : 'Preview',
+                tooltip: _preview ? l.edit : l.preview,
                 onPressed: () => setState(() => _preview = !_preview),
               ),
               TextButton(
@@ -467,7 +488,7 @@ class _NoteEditorState extends State<_NoteEditor> {
                   }
                   Navigator.pop(context, _NoteEditResult(title, body));
                 },
-                child: const Text('Save'),
+                child: Text(l.save),
               ),
             ]),
           ),
@@ -481,7 +502,7 @@ class _NoteEditorState extends State<_NoteEditor> {
                   TextField(
                     controller: _titleCtrl,
                     decoration: InputDecoration(
-                      hintText: 'Title',
+                      hintText: l.titleHint,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     ),
@@ -498,7 +519,7 @@ class _NoteEditorState extends State<_NoteEditor> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: _bodyCtrl.text.trim().isEmpty
-                          ? Text('Nothing to preview', style: tt.bodySmall?.copyWith(
+                          ? Text(l.nothingToPreview, style: tt.bodySmall?.copyWith(
                               color: cs.onSurface.withValues(alpha: 0.3)))
                           : MarkdownBody(
                               data: _bodyCtrl.text,
@@ -533,7 +554,7 @@ class _NoteEditorState extends State<_NoteEditor> {
                     TextField(
                       controller: _bodyCtrl,
                       decoration: InputDecoration(
-                        hintText: 'Write your note... (supports markdown)',
+                        hintText: l.noteBodyHint,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         contentPadding: const EdgeInsets.all(14),
                       ),

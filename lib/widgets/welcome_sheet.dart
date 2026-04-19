@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../l10n/app_localizations.dart';
+
 /// Shows a one-time welcome sheet explaining the Absorbing system.
 class WelcomeSheet {
   static const _prefKey = 'has_seen_welcome';
@@ -31,6 +33,7 @@ class _WelcomeContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Container(
       constraints: BoxConstraints(
@@ -65,7 +68,7 @@ class _WelcomeContent extends StatelessWidget {
                     children: [
                       Icon(Icons.waves_rounded, color: cs.primary, size: 28),
                       const SizedBox(width: 12),
-                      Text('Welcome to Absorb',
+                      Text(l.welcomeToAbsorb,
                         style: tt.headlineSmall?.copyWith(
                           fontWeight: FontWeight.w700,
                         )),
@@ -73,7 +76,7 @@ class _WelcomeContent extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Here\'s a quick overview of how things work.',
+                    l.welcomeOverview,
                     style: tt.bodyMedium?.copyWith(
                       color: cs.onSurface.withValues(alpha: 0.6),
                     ),
@@ -82,67 +85,60 @@ class _WelcomeContent extends StatelessWidget {
 
                   _section(cs, tt,
                     icon: Icons.home_rounded,
-                    title: 'Home',
-                    body: 'Your personalized shelves from Audiobookshelf - continue listening, '
-                        'discover new titles, and browse your playlists and collections. '
-                        'Use the edit button in the top right to customize which sections appear and their order.',
+                    title: l.welcomeHomeTitle,
+                    body: l.welcomeHomeBody,
                   ),
 
                   _section(cs, tt,
                     icon: Icons.library_books_rounded,
-                    title: 'Library',
-                    body: 'Browse your full library with tabs for books, series, and authors. '
-                        'Tap the active tab to open sort and filter options.',
+                    title: l.welcomeLibraryTitle,
+                    body: l.welcomeLibraryBody,
                   ),
 
                   _section(cs, tt,
                     icon: Icons.waves_rounded,
-                    title: 'Absorbing',
-                    body: 'Your active listening queue. Books you start playing automatically '
-                        'appear here as swipeable cards with full playback controls.',
+                    title: l.welcomeAbsorbingTitle,
+                    body: l.welcomeAbsorbingBody,
                   ),
 
                   _subsection(cs, tt,
-                    title: 'Queue modes',
+                    title: l.welcomeQueueModesTitle,
                     items: [
-                      'Off - playback stops when a book finishes',
-                      'Manual - auto-plays the next card in your queue',
-                      'Series - automatically finds and plays the next book in a series',
+                      l.welcomeQueueModeOff,
+                      l.welcomeQueueModeManual,
+                      l.welcomeQueueModeAuto,
                     ],
                   ),
 
                   _subsection(cs, tt,
-                    title: 'Managing your queue',
+                    title: l.welcomeManagingQueueTitle,
                     items: [
-                      'Tap the cover art to play/pause (toggleable in Settings)',
-                      'Swipe up on a card to open the full screen player, swipe down to dismiss',
-                      'Swipe right on any book in a list sheet to quickly add it to your queue',
-                      'Tap the reorder icon to drag cards into your preferred order or swipe to remove',
-                      'Add books manually from any book\'s detail sheet',
-                      'Finished books are automatically removed from your queue',
+                      l.welcomeManagingCoverTap,
+                      l.welcomeManagingSwipeUp,
+                      l.welcomeManagingSwipeRight,
+                      l.welcomeManagingReorder,
+                      l.welcomeManagingAdd,
+                      l.welcomeManagingRemoveFinished,
                     ],
                   ),
 
                   _subsection(cs, tt,
-                    title: 'Merge libraries',
+                    title: l.welcomeMergeLibrariesTitle,
                     items: [
-                      'Enable in Settings to show all your libraries together in one queue',
+                      l.welcomeMergeLibrariesBody,
                     ],
                   ),
 
                   _section(cs, tt,
                     icon: Icons.download_rounded,
-                    title: 'Downloads & Offline',
-                    body: 'Download books for offline listening. Toggle offline mode with the '
-                        'airplane icon on the Absorbing screen. Your progress syncs back '
-                        'to the server automatically when you reconnect.',
+                    title: l.welcomeDownloadsTitle,
+                    body: l.welcomeDownloadsBody,
                   ),
 
                   _section(cs, tt,
                     icon: Icons.settings_rounded,
-                    title: 'Settings',
-                    body: 'Configure queue behavior, sleep timers, playback speed, '
-                        'local server connections, and more.',
+                    title: l.welcomeSettingsTitle,
+                    body: l.welcomeSettingsBody,
                   ),
 
                   const SizedBox(height: 16),
@@ -156,7 +152,7 @@ class _WelcomeContent extends StatelessWidget {
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      child: const Text('Get Started'),
+                      child: Text(l.getStarted),
                     ),
                   ),
                 ],

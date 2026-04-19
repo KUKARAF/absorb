@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 
 /// Consistent page header used across all screens.
 ///
@@ -28,6 +29,7 @@ class AbsorbPageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     final bColor = brandingColor ?? cs.onSurfaceVariant;
     final tColor = titleColor ?? cs.onSurface;
 
@@ -44,7 +46,7 @@ class AbsorbPageHeader extends StatelessWidget {
                 child: Row(
                   children: [
                     Text(
-                      'A B S O R B',
+                      l.appTitle,
                       style: tt.labelSmall?.copyWith(
                         color: bColor,
                         letterSpacing: 4,

@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../widgets/absorb_page_header.dart';
 import '../widgets/absorb_wave_icon.dart';
+import '../l10n/app_localizations.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   final List<dynamic> users;
@@ -31,6 +32,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -44,7 +46,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
             child: Row(children: [
-              const Expanded(child: AbsorbPageHeader(title: 'Users', padding: EdgeInsets.zero)),
+              Expanded(child: AbsorbPageHeader(title: l.adminUsers, padding: EdgeInsets.zero)),
               IconButton(icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant), onPressed: () => Navigator.pop(context)),
             ]),
           ),
@@ -65,7 +67,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   Widget _userTile(ColorScheme cs, TextTheme tt, dynamic user) {
-    final username = user['username'] as String? ?? 'Unknown';
+    final l = AppLocalizations.of(context)!;
+    final username = user['username'] as String? ?? l.unknown;
     final userId = user['id'] as String? ?? '';
     final type = user['type'] as String? ?? 'user';
     final isActive = user['isActive'] as bool? ?? true;
@@ -97,20 +100,20 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 if (type == 'root') Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                   decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-                  child: Text('root', style: tt.labelSmall?.copyWith(color: Colors.amber, fontSize: 9, fontWeight: FontWeight.w600)))
+                  child: Text(l.adminUsersRootBadge, style: tt.labelSmall?.copyWith(color: Colors.amber, fontSize: 9, fontWeight: FontWeight.w600)))
                 else if (type == 'admin') Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                   decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-                  child: Text('admin', style: tt.labelSmall?.copyWith(color: cs.primary, fontSize: 9, fontWeight: FontWeight.w600))),
+                  child: Text(l.adminUsersAdminBadge, style: tt.labelSmall?.copyWith(color: cs.primary, fontSize: 9, fontWeight: FontWeight.w600))),
                 if (isLocked) ...[const SizedBox(width: 4), Icon(Icons.lock_rounded, size: 12, color: Colors.red.withValues(alpha: 0.6))],
                 if (!isActive) ...[const SizedBox(width: 4), Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-                  child: Text('disabled', style: tt.labelSmall?.copyWith(color: Colors.red.withValues(alpha: 0.7), fontSize: 9)))],
+                  child: Text(l.adminUsersDisabledBadge, style: tt.labelSmall?.copyWith(color: Colors.red.withValues(alpha: 0.7), fontSize: 9)))],
               ]),
               if (!isActive) ...[
                 const SizedBox(height: 2),
-                Text('Disabled', style: tt.labelSmall?.copyWith(color: Colors.red.withValues(alpha: 0.5), fontSize: 10)),
+                Text(l.disabled, style: tt.labelSmall?.copyWith(color: Colors.red.withValues(alpha: 0.5), fontSize: 10)),
               ],
             ])),
             Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurface.withValues(alpha: 0.15)),
@@ -259,7 +262,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
     });
   }
 
-  String get _username => widget.user['username'] as String? ?? 'User';
+  String get _username => widget.user['username'] as String? ?? AppLocalizations.of(context)!.userFallback;
   String get _userType => widget.user['type'] as String? ?? 'user';
   bool get _isRoot => _userType == 'root';
 
@@ -283,7 +286,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
     final userLastSeen = (_fullUser ?? widget.user)['lastSeen'] as num?;
     final best = (mostRecent != null && (userLastSeen == null || mostRecent > userLastSeen))
         ? mostRecent : userLastSeen;
-    if (best == null) return 'Never';
+    if (best == null) return AppLocalizations.of(context)!.adminUsersNever;
     return _timeAgo(DateTime.fromMillisecondsSinceEpoch(best.toInt()));
   }
 
@@ -291,6 +294,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     final finished = _progressItems.where((p) => p['isFinished'] == true).length;
     final inProgress = _progressItems.where((p) => (p['isFinished'] != true) && (p['progress'] as num? ?? 0) > 0).length;
@@ -306,7 +310,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
               if (!_isRoot)
                 IconButton(
                   icon: Icon(Icons.edit_rounded, color: cs.primary.withValues(alpha: 0.7), size: 20),
-                  tooltip: 'Edit user',
+                  tooltip: l.adminUsersEditUserTooltip,
                   onPressed: _showEditor,
                 ),
               IconButton(icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant), onPressed: () => Navigator.pop(context)),
@@ -322,7 +326,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
               )),
               const SizedBox(width: 8),
               Text(
-                _isOnline ? 'Online now' : 'Last seen $_lastSeenStr',
+                _isOnline ? l.adminUsersOnlineNow : l.adminUsersLastSeen(_lastSeenStr),
                 style: tt.labelSmall?.copyWith(
                   color: _isOnline ? const Color(0xFF4CAF50).withValues(alpha: 0.8) : cs.onSurface.withValues(alpha: 0.3),
                   fontSize: 11,
@@ -343,11 +347,11 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
               child: Row(children: [
-                _summaryChip(cs, tt, '$inProgress', 'In Progress', cs.primary),
+                _summaryChip(cs, tt, '$inProgress', l.inProgress, cs.primary),
                 const SizedBox(width: 10),
-                _summaryChip(cs, tt, '$finished', 'Finished', Colors.green),
+                _summaryChip(cs, tt, '$finished', l.finished, Colors.green),
                 const SizedBox(width: 10),
-                _summaryChip(cs, tt, '${_progressItems.length}', 'Total', cs.onSurfaceVariant),
+                _summaryChip(cs, tt, '${_progressItems.length}', l.adminUsersTotal, cs.onSurfaceVariant),
               ]),
             ),
           Expanded(
@@ -360,7 +364,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
                             const SizedBox(height: 80),
                             Center(child: Icon(Icons.menu_book_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.08))),
                             const SizedBox(height: 12),
-                            Center(child: Text('No reading activity', style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.24)))),
+                            Center(child: Text(l.adminUsersNoReadingActivity, style: tt.bodyMedium?.copyWith(color: cs.onSurface.withValues(alpha: 0.24)))),
                           ])
                         : ListView(
                             padding: const EdgeInsets.only(bottom: 40),
@@ -383,7 +387,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
                                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                                         Icon(Icons.history_rounded, size: 16, color: cs.onSurface.withValues(alpha: 0.4)),
                                         const SizedBox(width: 8),
-                                        Text('Recent Sessions', style: tt.bodySmall?.copyWith(
+                                        Text(l.statsRecentSessions, style: tt.bodySmall?.copyWith(
                                           color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600)),
                                       ]),
                                     ),
@@ -398,7 +402,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
                               else if (_sessions.isNotEmpty) ...[
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                                  child: Text('Recent Sessions', style: tt.titleSmall?.copyWith(
+                                  child: Text(l.statsRecentSessions, style: tt.titleSmall?.copyWith(
                                     color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
                                 ),
                                 ..._sessions.map((s) => _sessionTile(cs, tt, s)),
@@ -420,7 +424,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
                                           else
                                             Icon(Icons.expand_more_rounded, size: 14, color: cs.onSurface.withValues(alpha: 0.4)),
                                           const SizedBox(width: 6),
-                                          Text(_loadingMoreSessions ? 'Loading...' : 'Load more sessions',
+                                          Text(_loadingMoreSessions ? l.adminUsersLoadingDots : l.adminUsersLoadMoreSessions,
                                             style: tt.bodySmall?.copyWith(
                                               color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600)),
                                         ]),
@@ -431,7 +435,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
                               ] else ...[
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                                  child: Text('No recent sessions', style: tt.bodySmall?.copyWith(
+                                  child: Text(l.adminUsersNoRecentSessions, style: tt.bodySmall?.copyWith(
                                     color: cs.onSurface.withValues(alpha: 0.24))),
                                 ),
                               ],
@@ -439,7 +443,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
                               if (_progressItems.isNotEmpty) ...[
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                                  child: Text('Library Progress', style: tt.titleSmall?.copyWith(
+                                  child: Text(l.adminUsersLibraryProgress, style: tt.titleSmall?.copyWith(
                                     color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
                                 ),
                                 ..._progressItems.take(_visibleCount).map((p) => _progressTile(cs, tt, p)),
@@ -462,7 +466,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
                                             Icon(Icons.expand_more_rounded, size: 16, color: cs.onSurface.withValues(alpha: 0.4)),
                                           const SizedBox(width: 8),
                                           Text(
-                                            _fetchingMore ? 'Loading...' : 'Load More (${_progressItems.length - _visibleCount} remaining)',
+                                            _fetchingMore ? l.adminUsersLoadingDots : l.adminUsersLoadMoreRemaining(_progressItems.length - _visibleCount),
                                             style: tt.bodySmall?.copyWith(
                                               color: cs.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w600)),
                                         ]),
@@ -567,7 +571,7 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(isFinished ? 'Finished' : '$percent%',
+              Text(isFinished ? AppLocalizations.of(context)!.finished : '$percent%',
                 style: tt.labelSmall?.copyWith(
                   color: isFinished ? Colors.green.withValues(alpha: 0.8) : cs.onSurfaceVariant.withValues(alpha: 0.6),
                   fontWeight: FontWeight.w600, fontSize: 10)),
@@ -589,11 +593,12 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
 
   Widget _sessionTile(ColorScheme cs, TextTheme tt, dynamic s) {
     if (s is! Map<String, dynamic>) return const SizedBox.shrink();
+    final l = AppLocalizations.of(context)!;
     final rawTitle = s['displayTitle'] as String?;
     final rawAuthor = s['displayAuthor'] as String?;
     final meta = s['mediaMetadata'] as Map<String, dynamic>?;
     final title = (rawTitle != null && !_looksLikeId(rawTitle))
-        ? rawTitle : meta?['title'] as String? ?? 'Unknown';
+        ? rawTitle : meta?['title'] as String? ?? l.unknown;
     final author = (rawAuthor != null && !_looksLikeId(rawAuthor))
         ? rawAuthor : meta?['authorName'] as String? ?? '';
     final duration = (s['timeListening'] as num?)?.toDouble() ?? 0;
@@ -675,10 +680,11 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
   }
 
   String _relativeDate(DateTime date) {
+    final l = AppLocalizations.of(context)!;
     final diff = DateTime.now().difference(date);
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    if (diff.inMinutes < 60) return l.minutesAgo(diff.inMinutes);
+    if (diff.inHours < 24) return l.hoursAgo(diff.inHours);
+    if (diff.inDays < 7) return l.daysAgo(diff.inDays);
     return '${date.month}/${date.day}';
   }
 
@@ -696,10 +702,15 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
       }));
   }
 
-  String _timeAgo(DateTime dt) { final d = DateTime.now().difference(dt);
-    if (d.inSeconds < 60) return 'just now'; if (d.inMinutes < 60) return '${d.inMinutes}m ago';
-    if (d.inHours < 24) return '${d.inHours}h ago'; if (d.inDays < 30) return '${d.inDays}d ago';
-    return '${(d.inDays / 30).floor()}mo ago'; }
+  String _timeAgo(DateTime dt) {
+    final l = AppLocalizations.of(context)!;
+    final d = DateTime.now().difference(dt);
+    if (d.inSeconds < 60) return l.justNow;
+    if (d.inMinutes < 60) return l.minutesAgo(d.inMinutes);
+    if (d.inHours < 24) return l.hoursAgo(d.inHours);
+    if (d.inDays < 30) return l.daysAgo(d.inDays);
+    return l.adminUsersMonthsAgo((d.inDays / 30).floor());
+  }
 
   String _fmtDur(double s) {
     final h = (s / 3600).floor();
@@ -756,6 +767,7 @@ class _UserEditorSheetState extends State<_UserEditorSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Container(
       decoration: BoxDecoration(color: Theme.of(context).bottomSheetTheme.backgroundColor, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
@@ -764,7 +776,7 @@ class _UserEditorSheetState extends State<_UserEditorSheet> {
           decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(2)))),
         Padding(padding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
           child: Row(children: [
-            Expanded(child: Text(_isNew ? 'New User' : 'Edit User', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface))),
+            Expanded(child: Text(_isNew ? l.adminUsersNewUser : l.adminUsersEditUser, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface))),
             if (!_isNew) IconButton(
               icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade300, size: 20),
               onPressed: _deleting ? null : _deleteUser),
@@ -772,39 +784,39 @@ class _UserEditorSheetState extends State<_UserEditorSheet> {
         Flexible(child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _lbl(cs, tt, 'Username'), const SizedBox(height: 6),
+            _lbl(cs, tt, l.adminUsersUsername), const SizedBox(height: 6),
             TextField(controller: _usernameCtrl, enabled: _isNew, style: TextStyle(color: cs.onSurface),
-              decoration: _deco(cs, 'Enter username')),
+              decoration: _deco(cs, l.adminUsersEnterUsername)),
             const SizedBox(height: 16),
-            _lbl(cs, tt, _isNew ? 'Password' : 'New Password'), const SizedBox(height: 6),
+            _lbl(cs, tt, _isNew ? l.adminUsersPassword : l.adminUsersNewPassword), const SizedBox(height: 6),
             TextField(controller: _passwordCtrl, obscureText: true, style: TextStyle(color: cs.onSurface),
-              decoration: _deco(cs, _isNew ? 'Enter password' : 'Leave blank to keep current')),
+              decoration: _deco(cs, _isNew ? l.adminUsersEnterPassword : l.adminUsersLeaveBlankToKeep)),
             const SizedBox(height: 20),
-            _lbl(cs, tt, 'Account Type'), const SizedBox(height: 8),
+            _lbl(cs, tt, l.adminUsersAccountType), const SizedBox(height: 8),
             Row(children: [
-              _chip(cs, tt, 'guest', Icons.person_outline_rounded), const SizedBox(width: 8),
-              _chip(cs, tt, 'user', Icons.person_rounded), const SizedBox(width: 8),
-              _chip(cs, tt, 'admin', Icons.admin_panel_settings_rounded),
+              _chip(cs, tt, 'guest', Icons.person_outline_rounded, l.adminUsersTypeGuest), const SizedBox(width: 8),
+              _chip(cs, tt, 'user', Icons.person_rounded, l.adminUsersTypeUser), const SizedBox(width: 8),
+              _chip(cs, tt, 'admin', Icons.admin_panel_settings_rounded, l.adminUsersTypeAdmin),
             ]),
             const SizedBox(height: 20),
-            _lbl(cs, tt, 'Status'), const SizedBox(height: 4),
-            _sw(cs, 'Account Active', _isActive, (v) => setState(() => _isActive = v), sub: 'Disabled accounts cannot log in'),
-            _sw(cs, 'Locked', _isLocked, (v) => setState(() => _isLocked = v), sub: 'Prevents password changes'),
+            _lbl(cs, tt, l.adminUsersStatus), const SizedBox(height: 4),
+            _sw(cs, l.adminUsersAccountActive, _isActive, (v) => setState(() => _isActive = v), sub: l.adminUsersAccountActiveSub),
+            _sw(cs, l.adminUsersLocked, _isLocked, (v) => setState(() => _isLocked = v), sub: l.adminUsersLockedSub),
             const SizedBox(height: 12),
-            _lbl(cs, tt, 'Permissions'), const SizedBox(height: 4),
-            _sw(cs, 'Download', _canDownload, (v) => setState(() => _canDownload = v)),
-            _sw(cs, 'Update', _canUpdate, (v) => setState(() => _canUpdate = v), sub: 'Edit metadata and library items'),
-            _sw(cs, 'Delete', _canDelete, (v) => setState(() => _canDelete = v)),
-            _sw(cs, 'Upload', _canUpload, (v) => setState(() => _canUpload = v)),
-            _sw(cs, 'Explicit Content', _accessExplicit, (v) => setState(() => _accessExplicit = v)),
+            _lbl(cs, tt, l.adminUsersPermissions), const SizedBox(height: 4),
+            _sw(cs, l.adminUsersPermDownload, _canDownload, (v) => setState(() => _canDownload = v)),
+            _sw(cs, l.adminUsersPermUpdate, _canUpdate, (v) => setState(() => _canUpdate = v), sub: l.adminUsersPermUpdateSub),
+            _sw(cs, l.adminUsersPermDelete, _canDelete, (v) => setState(() => _canDelete = v)),
+            _sw(cs, l.adminUsersPermUpload, _canUpload, (v) => setState(() => _canUpload = v)),
+            _sw(cs, l.adminUsersPermExplicit, _accessExplicit, (v) => setState(() => _accessExplicit = v)),
             const SizedBox(height: 12),
-            _lbl(cs, tt, 'Library Access'), const SizedBox(height: 4),
-            _sw(cs, 'Access All Libraries', _accessAllLibraries, (v) => setState(() => _accessAllLibraries = v)),
+            _lbl(cs, tt, l.adminUsersLibraryAccess), const SizedBox(height: 4),
+            _sw(cs, l.adminUsersAccessAllLibraries, _accessAllLibraries, (v) => setState(() => _accessAllLibraries = v)),
             if (!_accessAllLibraries) ...[
               const SizedBox(height: 8),
               ...widget.libraries.map((lib) {
                 final id = lib['id'] as String? ?? '';
-                final name = lib['name'] as String? ?? 'Library';
+                final name = lib['name'] as String? ?? l.libraryFallback;
                 final sel = _selectedLibraries.contains(id);
                 return Padding(padding: const EdgeInsets.only(bottom: 4), child: GestureDetector(
                   onTap: () => setState(() { if (sel) _selectedLibraries.remove(id); else _selectedLibraries.add(id); }),
@@ -830,7 +842,7 @@ class _UserEditorSheetState extends State<_UserEditorSheet> {
             style: FilledButton.styleFrom(backgroundColor: cs.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
             child: _saving
               ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary))
-              : Text(_isNew ? 'Create User' : 'Save Changes', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onPrimary)),
+              : Text(_isNew ? l.adminUsersCreateUser : l.adminUsersSaveChanges, style: TextStyle(fontWeight: FontWeight.w700, color: cs.onPrimary)),
           ))),
       ]));
   }
@@ -846,7 +858,7 @@ class _UserEditorSheetState extends State<_UserEditorSheet> {
     disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: cs.onSurface.withValues(alpha: 0.04))),
     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12));
 
-  Widget _chip(ColorScheme cs, TextTheme tt, String type, IconData ic) {
+  Widget _chip(ColorScheme cs, TextTheme tt, String type, IconData ic, String label) {
     final on = _type == type;
     return Expanded(child: GestureDetector(onTap: () => setState(() => _type = type),
       child: AnimatedContainer(duration: const Duration(milliseconds: 200), padding: const EdgeInsets.symmetric(vertical: 10),
@@ -856,7 +868,7 @@ class _UserEditorSheetState extends State<_UserEditorSheet> {
           border: Border.all(color: on ? cs.primary.withValues(alpha: 0.4) : cs.onSurface.withValues(alpha: 0.06))),
         child: Column(children: [
           Icon(ic, size: 20, color: on ? cs.primary : cs.onSurface.withValues(alpha: 0.3)), const SizedBox(height: 4),
-          Text(type[0].toUpperCase() + type.substring(1),
+          Text(label,
             style: tt.labelSmall?.copyWith(color: on ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.6), fontWeight: on ? FontWeight.w700 : FontWeight.w500, fontSize: 11)),
         ]))));
   }
@@ -868,9 +880,10 @@ class _UserEditorSheetState extends State<_UserEditorSheet> {
 
   Future<void> _save() async {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
+    final l = AppLocalizations.of(context)!;
     final username = _usernameCtrl.text.trim();
-    if (username.isEmpty) { _snk('Username is required'); return; }
-    if (_isNew && _passwordCtrl.text.isEmpty) { _snk('Password is required'); return; }
+    if (username.isEmpty) { _snk(l.adminUsersUsernameRequired); return; }
+    if (_isNew && _passwordCtrl.text.isEmpty) { _snk(l.adminUsersPasswordRequired); return; }
     setState(() => _saving = true);
     final perms = {'download': _canDownload, 'update': _canUpdate, 'delete': _canDelete, 'upload': _canUpload,
       'accessExplicitContent': _accessExplicit, 'accessAllLibraries': _accessAllLibraries, 'accessAllTags': true};
@@ -886,26 +899,33 @@ class _UserEditorSheetState extends State<_UserEditorSheet> {
       if (_passwordCtrl.text.isNotEmpty) up['password'] = _passwordCtrl.text;
       ok = await api.updateUser(widget.user!['id'] as String, up);
     }
-    if (mounted) { setState(() => _saving = false);
-      if (ok) { widget.onSaved(); Navigator.pop(context); _snk(_isNew ? 'User created' : 'User updated'); }
-      else { _snk(_isNew ? 'Failed to create user' : 'Failed to update user'); } }
+    if (mounted) {
+      final l2 = AppLocalizations.of(context)!;
+      setState(() => _saving = false);
+      if (ok) { widget.onSaved(); Navigator.pop(context); _snk(_isNew ? l2.adminUsersUserCreated : l2.adminUsersUserUpdated); }
+      else { _snk(_isNew ? l2.adminUsersFailedCreate : l2.adminUsersFailedUpdate); }
+    }
   }
 
   Future<void> _deleteUser() async {
-    final name = widget.user?['username'] ?? 'this user';
+    final l = AppLocalizations.of(context)!;
+    final name = widget.user?['username'] ?? l.adminUsersThisUser;
     final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Delete User?'),
-      content: Text('Permanently delete $name?'),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: TextStyle(color: Colors.red.shade300)))],
+      title: Text(l.adminUsersDeleteUserTitle),
+      content: Text(l.adminUsersDeleteUserContent(name)),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.delete, style: TextStyle(color: Colors.red.shade300)))],
     ));
     if (yes != true) return;
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     setState(() => _deleting = true);
     final ok = await api.deleteUser(widget.user!['id'] as String);
-    if (mounted) { setState(() => _deleting = false);
-      if (ok) { widget.onSaved(); Navigator.pop(context); _snk('$name deleted'); }
-      else { _snk('Failed to delete user'); } }
+    if (mounted) {
+      final l2 = AppLocalizations.of(context)!;
+      setState(() => _deleting = false);
+      if (ok) { widget.onSaved(); Navigator.pop(context); _snk(l2.adminUsersUserDeleted(name)); }
+      else { _snk(l2.adminUsersFailedDelete); }
+    }
   }
 
   void _snk(String s) => ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(
@@ -953,13 +973,13 @@ class _AdminSessionDetailsSheet extends StatelessWidget {
     return '${months[d.month - 1]} ${d.day}, ${d.year} at $hour12:$min $ampm';
   }
 
-  String _playMethodLabel(dynamic m) {
+  String _playMethodLabel(dynamic m, AppLocalizations l) {
     final i = m is num ? m.toInt() : -1;
     switch (i) {
-      case 0: return 'Direct play';
-      case 1: return 'Direct stream';
-      case 2: return 'Transcode';
-      case 3: return 'Local';
+      case 0: return l.adminUsersPlayDirect;
+      case 1: return l.adminUsersPlayDirectStream;
+      case 2: return l.adminUsersPlayTranscode;
+      case 3: return l.adminUsersPlayLocal;
       default: return m.toString();
     }
   }
@@ -968,6 +988,7 @@ class _AdminSessionDetailsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final s = session;
 
     final meta = s['mediaMetadata'] as Map<String, dynamic>? ?? {};
@@ -980,7 +1001,7 @@ class _AdminSessionDetailsSheet extends StatelessWidget {
     bool looksLikeId(String v) => idPattern.hasMatch(v);
     final title = (rawTitle != null && !looksLikeId(rawTitle))
         ? rawTitle
-        : meta['title'] as String? ?? 'Unknown';
+        : meta['title'] as String? ?? l.unknown;
     final author = (rawAuthor != null && !looksLikeId(rawAuthor))
         ? rawAuthor
         : meta['authorName'] as String? ?? '';
@@ -1074,14 +1095,14 @@ class _AdminSessionDetailsSheet extends StatelessWidget {
                           ],
                           if (author.isNotEmpty) ...[
                             const SizedBox(height: 4),
-                            Text('by $author',
+                            Text(l.adminUsersByAuthor(author),
                                 style: tt.bodySmall?.copyWith(
                                     color: cs.onSurface
                                         .withValues(alpha: 0.6))),
                           ],
                           if (narrator.isNotEmpty) ...[
                             const SizedBox(height: 2),
-                            Text('Narrated by $narrator',
+                            Text(l.narratedBy(narrator),
                                 style: tt.bodySmall?.copyWith(
                                     color: cs.onSurface
                                         .withValues(alpha: 0.5))),
@@ -1089,37 +1110,37 @@ class _AdminSessionDetailsSheet extends StatelessWidget {
                         ])),
                   ]),
                   const SizedBox(height: 20),
-                  _infoRow(cs, tt, 'Listened', _fmtDuration(timeListening)),
-                  _infoRow(cs, tt, 'Started at position', _fmtPos(startTime)),
-                  _infoRow(cs, tt, 'Ended at position', _fmtPos(currentTime)),
+                  _infoRow(cs, tt, l.adminUsersListened, _fmtDuration(timeListening)),
+                  _infoRow(cs, tt, l.adminUsersStartedAtPosition, _fmtPos(startTime)),
+                  _infoRow(cs, tt, l.adminUsersEndedAtPosition, _fmtPos(currentTime)),
                   if (totalDuration > 0)
-                    _infoRow(cs, tt, 'Total duration', _fmtPos(totalDuration)),
+                    _infoRow(cs, tt, l.adminUsersTotalDuration, _fmtPos(totalDuration)),
                   const SizedBox(height: 16),
                   if (startedAt is num)
-                    _infoRow(cs, tt, 'Started', _fmtDate(startedAt.toInt())),
+                    _infoRow(cs, tt, l.adminUsersStarted, _fmtDate(startedAt.toInt())),
                   if (updatedAt is num)
-                    _infoRow(cs, tt, 'Updated', _fmtDate(updatedAt.toInt())),
+                    _infoRow(cs, tt, l.adminUsersUpdated, _fmtDate(updatedAt.toInt())),
                   const SizedBox(height: 16),
                   if (clientName.isNotEmpty)
                     _infoRow(
                         cs,
                         tt,
-                        'Client',
+                        l.adminUsersClient,
                         clientVersion.isNotEmpty
                             ? '$clientName $clientVersion'
                             : clientName),
                   if (deviceModel.isNotEmpty)
-                    _infoRow(cs, tt, 'Device', deviceModel),
+                    _infoRow(cs, tt, l.adminUsersDevice, deviceModel),
                   if (osName.isNotEmpty)
                     _infoRow(
                         cs,
                         tt,
-                        'OS',
+                        l.adminUsersOs,
                         osVersion.isNotEmpty
                             ? '$osName $osVersion'
                             : osName),
                   if (playMethod != null)
-                    _infoRow(cs, tt, 'Play method', _playMethodLabel(playMethod)),
+                    _infoRow(cs, tt, l.adminUsersPlayMethod, _playMethodLabel(playMethod, l)),
                 ],
               ),
             ),

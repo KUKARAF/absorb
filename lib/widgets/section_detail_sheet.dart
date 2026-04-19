@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
@@ -75,6 +76,7 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final lib = context.watch<LibraryProvider>();
+    final l = AppLocalizations.of(context)!;
 
     return Column(children: [
       // Header
@@ -103,13 +105,13 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
       const SizedBox(height: 4),
       Expanded(
         child: _gridView
-            ? _buildGrid(cs, tt, lib)
-            : _buildList(cs, tt, lib),
+            ? _buildGrid(cs, tt, lib, l)
+            : _buildList(cs, tt, lib, l),
       ),
     ]);
   }
 
-  Widget _buildList(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
+  Widget _buildList(ColorScheme cs, TextTheme tt, LibraryProvider lib, AppLocalizations l) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final doneColor = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
 
@@ -123,7 +125,7 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
         final itemId = item['id'] as String? ?? '';
         final media = item['media'] as Map<String, dynamic>? ?? {};
         final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final title = metadata['title'] as String? ?? 'Unknown';
+        final title = metadata['title'] as String? ?? l.unknown;
         final author = metadata['authorName'] as String? ?? '';
         final coverUrl = lib.getCoverUrl(itemId);
         final isExplicit = PlayerSettings.showExplicitBadge &&
@@ -152,10 +154,10 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
                     aspectRatio: widget.coverAspectRatio,
                     child: Stack(children: [
                       Positioned.fill(child: _cover(coverUrl, lib, cs)),
-                      if (isExplicit) _explicitBadge(),
+                      if (isExplicit) _explicitBadge(l),
                       if (progress > 0 && !isFinished) _progressBar(cs, progress),
                       if (isFinished || isDownloaded)
-                        _badges(cs, doneColor, isFinished, isDownloaded),
+                        _badges(cs, doneColor, isFinished, isDownloaded, l),
                     ]),
                   ),
                   Expanded(
@@ -198,7 +200,7 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
             lib.absorbingItemCache[itemId] = Map<String, dynamic>.from(item);
             HapticFeedback.mediumImpact();
             if (context.mounted) {
-              showOverlayToast(context, 'Added "$title" to Absorbing',
+              showOverlayToast(context, l.sectionDetailAddedToAbsorbing(title),
                   icon: Icons.add_circle_outline_rounded);
             }
             return false;
@@ -218,7 +220,7 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
     );
   }
 
-  Widget _buildGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib) {
+  Widget _buildGrid(ColorScheme cs, TextTheme tt, LibraryProvider lib, AppLocalizations l) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final doneColor = isDark ? Colors.greenAccent[400]! : Colors.green.shade700;
     final isRect = widget.coverAspectRatio < 1.0;
@@ -241,7 +243,7 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
         final itemId = item['id'] as String? ?? '';
         final media = item['media'] as Map<String, dynamic>? ?? {};
         final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-        final title = metadata['title'] as String? ?? 'Unknown';
+        final title = metadata['title'] as String? ?? l.unknown;
         final author = metadata['authorName'] as String? ?? '';
         final coverUrl = lib.getCoverUrl(itemId);
         final isExplicit = PlayerSettings.showExplicitBadge &&
@@ -262,11 +264,11 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
                   borderRadius: BorderRadius.circular(10),
                   child: Stack(children: [
                     Positioned.fill(child: _cover(coverUrl, lib, cs)),
-                    if (isExplicit) _explicitBadge(),
+                    if (isExplicit) _explicitBadge(l),
                     if (progress > 0 && !isFinished)
                       _progressBar(cs, progress),
                     if (isFinished || isDownloaded)
-                      _badges(cs, doneColor, isFinished, isDownloaded),
+                      _badges(cs, doneColor, isFinished, isDownloaded, l),
                   ]),
                 ),
               ),
@@ -310,7 +312,7 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
         child: Icon(Icons.book_rounded, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
       );
 
-  Widget _explicitBadge() => Positioned(
+  Widget _explicitBadge(AppLocalizations l) => Positioned(
         top: 4, right: 4,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -318,8 +320,8 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
             color: Colors.red.withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(4),
           ),
-          child: const Text('E',
-              style: TextStyle(
+          child: Text(l.bookCardExplicitBadge,
+              style: const TextStyle(
                   color: Colors.white,
                   fontSize: 9,
                   fontWeight: FontWeight.w800)),
@@ -337,7 +339,7 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
       );
 
   Widget _badges(ColorScheme cs, Color doneColor, bool isFinished,
-      bool isDownloaded) =>
+      bool isDownloaded, AppLocalizations l) =>
       Positioned(
         left: 0, right: 0, bottom: 0,
         child: Container(
@@ -361,7 +363,7 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
                     Icon(Icons.check_circle_rounded,
                         size: 10, color: doneColor),
                     const SizedBox(width: 3),
-                    Text('Done',
+                    Text(l.sectionDetailDoneBadge,
                         style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w600,
@@ -375,7 +377,7 @@ class _SectionDetailSheetState extends State<SectionDetailSheet> {
                     Icon(Icons.download_done_rounded,
                         size: 10, color: cs.primary),
                     const SizedBox(width: 3),
-                    Text('Saved',
+                    Text(l.saved,
                         style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w600,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../screens/library_screen.dart';
 import 'library_grid_tiles.dart';
 
@@ -22,6 +23,7 @@ class LibraryAuthorsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     if (isLoadingAuthors) {
       return const Center(child: CircularProgressIndicator());
@@ -40,7 +42,7 @@ class LibraryAuthorsTab extends StatelessWidget {
                     Icon(Icons.people_outline_rounded,
                         size: 56, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
                     const SizedBox(height: 12),
-                    Text('No authors found',
+                    Text(l.libraryNoAuthorsFound,
                         style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
                   ],
                 ),

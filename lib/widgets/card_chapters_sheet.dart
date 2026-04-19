@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../screens/app_shell.dart';
@@ -44,6 +45,7 @@ void showChaptersSheet({
             if (sc.hasClients) sc.jumpTo(target.clamp(0, sc.position.maxScrollExtent));
           });
         }
+        final l = AppLocalizations.of(ctx)!;
         return Container(
         decoration: BoxDecoration(
           color: Theme.of(context).bottomSheetTheme.backgroundColor,
@@ -53,13 +55,13 @@ void showChaptersSheet({
         child: Column(children: [
           Padding(padding: const EdgeInsets.symmetric(vertical: 12),
             child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
-          Text('Chapters (${chapters.length})', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+          Text(l.chaptersCount(chapters.length), style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           Expanded(child: ListView.builder(
             controller: sc, itemCount: chapters.length,
             itemBuilder: (_, i) {
               final ch = chapters[i] as Map<String, dynamic>;
-              final chTitle = ch['title'] as String? ?? 'Chapter ${i + 1}';
+              final chTitle = ch['title'] as String? ?? l.chapterNumber(i + 1);
               final start = (ch['start'] as num?)?.toDouble() ?? 0;
               final end = (ch['end'] as num?)?.toDouble() ?? 0;
               final pos = isCastingThis
@@ -98,11 +100,11 @@ void showChaptersSheet({
                   } else if (itemId != null) {
                     // Inactive card - confirm then start playback
                     final confirmed = await showDialog<bool>(context: ctx, builder: (dlg) => AlertDialog(
-                      title: const Text('Play from chapter?'),
-                      content: Text('Start playing from "$chTitle"?'),
+                      title: Text(l.cardChaptersPlayFromChapterTitle),
+                      content: Text(l.cardChaptersPlayFromChapterContent(chTitle)),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(dlg, false), child: const Text('Cancel')),
-                        FilledButton(onPressed: () => Navigator.pop(dlg, true), child: const Text('Play')),
+                        TextButton(onPressed: () => Navigator.pop(dlg, false), child: Text(l.cancel)),
+                        FilledButton(onPressed: () => Navigator.pop(dlg, true), child: Text(l.cardChaptersPlay)),
                       ],
                     ));
                     if (confirmed != true || !ctx.mounted) return;

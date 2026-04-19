@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/library_provider.dart';
 
 class CollectionPickerSheet extends StatefulWidget {
@@ -44,10 +45,11 @@ class _CollectionPickerSheetState extends State<CollectionPickerSheet> {
     final collection = await lib.createCollection(name, books: [widget.libraryItemId]);
     if (collection != null) {
       if (mounted) {
+        final l = AppLocalizations.of(context)!;
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           duration: const Duration(seconds: 3),
-          content: Text('Added to "$name"'),
+          content: Text(l.addedToName(name)),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ));
@@ -60,13 +62,14 @@ class _CollectionPickerSheetState extends State<CollectionPickerSheet> {
   Future<void> _addToExisting(LibraryProvider lib, Map<String, dynamic> collection) async {
     setState(() => _adding = true);
     final collectionId = collection['id'] as String;
-    final name = collection['name'] as String? ?? 'Collection';
+    final l = AppLocalizations.of(context)!;
+    final name = collection['name'] as String? ?? l.collectionPickerCollectionFallback;
     final ok = await lib.addToCollection(collectionId, widget.libraryItemId);
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         duration: const Duration(seconds: 3),
-        content: Text(ok ? 'Added to "$name"' : 'Failed to add'),
+        content: Text(ok ? l.addedToName(name) : l.failedToAdd),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ));
@@ -78,6 +81,7 @@ class _CollectionPickerSheetState extends State<CollectionPickerSheet> {
     final cs = Theme.of(context).colorScheme;
     final lib = context.watch<LibraryProvider>();
     final collections = lib.collections;
+    final l = AppLocalizations.of(context)!;
 
     return SafeArea(
       child: Padding(
@@ -95,7 +99,7 @@ class _CollectionPickerSheetState extends State<CollectionPickerSheet> {
             ),
           )),
           // Title
-          Text('Add to Collection', style: TextStyle(
+          Text(l.addToCollection, style: TextStyle(
             color: cs.onSurface, fontSize: 16, fontWeight: FontWeight.w600,
           )),
           const SizedBox(height: 12),
@@ -109,7 +113,7 @@ class _CollectionPickerSheetState extends State<CollectionPickerSheet> {
                   autofocus: true,
                   style: TextStyle(color: cs.onSurface, fontSize: 14),
                   decoration: InputDecoration(
-                    hintText: 'Collection name',
+                    hintText: l.collectionNameHint,
                     hintStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.4)),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -135,14 +139,14 @@ class _CollectionPickerSheetState extends State<CollectionPickerSheet> {
               ]),
             )
           else
-            _sheetItem(cs, Icons.add_rounded, 'New Collection',
+            _sheetItem(cs, Icons.add_rounded, l.newCollection,
               onTap: () => setState(() => _creatingNew = true)),
           // Existing collections
           if (collections.isNotEmpty) ...[
             const SizedBox(height: 4),
             ...collections.map((c) {
               final cm = c as Map<String, dynamic>;
-              final name = cm['name'] as String? ?? 'Collection';
+              final name = cm['name'] as String? ?? l.collectionPickerCollectionFallback;
               final books = (cm['books'] as List<dynamic>?) ?? [];
               // Check if item is already in this collection
               final alreadyIn = books.any((book) {
@@ -152,7 +156,7 @@ class _CollectionPickerSheetState extends State<CollectionPickerSheet> {
               return _sheetItem(
                 cs,
                 alreadyIn ? Icons.check_rounded : Icons.collections_bookmark_rounded,
-                '$name (${books.length})',
+                l.collectionPickerNameWithCount(name, books.length),
                 enabled: !alreadyIn && !_adding,
                 onTap: () => _addToExisting(lib, cm),
               );

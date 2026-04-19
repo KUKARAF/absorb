@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
@@ -27,13 +28,14 @@ class BookCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
 
     final itemId = item['id'] as String?;
     final media = item['media'] as Map<String, dynamic>? ?? {};
     final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
 
-    final title = metadata['title'] as String? ?? 'Unknown Title';
+    final title = metadata['title'] as String? ?? l.bookCardUnknownTitle;
     final authorName = metadata['authorName'] as String? ?? '';
     final coverUrl = lib.getCoverUrl(itemId);
 
@@ -46,9 +48,9 @@ class BookCard extends StatelessWidget {
     final headers = lib.mediaHeaders;
 
     if (isWide) {
-      return _buildWideCard(context, cs, tt, title, authorName, coverUrl, progress, headers, isExplicit: isExplicit);
+      return _buildWideCard(context, cs, tt, l, title, authorName, coverUrl, progress, headers, isExplicit: isExplicit);
     }
-    return _buildCompactCard(context, cs, tt, title, authorName, coverUrl, progress, headers, isFinished: isFinished, isDownloaded: isDownloaded, isExplicit: isExplicit);
+    return _buildCompactCard(context, cs, tt, l, title, authorName, coverUrl, progress, headers, isFinished: isFinished, isDownloaded: isDownloaded, isExplicit: isExplicit);
   }
 
   void _navigateToDetail(BuildContext context) {
@@ -73,6 +75,7 @@ class BookCard extends StatelessWidget {
     BuildContext context,
     ColorScheme cs,
     TextTheme tt,
+    AppLocalizations l,
     String title,
     String authorName,
     String? coverUrl,
@@ -106,7 +109,7 @@ class BookCard extends StatelessWidget {
                           color: Colors.red.withValues(alpha: 0.85),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                        child: Text(l.bookCardExplicitBadge, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
                       ),
                     ),
                   if (DownloadService().isDownloaded(item['id'] as String? ?? ''))
@@ -194,6 +197,7 @@ class BookCard extends StatelessWidget {
     BuildContext context,
     ColorScheme cs,
     TextTheme tt,
+    AppLocalizations l,
     String title,
     String authorName,
     String? coverUrl,
@@ -251,7 +255,7 @@ class BookCard extends StatelessWidget {
                           color: Colors.red.withValues(alpha: 0.85),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                        child: Text(l.bookCardExplicitBadge, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
                       ),
                     ),
                   if (isFinished || isDownloaded)
@@ -280,7 +284,7 @@ class BookCard extends StatelessWidget {
                               Icon(Icons.check_circle_rounded,
                                   size: 10, color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700),
                               const SizedBox(width: 3),
-                              Text('Done',
+                              Text(l.bookCardDone,
                                   style: TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.w600,
@@ -292,7 +296,7 @@ class BookCard extends StatelessWidget {
                               Icon(Icons.download_done_rounded,
                                   size: 10, color: cs.primary),
                               const SizedBox(width: 3),
-                              Text('Saved',
+                              Text(l.bookCardSaved,
                                   style: TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.w600,

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/library_provider.dart';
 import '../services/download_service.dart';
 import 'absorbing_shared.dart';
@@ -244,6 +245,7 @@ class _EpisodeCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final lib = context.watch<LibraryProvider>();
+    final l = AppLocalizations.of(context)!;
 
     final itemId = item['id'] as String? ?? '';
     final media = item['media'] as Map<String, dynamic>? ?? {};
@@ -351,7 +353,7 @@ class _EpisodeCard extends StatelessWidget {
                               Icon(Icons.check_circle_rounded,
                                   size: 10, color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700),
                               const SizedBox(width: 3),
-                              Text('Done',
+                              Text(l.homeSectionDoneBadge,
                                   style: TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.w600,
@@ -363,7 +365,7 @@ class _EpisodeCard extends StatelessWidget {
                               Icon(Icons.download_done_rounded,
                                   size: 10, color: cs.primary),
                               const SizedBox(width: 3),
-                              Text('Saved',
+                              Text(l.saved,
                                   style: TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.w600,

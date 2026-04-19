@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/library_provider.dart';
 
 class PlaylistPickerSheet extends StatefulWidget {
@@ -53,10 +54,11 @@ class _PlaylistPickerSheetState extends State<PlaylistPickerSheet> {
         playlistId, widget.libraryItemId, episodeId: widget.episodeId,
       );
       if (mounted) {
+        final l = AppLocalizations.of(context)!;
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           duration: const Duration(seconds: 3),
-          content: Text('Added to "$name"'),
+          content: Text(l.addedToName(name)),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ));
@@ -69,7 +71,8 @@ class _PlaylistPickerSheetState extends State<PlaylistPickerSheet> {
   Future<void> _addToExisting(LibraryProvider lib, Map<String, dynamic> playlist) async {
     setState(() => _adding = true);
     final playlistId = playlist['id'] as String;
-    final name = playlist['name'] as String? ?? 'Playlist';
+    final l = AppLocalizations.of(context)!;
+    final name = playlist['name'] as String? ?? l.playlistPickerPlaylistFallback;
     final ok = await lib.addToPlaylist(
       playlistId, widget.libraryItemId, episodeId: widget.episodeId,
     );
@@ -77,7 +80,7 @@ class _PlaylistPickerSheetState extends State<PlaylistPickerSheet> {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         duration: const Duration(seconds: 3),
-        content: Text(ok ? 'Added to "$name"' : 'Failed to add'),
+        content: Text(ok ? l.addedToName(name) : l.failedToAdd),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ));
@@ -89,6 +92,7 @@ class _PlaylistPickerSheetState extends State<PlaylistPickerSheet> {
     final cs = Theme.of(context).colorScheme;
     final lib = context.watch<LibraryProvider>();
     final playlists = lib.playlists;
+    final l = AppLocalizations.of(context)!;
 
     return SafeArea(
       child: Padding(
@@ -106,7 +110,7 @@ class _PlaylistPickerSheetState extends State<PlaylistPickerSheet> {
             ),
           )),
           // Title
-          Text('Add to Playlist', style: TextStyle(
+          Text(l.addToPlaylist, style: TextStyle(
             color: cs.onSurface, fontSize: 16, fontWeight: FontWeight.w600,
           )),
           const SizedBox(height: 12),
@@ -120,7 +124,7 @@ class _PlaylistPickerSheetState extends State<PlaylistPickerSheet> {
                   autofocus: true,
                   style: TextStyle(color: cs.onSurface, fontSize: 14),
                   decoration: InputDecoration(
-                    hintText: 'Playlist name',
+                    hintText: l.playlistNameHint,
                     hintStyle: TextStyle(color: cs.onSurface.withValues(alpha: 0.4)),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -146,14 +150,14 @@ class _PlaylistPickerSheetState extends State<PlaylistPickerSheet> {
               ]),
             )
           else
-            _sheetItem(cs, Icons.add_rounded, 'New Playlist',
+            _sheetItem(cs, Icons.add_rounded, l.newPlaylist,
               onTap: () => setState(() => _creatingNew = true)),
           // Existing playlists
           if (playlists.isNotEmpty) ...[
             const SizedBox(height: 4),
             ...playlists.map((p) {
               final pm = p as Map<String, dynamic>;
-              final name = pm['name'] as String? ?? 'Playlist';
+              final name = pm['name'] as String? ?? l.playlistPickerPlaylistFallback;
               final items = (pm['items'] as List<dynamic>?) ?? [];
               // Check if item is already in this playlist
               final alreadyIn = items.any((item) {
@@ -166,7 +170,7 @@ class _PlaylistPickerSheetState extends State<PlaylistPickerSheet> {
               return _sheetItem(
                 cs,
                 alreadyIn ? Icons.check_rounded : Icons.playlist_play_rounded,
-                '$name (${items.length})',
+                l.playlistPickerNameWithCount(name, items.length),
                 enabled: !alreadyIn && !_adding,
                 onTap: () => _addToExisting(lib, pm),
               );

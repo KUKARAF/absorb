@@ -5,6 +5,7 @@ import 'overlay_toast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
@@ -70,7 +71,11 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
   Map<String, dynamic> get _metadata =>
       _media['metadata'] as Map<String, dynamic>? ?? {};
 
-  String get _title => _metadata['title'] as String? ?? 'Unknown Podcast';
+  String get _title {
+    final t = _metadata['title'] as String?;
+    if (t != null && t.isNotEmpty) return t;
+    return mounted ? AppLocalizations.of(context)!.episodeListUnknownPodcast : 'Unknown Podcast';
+  }
   String get _author => _metadata['author'] as String? ?? '';
   String get _description => _metadata['description'] as String? ?? '';
   List<String> get _genres =>
@@ -236,8 +241,11 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
         _selectMode = false;
         _selectedEpisodeIds.clear();
       });
+      final l = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${ids.length} episode${ids.length == 1 ? '' : 's'} marked as ${finished ? 'finished' : 'unfinished'}'),
+        content: Text(finished
+            ? l.episodeListMarkedFinished(ids.length)
+            : l.episodeListMarkedUnfinished(ids.length)),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -250,8 +258,9 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     final api = auth.apiService;
     if (api == null) return;
 
+    final l = AppLocalizations.of(context)!;
     final episodeId = episode['id'] as String? ?? '';
-    final episodeTitle = episode['title'] as String? ?? 'Episode';
+    final episodeTitle = episode['title'] as String? ?? l.episodeListEpisodeFallback;
     final duration = (episode['duration'] as num?)?.toDouble() ?? 0;
     final coverUrl = api.getCoverUrl(_itemId);
 
@@ -297,8 +306,9 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     final api = auth.apiService;
     if (api == null) return;
 
+    final l = AppLocalizations.of(context)!;
     final episodeId = episode['id'] as String? ?? '';
-    final episodeTitle = episode['title'] as String? ?? 'Episode';
+    final episodeTitle = episode['title'] as String? ?? l.episodeListEpisodeFallback;
     final coverUrl = api.getCoverUrl(_itemId);
 
     final error = await DownloadService().downloadItem(
@@ -323,14 +333,15 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
 
     // Offer to enable auto-download if not already on
     if (_itemId.isNotEmpty && !_autoDownloadEnabled) {
+      final l = AppLocalizations.of(context)!;
       final enable = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Auto-Download This Podcast?'),
-          content: const Text('Automatically download the next episodes as you listen.'),
+          title: Text(l.autoDownloadThisPodcast),
+          content: Text(l.autoDownloadPodcastContent),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No Thanks')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enable')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.noThanks)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.enable)),
           ],
         ),
       );
@@ -343,6 +354,8 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
 
     setState(() => _isDownloadingAll = true);
 
+    final l2 = mounted ? AppLocalizations.of(context)! : null;
+    final episodeFallback = l2?.episodeListEpisodeFallback ?? 'Episode';
     for (final ep in _episodes) {
       if (!mounted) break;
       final episodeId = ep['id'] as String? ?? '';
@@ -352,7 +365,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
       await DownloadService().downloadItem(
         api: api,
         itemId: key,
-        title: ep['title'] as String? ?? 'Episode',
+        title: ep['title'] as String? ?? episodeFallback,
         author: _title,
         coverUrl: api.getCoverUrl(_itemId),
         episodeId: episodeId,
@@ -390,6 +403,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
   }
 
   void _showPodcastMoreSheet(ColorScheme cs, bool allDownloaded, int downloaded) {
+    final l = AppLocalizations.of(context)!;
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).bottomSheetTheme.backgroundColor,
@@ -405,12 +419,12 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                 decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
               if (!allDownloaded)
                 _podMoreItem(cs, Icons.download_rounded,
-                  downloaded > 0 ? 'Download Remaining (${_episodes.length - downloaded})' : 'Download All',
+                  downloaded > 0 ? l.downloadRemainingCount(_episodes.length - downloaded) : l.downloadAll,
                   onTap: () { Navigator.pop(ctx); _downloadAll(); }),
               if (_itemId.isNotEmpty)
                 _podMoreItem(cs,
                   _autoDownloadEnabled ? Icons.downloading_rounded : Icons.download_outlined,
-                  _autoDownloadEnabled ? 'Turn Auto-Download Off' : 'Turn Auto-Download On',
+                  _autoDownloadEnabled ? l.turnAutoDownloadOff : l.turnAutoDownloadOn,
                   onTap: () async {
                     Navigator.pop(ctx);
                     final lib = context.read<LibraryProvider>();
@@ -420,7 +434,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
               if (_itemId.isNotEmpty)
                 _podMoreItem(cs,
                   _subscribed ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
-                  _subscribed ? 'Unsubscribe from New Episodes' : 'Subscribe to New Episodes',
+                  _subscribed ? l.episodeListUnsubscribeFromNewEpisodes : l.episodeListSubscribeToNewEpisodes,
                   onTap: () async {
                     Navigator.pop(ctx);
                     if (_subscribed) {
@@ -432,12 +446,11 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                         context: context,
                         builder: (dCtx) => AlertDialog(
                           icon: const Icon(Icons.notifications_active_rounded),
-                          title: const Text('Subscribe to this podcast?'),
-                          content: const Text(
-                            'New episodes will be automatically downloaded and added to your absorbing queue when they appear on the server.'),
+                          title: Text(l.episodeListSubscribeTitle),
+                          content: Text(l.episodeListSubscribeContent),
                           actions: [
-                            TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancel')),
-                            FilledButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('Subscribe')),
+                            TextButton(onPressed: () => Navigator.pop(dCtx, false), child: Text(l.cancel)),
+                            FilledButton(onPressed: () => Navigator.pop(dCtx, true), child: Text(l.episodeListSubscribe)),
                           ],
                         ),
                       );
@@ -450,7 +463,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                   }),
               _podMoreItem(cs,
                 _hideFinished ? Icons.visibility_rounded : Icons.visibility_off_rounded,
-                _hideFinished ? 'Show Finished Episodes' : 'Hide Finished Episodes',
+                _hideFinished ? l.episodeListShowFinishedEpisodes : l.episodeListHideFinishedEpisodes,
                 onTap: () { Navigator.pop(ctx); _toggleHideFinished(); }),
               if (_podcastAutoAdvanceOn)
                 StatefulBuilder(builder: (ctx, setLocalState) {
@@ -466,10 +479,10 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       child: Row(children: [
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Reverse play order', style: TextStyle(color: cs.onSurface, fontSize: 13, fontWeight: FontWeight.w600)),
+                          Text(l.reversePlayOrder, style: TextStyle(color: cs.onSurface, fontSize: 13, fontWeight: FontWeight.w600)),
                           const SizedBox(height: 2),
                           Text(
-                            reversed ? 'Plays newer to older episodes' : 'Plays older to newer episodes',
+                            reversed ? l.episodeListPlaysNewerToOlder : l.episodeListPlaysOlderToNewer,
                             style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11.5),
                           ),
                         ])),
@@ -518,6 +531,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
     final coverUrl = _coverUrl;
 
@@ -599,12 +613,12 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
               // Metadata chips
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
-                if (!_isLoading) _chip(Icons.podcasts_rounded, '${_episodes.length} episode${_episodes.length == 1 ? '' : 's'}'),
-                if (_autoDownloadEnabled) _chip(Icons.downloading_rounded, 'Auto-Download'),
-                if (_subscribed) _chip(Icons.notifications_active_rounded, 'Subscribed', highlight: true),
+                if (!_isLoading) _chip(Icons.podcasts_rounded, l.episodeListEpisodeCount(_episodes.length)),
+                if (_autoDownloadEnabled) _chip(Icons.downloading_rounded, l.episodeListAutoDownloadChip),
+                if (_subscribed) _chip(Icons.notifications_active_rounded, l.episodeListSubscribedChip, highlight: true),
                 ..._genres.take(3).map((g) => _chip(Icons.tag_rounded, g)),
                 if (_language.isNotEmpty) _chip(Icons.language_rounded, _language.toUpperCase()),
-                if (_explicit) _chip(Icons.explicit_rounded, 'Explicit'),
+                if (_explicit) _chip(Icons.explicit_rounded, l.episodeListExplicitChip),
                 if (_type.isNotEmpty && _type != 'episodic') _chip(Icons.list_rounded, _type[0].toUpperCase() + _type.substring(1)),
               ]),
 
@@ -621,7 +635,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                       child: Icon(Icons.close_rounded, size: 20, color: cs.onSurfaceVariant),
                     ),
                     const SizedBox(width: 8),
-                    Text('${_selectedEpisodeIds.length} selected',
+                    Text(l.selectedCount(_selectedEpisodeIds.length),
                       style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
                     const SizedBox(width: 8),
                     GestureDetector(
@@ -644,11 +658,11 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                           }
                         });
                       },
-                      child: Text('Select All',
+                      child: Text(l.selectAll,
                         style: TextStyle(fontSize: 12, color: cs.primary, fontWeight: FontWeight.w500)),
                     ),
                   ] else ...[
-                    Text('Episodes', style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
+                    Text(l.episodes, style: tt.titleSmall?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
                   ],
                   const Spacer(),
                   if (!_selectMode) ...[
@@ -665,7 +679,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(_newestFirst ? 'Newest' : 'Oldest',
+                          Text(_newestFirst ? l.episodeListSortNewest : l.episodeListSortOldest,
                             style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
                           const SizedBox(width: 2),
                           Icon(_newestFirst ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
@@ -692,7 +706,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                           SizedBox(height: 120),
                           Icon(Icons.podcasts_rounded, size: 48, color: cs.onSurface.withValues(alpha: 0.15)),
                           const SizedBox(height: 12),
-                          Center(child: Text('No episodes found', style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant))),
+                          Center(child: Text(l.noEpisodesFound, style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant))),
                         ],
                       )
                     : Builder(builder: (context) {
@@ -746,7 +760,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                             }
                             final absorbKey = '$_itemId-$epId';
                             final isOnAbsorbing = lib.isOnAbsorbingList(absorbKey);
-                            final epTitle = ep['title'] as String? ?? 'Episode';
+                            final epTitle = ep['title'] as String? ?? l.episodeListEpisodeFallback;
                             return Dismissible(
                               key: ValueKey('absorb-$absorbKey'),
                               direction: isOnAbsorbing ? DismissDirection.none : DismissDirection.startToEnd,
@@ -758,7 +772,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                                 lib.absorbingItemCache[absorbKey] = cached;
                                 HapticFeedback.mediumImpact();
                                 if (context.mounted) {
-                                  showOverlayToast(context, 'Added "$epTitle" to Absorbing', icon: Icons.add_circle_outline_rounded);
+                                  showOverlayToast(context, l.episodeListAddedToAbsorbing(epTitle), icon: Icons.add_circle_outline_rounded);
                                 }
                                 return false;
                               },
@@ -800,7 +814,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                       Expanded(child: FilledButton.tonalIcon(
                         onPressed: () => _batchMarkFinished(true),
                         icon: const Icon(Icons.check_circle_rounded, size: 18),
-                        label: const Text('Mark Finished'),
+                        label: Text(l.markFinished),
                         style: FilledButton.styleFrom(
                           visualDensity: VisualDensity.compact,
                         ),
@@ -809,7 +823,7 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                       Expanded(child: OutlinedButton.icon(
                         onPressed: () => _batchMarkFinished(false),
                         icon: const Icon(Icons.radio_button_unchecked_rounded, size: 18),
-                        label: const Text('Mark Unfinished'),
+                        label: Text(l.markUnfinished),
                         style: OutlinedButton.styleFrom(
                           visualDensity: VisualDensity.compact,
                         ),

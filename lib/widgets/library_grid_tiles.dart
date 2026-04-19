@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -49,12 +50,13 @@ class _GridBookTileState extends State<GridBookTile> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
 
     final itemId = widget.item['id'] as String? ?? '';
     final media = widget.item['media'] as Map<String, dynamic>? ?? {};
     final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-    final title = metadata['title'] as String? ?? 'Unknown';
+    final title = metadata['title'] as String? ?? l.unknown;
     final author = metadata['authorName'] as String? ?? '';
     final coverUrl = lib.getCoverUrl(itemId);
     final progress = lib.getProgress(itemId);
@@ -130,7 +132,7 @@ class _GridBookTileState extends State<GridBookTile> {
                           color: Colors.red.withValues(alpha: 0.85),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text('E', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+                        child: Text(l.libraryGridTilesExplicitBadge, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
                       ),
                     ),
 
@@ -144,7 +146,7 @@ class _GridBookTileState extends State<GridBookTile> {
                           color: Colors.black.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: Text('#${widget.sequenceBadge}',
+                        child: Text(l.libraryGridTilesSequence(widget.sequenceBadge!),
                           style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600)),
                       ),
                     ),
@@ -176,7 +178,7 @@ class _GridBookTileState extends State<GridBookTile> {
                               Icon(Icons.check_circle_rounded,
                                   size: 10, color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700),
                               const SizedBox(width: 3),
-                              Text('Done',
+                              Text(l.libraryGridTilesDone,
                                   style: TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.w600,
@@ -188,7 +190,7 @@ class _GridBookTileState extends State<GridBookTile> {
                               Icon(Icons.download_done_rounded,
                                   size: 10, color: cs.primary),
                               const SizedBox(width: 3),
-                              Text('Saved',
+                              Text(l.libraryGridTilesSaved,
                                   style: TextStyle(
                                       fontSize: 9,
                                       fontWeight: FontWeight.w600,
@@ -285,6 +287,7 @@ class _StackedCovers extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final count = coverUrls.length.clamp(1, 4);
 
     const inset = 5.0;
@@ -380,7 +383,7 @@ class _StackedCovers extends StatelessWidget {
                               Icon(Icons.check_circle_rounded, size: 10,
                                   color: Colors.greenAccent),
                               const SizedBox(width: 3),
-                              Text('Finished',
+                              Text(l.finished,
                                 style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600,
                                   color: Colors.white.withValues(alpha: 0.9))),
                             ],
@@ -456,11 +459,12 @@ class GridSeriesTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
     final auth = context.read<AuthProvider>();
 
     final collapsedSeries = item['collapsedSeries'] as Map<String, dynamic>? ?? {};
-    final seriesName = collapsedSeries['name'] as String? ?? 'Unknown Series';
+    final seriesName = collapsedSeries['name'] as String? ?? l.libraryGridTilesUnknownSeries;
     final seriesId = collapsedSeries['id'] as String? ?? '';
     final media = item['media'] as Map<String, dynamic>? ?? {};
     final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
@@ -558,10 +562,11 @@ class GridSeriesTileDirect extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final lib = context.watch<LibraryProvider>();
     final auth = context.read<AuthProvider>();
 
-    final seriesName = series['name'] as String? ?? 'Unknown Series';
+    final seriesName = series['name'] as String? ?? l.libraryGridTilesUnknownSeries;
     final seriesId = series['id'] as String? ?? '';
     final books = series['books'] as List<dynamic>? ?? [];
     final numBooks = books.length;
@@ -664,10 +669,11 @@ class GridAuthorTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final auth = context.read<AuthProvider>();
     final lib = context.read<LibraryProvider>();
 
-    final name = author['name'] as String? ?? 'Unknown';
+    final name = author['name'] as String? ?? l.unknown;
     final authorId = author['id'] as String? ?? '';
     final numBooks = author['numBooks'] as int? ?? 0;
 
