@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/android_auto_service.dart';
 import '../services/audio_player_service.dart';
+import '../services/equalizer_service.dart';
 import '../services/session_cache.dart';
 import '../services/socket_service.dart';
 import '../services/user_account_service.dart';
@@ -554,6 +555,11 @@ class AuthProvider extends ChangeNotifier {
     // they reload from the new account's ScopedPrefs instead of keeping the
     // previous account's values cached in widget state.
     PlayerSettings.notifySettingsChanged();
+
+    // Reload EQ settings from the new account's scope. Without this the
+    // EqualizerService singleton keeps the previous account's in-memory
+    // state and would write it back into the new scope on any change.
+    await EqualizerService().reloadForActiveAccount();
 
     // Set credentials
     _serverUrl = account.serverUrl;

@@ -373,6 +373,22 @@ class EqualizerService extends ChangeNotifier {
     }
   }
 
+  /// Reload settings from the currently-scoped SharedPreferences. Call this
+  /// after switching user accounts so the singleton picks up the new user's
+  /// stored EQ config instead of keeping the previous user's in-memory state
+  /// (which would otherwise also get written back into the new user's scope
+  /// on the next save).
+  Future<void> reloadForActiveAccount() async {
+    await _loadSettings();
+    _currentItemId = null;
+    if (_enabled) {
+      await _applyCurrentSettings();
+    } else {
+      await _resetPlatform();
+    }
+    notifyListeners();
+  }
+
   Future<void> _saveSettings() async {
     await ScopedPrefs.setBool('eq_enabled', _enabled);
     await ScopedPrefs.setString('eq_preset', _activePreset);
