@@ -3,6 +3,14 @@
 *.log
 *.pyc
 *.swp
+
+# Captured logcat / diagnostic dumps (never commit)
+/drive_*.txt
+/overnight_*.txt
+/podcast_sync_test.txt
+/absorb_logs_share_*.txt
+/*_logcat.txt
+/*_cpu.txt
 .DS_Store
 .atom/
 .build/
