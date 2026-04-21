@@ -222,6 +222,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> play() async {
     debugPrint('[Handler] play() called - routing to service (state=${_player.processingState.name})');
+    debugPrint('[ClickDebug] play() entry: ${_clickDebugSnapshot()}');
     if (_service != null) {
       await _service!.play();
     } else {
@@ -233,6 +234,8 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> pause() async {
     debugPrint('[Handler] pause() called - routing to service');
+    debugPrint('[ClickDebug] pause() entry: ${_clickDebugSnapshot()}');
+    _lastHandlerPauseAt = DateTime.now();
     // Android Auto disconnect can dispatch both a MediaButton click and a
     // pause() action simultaneously. The click's 400ms debounce timer would
     // then see playing=false and misinterpret it as "user wants to play",
@@ -328,10 +331,39 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   int _clickCount = 0;
   DateTime? _hardwareButtonTime; // cooldown after hardware next/prev
   DateTime? _noisyPauseAt; // suppress clicks for a window after BT disconnect
+  // [ClickDebug] — timestamp of the last Handler-level pause() call.
+  // Used to correlate phantom play/click commands with a preceding pause.
+  DateTime? _lastHandlerPauseAt;
+
+  /// [ClickDebug] — one-line snapshot of state around a media-button event.
+  /// Helps diagnose phantom clicks after Android Auto disconnect.
+  String _clickDebugSnapshot() {
+    final now = DateTime.now();
+    int sincePrevPauseMs = -1;
+    if (_lastHandlerPauseAt != null) {
+      sincePrevPauseMs = now.difference(_lastHandlerPauseAt!).inMilliseconds;
+    }
+    int sinceForegroundMs = -1;
+    if (AudioPlayerService._lastForegroundAt != null) {
+      sinceForegroundMs = now.difference(AudioPlayerService._lastForegroundAt!).inMilliseconds;
+    }
+    int sinceNoisyPauseMs = -1;
+    if (_noisyPauseAt != null) {
+      sinceNoisyPauseMs = now.difference(_noisyPauseAt!).inMilliseconds;
+    }
+    final backgrounded = _service?.isBackgrounded;
+    return 'bg=$backgrounded, sincePrevPauseMs=$sincePrevPauseMs, '
+        'sinceForegroundMs=$sinceForegroundMs, '
+        'sinceNoisyPauseMs=$sinceNoisyPauseMs, '
+        'playing=${_player.playing}, '
+        'processingState=${_player.processingState.name}, '
+        'noisyPause=${AudioPlayerService._noisyPause}';
+  }
 
   @override
   Future<void> click([MediaButton button = MediaButton.media]) async {
     debugPrint('[Handler] click(button=$button) count=${_clickCount + 1} playing=${_player.playing}');
+    debugPrint('[ClickDebug] click arrival (button=$button): ${_clickDebugSnapshot()}');
 
     if (button != MediaButton.media) {
       // Hardware next/prev button — set cooldown to ignore phantom media click
@@ -373,6 +405,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       final count = _clickCount;
       _clickCount = 0;
       debugPrint('[Handler] click resolved: count=$count playing=${_player.playing}');
+      debugPrint('[ClickDebug] click resolve (count=$count): ${_clickDebugSnapshot()}');
       switch (count) {
         case 1:
           if (_player.playing) {
@@ -1016,6 +1049,11 @@ class AudioPlayerService extends ChangeNotifier {
   static bool _noisyPause = false;
   // Whether BT audio was connected when the current interruption began.
   static bool _wasOnBluetooth = false;
+  // Last time the app entered the foreground. Used by [ClickDebug] to see
+  // whether a MediaSession click's 400ms debounce window overlapped with
+  // an app-foreground event — the fingerprint of an Android Auto disconnect
+  // handing control back to the phone.
+  static DateTime? _lastForegroundAt;
   static const _eqChannel = MethodChannel('com.absorb.equalizer');
 
   /// Check if BT audio (A2DP/SCO) is currently connected via native AudioManager.
@@ -1123,6 +1161,7 @@ class AudioPlayerService extends ChangeNotifier {
       try {
         final service = _instance;
         debugPrint('[AudioSession] Becoming noisy — pausing');
+        debugPrint('[ClickDebug] becoming-noisy fired: bg=${service._isBackgrounded}, playing=${service.isPlaying}');
         _noisyPause = true;
         service._wasPlayingBeforeInterrupt = false;
         // Cancel any pending media-button click from the BT disconnect so the
@@ -1146,11 +1185,14 @@ class AudioPlayerService extends ChangeNotifier {
   /// Re-activating the audio session and re-pushing handler state recovers it.
   static void onAppBackgrounded() {
     _instance._isBackgrounded = true;
+    debugPrint('[ClickDebug] App backgrounded');
   }
 
   static Future<void> onAppForegrounded() async {
     final service = _instance;
     service._isBackgrounded = false;
+    _lastForegroundAt = DateTime.now();
+    debugPrint('[ClickDebug] App foregrounded');
     service._positionSyncFailures = 0; // retry on foreground
     if (!service.hasBook) return;
     debugPrint('[MediaSession] Foregrounded - refreshing (playing=${service.isPlaying}, session=${service._playbackSessionId != null}, item=${service._currentItemId})');
