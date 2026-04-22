@@ -183,6 +183,11 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     );
   }
 
+  // Alpha: dedupe repeated queueIndex logs to the most recent value so we only
+  // see transitions (otherwise this fires on every state broadcast). Remove
+  // with the rest of the [AAQueue] diagnostics when the scroll issue is solved.
+  int? _lastLoggedQueueIndex = -2; // sentinel differs from null and 0
+
   /// Return the index of the chapter containing the current playback position,
   /// or null if there are no chapters.  Used as queueIndex so Android Auto
   /// highlights and scrolls to the active chapter in the queue view.
@@ -190,11 +195,16 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     try {
       if (_service == null) return null;
       final posSec = _player.position.inMilliseconds / 1000.0;
-      return ChapterLookup.indexAt(
+      final idx = ChapterLookup.indexAt(
         _service!.chapters,
         posSec,
         _service!.totalDuration,
       );
+      if (idx != _lastLoggedQueueIndex) {
+        _lastLoggedQueueIndex = idx;
+        debugPrint('[AAQueue] queueIndex=$idx pos=${posSec.toStringAsFixed(1)}s chapters=${_service!.chapters.length} queueLen=${queue.value.length}');
+      }
+      return idx;
     } catch (e) {
       debugPrint('[Handler] _safeCurrentChapterIndex error: $e');
       return null;
@@ -491,6 +501,10 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   void updateChaptersQueue(List<dynamic> chapters) {
     if (chapters.isEmpty) {
       queue.add(const []);
+      // Alpha: track empty-queue pushes to see if AA sees an empty queue at
+      // the moment of first state broadcast (would cache "active=top" and
+      // defeat later queueIndex updates).
+      debugPrint('[AAQueue] pushed empty queue');
       return;
     }
     final items = chapters.asMap().entries.map((e) {
@@ -504,6 +518,11 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       );
     }).toList();
     queue.add(items);
+    // Alpha: queue-populated marker. Compare timestamp against the first
+    // [AAQueue] queueIndex log after this to see if the state broadcast
+    // that carries the "correct" index happens before or after the queue
+    // reaches MediaSession.
+    debugPrint('[AAQueue] pushed ${items.length} chapters');
   }
 
   @override
