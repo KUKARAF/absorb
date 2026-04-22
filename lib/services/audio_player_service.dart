@@ -188,6 +188,12 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   // with the rest of the [AAQueue] diagnostics when the scroll issue is solved.
   int? _lastLoggedQueueIndex = -2; // sentinel differs from null and 0
 
+  // Defers the chapter queue push so it lands AFTER the player has seeked
+  // to its saved position. Without the delay, the first state broadcast with
+  // a populated queue carries queueIndex=0 (pre-seek), which Android Auto
+  // caches as the queue view's initial scroll target.
+  Timer? _pendingQueuePush;
+
   /// Return the index of the chapter containing the current playback position,
   /// or null if there are no chapters.  Used as queueIndex so Android Auto
   /// highlights and scrolls to the active chapter in the queue view.
@@ -499,11 +505,12 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   /// Populate the MediaSession queue with chapter entries so AA shows
   /// a chapter list via the queue button on the Now Playing screen.
   void updateChaptersQueue(List<dynamic> chapters) {
+    // Any pending deferred push is now stale — a fresh call supersedes it.
+    _pendingQueuePush?.cancel();
+    _pendingQueuePush = null;
+
     if (chapters.isEmpty) {
       queue.add(const []);
-      // Alpha: track empty-queue pushes to see if AA sees an empty queue at
-      // the moment of first state broadcast (would cache "active=top" and
-      // defeat later queueIndex updates).
       debugPrint('[AAQueue] pushed empty queue');
       return;
     }
@@ -517,12 +524,15 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
         duration: Duration(milliseconds: ((end - start) * 1000).round()),
       );
     }).toList();
-    queue.add(items);
-    // Alpha: queue-populated marker. Compare timestamp against the first
-    // [AAQueue] queueIndex log after this to see if the state broadcast
-    // that carries the "correct" index happens before or after the queue
-    // reaches MediaSession.
-    debugPrint('[AAQueue] pushed ${items.length} chapters');
+
+    // Delay the push so the seek-to-saved-position has time to complete.
+    // Otherwise the first state broadcast after queue population carries
+    // queueIndex=0, and Android Auto locks its queue view scroll to that.
+    _pendingQueuePush = Timer(const Duration(milliseconds: 1500), () {
+      _pendingQueuePush = null;
+      queue.add(items);
+      debugPrint('[AAQueue] pushed ${items.length} chapters (deferred)');
+    });
   }
 
   @override
