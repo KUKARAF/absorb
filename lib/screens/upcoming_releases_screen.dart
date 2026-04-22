@@ -165,8 +165,12 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
   Future<void> _rescanBook(String asin) async {
     if (!mounted) return;
     final l = AppLocalizations.of(context)!;
+    final auth = context.read<AuthProvider>();
+    final lib = context.read<LibraryProvider>();
+    final api = auth.apiService;
+    final libraryId = lib.selectedLibraryId;
     showOverlayToast(context, l.upcomingReleasesRescanning, icon: Icons.refresh_rounded);
-    final updated = await _service.rescanBook(asin);
+    final updated = await _service.rescanBook(asin, api: api, libraryId: libraryId);
     if (!mounted) return;
     if (updated != null) {
       final newDate = updated['releaseDate'] as String? ?? '';

@@ -362,7 +362,15 @@ class UpcomingReleasesService extends ChangeNotifier {
 
   /// Rescan a single book to refresh its release date and details.
   /// Returns the updated book data, or null on failure.
-  Future<Map<String, dynamic>?> rescanBook(String asin) async {
+  ///
+  /// When [api] + [libraryId] are provided, also searches the user's library
+  /// for the book. If found, the book is removed from upcoming (since it's no
+  /// longer missing) and marked as owned in the recent list.
+  Future<Map<String, dynamic>?> rescanBook(
+    String asin, {
+    ApiService? api,
+    String? libraryId,
+  }) async {
     try {
       final details = await ApiService.getAudibleBookDetails(asin, region: _region);
       if (details == null) return null;
@@ -389,6 +397,31 @@ class UpcomingReleasesService extends ChangeNotifier {
         'publisherSummary': details['publisher_summary'] ?? '',
       };
 
+      // If the caller passed a library handle, check whether the book has
+      // now been added to the user's library. A rescan that only refreshes
+      // Audible metadata would still show the book as "missing" even after
+      // the user added it - this closes that gap.
+      bool ownedInLibrary = false;
+      if (api != null && libraryId != null) {
+        final title = updated['title'] as String? ?? '';
+        if (title.isNotEmpty) {
+          final search = await api.searchLibrary(libraryId, title, limit: 10);
+          final ownedAsins = <String>{};
+          final ownedTitles = <String>{};
+          final books = (search?['book'] as List<dynamic>? ?? []);
+          for (final b in books) {
+            final libraryItem = (b as Map<String, dynamic>)['libraryItem'] as Map<String, dynamic>? ?? {};
+            final media = libraryItem['media'] as Map<String, dynamic>? ?? {};
+            final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
+            final t = metadata['title'] as String? ?? '';
+            final a = metadata['asin'] as String? ?? '';
+            if (t.isNotEmpty) ownedTitles.add(t);
+            if (a.isNotEmpty) ownedAsins.add(a);
+          }
+          ownedInLibrary = _isOwnedBook(updated, ownedTitles, ownedAsins);
+        }
+      }
+
       // Update in results (check both upcoming and recent lists)
       for (final result in _results) {
         for (var i = 0; i < result.upcomingBooks.length; i++) {
@@ -397,7 +430,10 @@ class UpcomingReleasesService extends ChangeNotifier {
             updated['sort'] = result.upcomingBooks[i]['sort'] ?? '0';
             updated['allAsins'] = result.upcomingBooks[i]['allAsins'] ?? <String>[asin];
 
-            if (_isUpcoming(updated)) {
+            if (ownedInLibrary) {
+              // No longer missing - user has it. Drop from upcoming.
+              result.upcomingBooks.removeAt(i);
+            } else if (_isUpcoming(updated)) {
               result.upcomingBooks[i] = updated;
             } else {
               result.upcomingBooks.removeAt(i);
@@ -410,7 +446,7 @@ class UpcomingReleasesService extends ChangeNotifier {
             updated['sequence'] = result.recentBooks[i]['sequence'] ?? '';
             updated['sort'] = result.recentBooks[i]['sort'] ?? '0';
             updated['allAsins'] = result.recentBooks[i]['allAsins'] ?? <String>[asin];
-            updated['_owned'] = result.recentBooks[i]['_owned'] ?? false;
+            updated['_owned'] = ownedInLibrary || (result.recentBooks[i]['_owned'] ?? false);
             result.recentBooks[i] = updated;
             break;
           }
