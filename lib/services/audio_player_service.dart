@@ -843,7 +843,7 @@ class AudioPlayerService extends ChangeNotifier {
       _notifChapterMode = v;
       // Re-push MediaItem + PlaybackState so notification updates immediately
       if (_currentItemId != null) {
-        _pushMediaItem(_currentItemId!, _currentTitle ?? '', _currentAuthor ?? '',
+        _pushMediaItem(_mediaItemKey, _currentTitle ?? '', _currentAuthor ?? '',
             _currentCoverUrl, _totalDuration,
             chapter: _lastNotifiedChapterIndex >= 0 && _chapters.isNotEmpty
                 ? (_chapters[_lastNotifiedChapterIndex] as Map<String, dynamic>)['title'] as String?
@@ -1270,7 +1270,7 @@ class AudioPlayerService extends ChangeNotifier {
           ? (service._chapters[service._lastNotifiedChapterIndex] as Map<String, dynamic>)['title'] as String?
           : null;
       service._pushMediaItem(
-        service._currentItemId!,
+        service._mediaItemKey,
         service._currentTitle!,
         service._currentAuthor ?? '',
         service._currentCoverUrl,
@@ -1283,6 +1283,13 @@ class AudioPlayerService extends ChangeNotifier {
 
   String? _currentEpisodeId;
   String? get currentEpisodeId => _currentEpisodeId;
+
+  /// MediaSession / AA item id. Podcast episodes use the compound
+  /// `parentId-episodeId` key so AA doesn't treat them as a separate item
+  /// from the initial load. Books use the plain itemId.
+  String get _mediaItemKey => _currentEpisodeId != null
+      ? '${_currentItemId!}-$_currentEpisodeId'
+      : _currentItemId!;
 
   String? _currentEpisodeTitle;
   String? get currentEpisodeTitle => _currentEpisodeTitle;
@@ -3375,7 +3382,7 @@ class AudioPlayerService extends ChangeNotifier {
       // new speed (duration is divided by speed for speed-adjusted time).
       if (_handler != null) {
         final chTitle = currentChapter?['title'] as String?;
-        _pushMediaItem(_currentItemId!, _currentTitle ?? '', _currentAuthor ?? '',
+        _pushMediaItem(_mediaItemKey, _currentTitle ?? '', _currentAuthor ?? '',
             _currentCoverUrl, _totalDuration, chapter: chTitle);
       }
     }
