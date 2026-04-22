@@ -33,6 +33,7 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
   Future<void> _initAndStart() async {
     final saved = await PlayerSettings.getAudibleRegion();
     _region = saved.isNotEmpty ? saved : ApiService.debugRegion;
+    _sortByDate = await PlayerSettings.getUpcomingReleasesSortByDate();
     _service.setRegion(_region);
 
     // If already running (e.g. came back to this screen), just attach
@@ -195,7 +196,11 @@ class _UpcomingReleasesScreenState extends State<UpcomingReleasesScreen> {
                 // Sort by date toggle (only when scan is done and has results)
                 if (_service.isComplete && _service.results.isNotEmpty)
                   GestureDetector(
-                    onTap: () => setState(() => _sortByDate = !_sortByDate),
+                    onTap: () {
+                      final next = !_sortByDate;
+                      setState(() => _sortByDate = next);
+                      PlayerSettings.setUpcomingReleasesSortByDate(next);
+                    },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                       decoration: BoxDecoration(

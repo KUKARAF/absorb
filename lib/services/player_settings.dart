@@ -95,6 +95,9 @@ class PlayerSettings {
   static Future<String> getAudibleRegion() => _get('audibleRegion', '');
   static Future<void> setAudibleRegion(String value) => _set('audibleRegion', value);
 
+  static Future<bool> getUpcomingReleasesSortByDate() => _get('upcomingReleasesSortByDate', false);
+  static Future<void> setUpcomingReleasesSortByDate(bool value) => _set('upcomingReleasesSortByDate', value);
+
   static Future<bool> getWifiOnlyDownloads() => _get('wifiOnlyDownloads', false);
   static Future<void> setWifiOnlyDownloads(bool value) => _set('wifiOnlyDownloads', value);
 
