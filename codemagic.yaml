@@ -63,6 +63,11 @@ workflows:
         script: flutter build apk --release --flavor github --dart-define=GITHUB_BUILD=true
       - name: Build Play Store AAB
         script: flutter build appbundle --release --flavor playstore --dart-define=PLAYSTORE_BUILD=true
+      - name: Rename AAB with version
+        script: |
+          VERSION=$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)
+          AAB_SRC=$(ls build/app/outputs/bundle/playstoreRelease/*.aab | head -1)
+          mv "$AAB_SRC" "build/app/outputs/bundle/playstoreRelease/absorb-${VERSION}.aab"
       - name: Publish to GitHub Draft Release
         script: |
           VERSION="v$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)"
@@ -103,6 +108,11 @@ workflows:
         script: xcode-project use-profiles
       - name: Build IPA
         script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+      - name: Rename IPA with version
+        script: |
+          VERSION=$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)
+          IPA_SRC=$(ls build/ios/ipa/*.ipa | head -1)
+          mv "$IPA_SRC" "build/ios/ipa/absorb-${VERSION}.ipa"
       - name: Publish IPA to GitHub Draft Release
         script: |
           VERSION="v$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)"
@@ -119,6 +129,75 @@ workflows:
               --repo "$CM_REPO_SLUG"
           fi
     artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+
+  all-release:
+    name: All Platforms Release (APK + AAB + IPA to GitHub + TestFlight)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: Apple Dev Key
+    environment:
+      android_signing:
+        - absorb_keystore
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.barnabas.absorb
+      groups:
+        - github_credentials
+      flutter: stable
+      java: 17
+      xcode: latest
+    scripts:
+      - name: Set up key.properties
+        script: |
+          cat >> $CM_BUILD_DIR/android/key.properties <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE_PATH
+          EOF
+      - name: Set up iOS code signing
+        script: xcode-project use-profiles
+      - name: Build GitHub APK
+        script: flutter build apk --release --flavor github --dart-define=GITHUB_BUILD=true
+      - name: Build Play Store AAB
+        script: flutter build appbundle --release --flavor playstore --dart-define=PLAYSTORE_BUILD=true
+      - name: Build iOS IPA
+        script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+      - name: Rename AAB and IPA with version
+        script: |
+          VERSION=$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)
+          AAB_SRC=$(ls build/app/outputs/bundle/playstoreRelease/*.aab | head -1)
+          mv "$AAB_SRC" "build/app/outputs/bundle/playstoreRelease/absorb-${VERSION}.aab"
+          IPA_SRC=$(ls build/ios/ipa/*.ipa | head -1)
+          mv "$IPA_SRC" "build/ios/ipa/absorb-${VERSION}.ipa"
+      - name: Publish all to GitHub Draft Release
+        script: |
+          VERSION="v$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)"
+          if gh release view "$VERSION" --repo "$CM_REPO_SLUG" &>/dev/null; then
+            gh release upload "$VERSION" \
+              build/app/outputs/apk/github/release/*.apk \
+              build/app/outputs/bundle/playstoreRelease/*.aab \
+              build/ios/ipa/*.ipa \
+              --clobber \
+              --repo "$CM_REPO_SLUG"
+          else
+            gh release create "$VERSION" \
+              build/app/outputs/apk/github/release/*.apk \
+              build/app/outputs/bundle/playstoreRelease/*.aab \
+              build/ios/ipa/*.ipa \
+              --draft \
+              --title "$VERSION" \
+              --repo "$CM_REPO_SLUG"
+          fi
+    artifacts:
+      - build/app/outputs/apk/github/release/*.apk
+      - build/app/outputs/bundle/playstoreRelease/*.aab
       - build/ios/ipa/*.ipa
     publishing:
       app_store_connect:
