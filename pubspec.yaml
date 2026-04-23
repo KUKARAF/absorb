@@ -1,7 +1,7 @@
 name: absorb
 description: An Audiobookshelf Client
 publish_to: 'none'
-version: 1.8.75+93
+version: 1.8.76+94
 # v1.8.41: JWT auth (accessToken + refreshToken), MANAGE_EXTERNAL_STORAGE removed from playstore flavor
 # Build scripts (run from Git Bash):
 #  . ./build_bundle.sh    - Play Store AAB (no MANAGE_EXTERNAL_STORAGE)
