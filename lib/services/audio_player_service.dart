@@ -223,6 +223,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   Future<void> play() async {
     debugPrint('[Handler] play() called - routing to service (state=${_player.processingState.name})');
     debugPrint('[ClickDebug] play() entry: ${_clickDebugSnapshot()}');
+    _lastHandlerPlayAt = DateTime.now();
     if (_service != null) {
       await _service!.play();
     } else {
@@ -334,6 +335,11 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   // [ClickDebug] — timestamp of the last Handler-level pause() call.
   // Used to correlate phantom play/click commands with a preceding pause.
   DateTime? _lastHandlerPauseAt;
+  // [ClickDebug] — timestamp of the last Handler-level play() call.
+  // Used to spot the variant-3 phantom-resume fingerprint: click-initiated
+  // play followed by a raw pause a few seconds later (AA disconnect tearing
+  // down after a spurious transport event).
+  DateTime? _lastHandlerPlayAt;
 
   /// [ClickDebug] — one-line snapshot of state around a media-button event.
   /// Helps diagnose phantom clicks after Android Auto disconnect.
@@ -342,6 +348,10 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     int sincePrevPauseMs = -1;
     if (_lastHandlerPauseAt != null) {
       sincePrevPauseMs = now.difference(_lastHandlerPauseAt!).inMilliseconds;
+    }
+    int sincePrevPlayMs = -1;
+    if (_lastHandlerPlayAt != null) {
+      sincePrevPlayMs = now.difference(_lastHandlerPlayAt!).inMilliseconds;
     }
     int sinceForegroundMs = -1;
     if (AudioPlayerService._lastForegroundAt != null) {
@@ -352,12 +362,21 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       sinceNoisyPauseMs = now.difference(_noisyPauseAt!).inMilliseconds;
     }
     final backgrounded = _service?.isBackgrounded;
+    // Variant-3 fingerprint: raw pause fires within 5s of a click-initiated
+    // play while still playing in background. Flag it so the pause log line
+    // is self-describing without having to cross-reference timestamps.
+    final phantomSuspect = sincePrevPlayMs >= 0
+        && sincePrevPlayMs < 5000
+        && _player.playing
+        && (backgrounded ?? false);
     return 'bg=$backgrounded, sincePrevPauseMs=$sincePrevPauseMs, '
+        'sincePrevPlayMs=$sincePrevPlayMs, '
         'sinceForegroundMs=$sinceForegroundMs, '
         'sinceNoisyPauseMs=$sinceNoisyPauseMs, '
         'playing=${_player.playing}, '
         'processingState=${_player.processingState.name}, '
-        'noisyPause=${AudioPlayerService._noisyPause}';
+        'noisyPause=${AudioPlayerService._noisyPause}, '
+        'phantomSuspect=$phantomSuspect';
   }
 
   @override
@@ -1218,7 +1237,24 @@ class AudioPlayerService extends ChangeNotifier {
     final service = _instance;
     service._isBackgrounded = false;
     _lastForegroundAt = DateTime.now();
-    debugPrint('[ClickDebug] App foregrounded');
+    // Relative timing on foreground arrival is the second half of the
+    // AA-disconnect fingerprint (variant 3): raw pause, then foreground
+    // within ~2s. Log sincePrevPauseMs / sincePrevPlayMs so the disconnect
+    // pattern is obvious on one line.
+    final handler = _handler;
+    int sincePrevPauseMs = -1;
+    int sincePrevPlayMs = -1;
+    if (handler != null) {
+      if (handler._lastHandlerPauseAt != null) {
+        sincePrevPauseMs = _lastForegroundAt!.difference(handler._lastHandlerPauseAt!).inMilliseconds;
+      }
+      if (handler._lastHandlerPlayAt != null) {
+        sincePrevPlayMs = _lastForegroundAt!.difference(handler._lastHandlerPlayAt!).inMilliseconds;
+      }
+    }
+    final aaDisconnectSuspect = sincePrevPauseMs >= 0 && sincePrevPauseMs < 3000;
+    debugPrint('[ClickDebug] App foregrounded: sincePrevPauseMs=$sincePrevPauseMs, '
+        'sincePrevPlayMs=$sincePrevPlayMs, aaDisconnectSuspect=$aaDisconnectSuspect');
     service._positionSyncFailures = 0; // retry on foreground
     if (!service.hasBook) return;
     debugPrint('[MediaSession] Foregrounded - refreshing (playing=${service.isPlaying}, session=${service._playbackSessionId != null}, item=${service._currentItemId})');
