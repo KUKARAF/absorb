@@ -2,7 +2,6 @@ import Flutter
 import UIKit
 import AVFoundation
 import MediaPlayer
-import Security
 import just_audio
 
 let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadlessExecution: true)
@@ -41,10 +40,6 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
 
     // Register platform channels on the shared engine
     registerPlatformChannels()
-
-    // Entitlement diagnostic: must run AFTER registerPlatformChannels so the
-    // widget channel is available to forward logs into the Flutter LogService.
-    logAppGroupEntitlement()
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
@@ -94,28 +89,6 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
       )
     }
     NSLog("[WidgetDebug] AppDelegate registered %d Darwin notification observers", names.count)
-  }
-
-  /// Reads the actual runtime-effective entitlements from the app's code
-  /// signature. If the App Group is listed here, the provisioning profile
-  /// granted it. If not, the entitlements file is asking for something the
-  /// profile doesn't provide - containerURL will return nil and the widget
-  /// extension won't see shared UserDefaults writes.
-  private func logAppGroupEntitlement() {
-    guard let task = SecTaskCreateFromSelf(nil) else {
-      logToFlutter("entitlements: SecTaskCreateFromSelf returned nil")
-      return
-    }
-    let key = "com.apple.security.application-groups" as CFString
-    var error: Unmanaged<CFError>?
-    let value = SecTaskCopyValueForEntitlement(task, key, &error)
-    if let groups = value as? [String] {
-      logToFlutter("entitlements: application-groups granted by profile = [\(groups.joined(separator: ", "))]")
-    } else if let err = error?.takeRetainedValue() {
-      logToFlutter("entitlements: error reading application-groups: \(err)")
-    } else {
-      logToFlutter("entitlements: application-groups = <none> - provisioning profile does not grant any App Group (containerURL will be nil)")
-    }
   }
 
   private func registerPlatformChannels() {
