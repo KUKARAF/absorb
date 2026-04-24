@@ -33,6 +33,15 @@ class HomeWidgetService {
   bool _refreshingStats = false;
   StreamSubscription? _clickSub;
 
+  // Last authoritative values from the server, plus local additions since
+  // then. Lets us tick the widget forward on every playback sync without a
+  // network round-trip; refreshStats overwrites the base and resets the
+  // accumulators so drift is corrected on every successful server fetch.
+  int _todayBase = 0;
+  int _weekBase = 0;
+  int _localAddedToday = 0;
+  int _localAddedWeek = 0;
+
   /// Call after AudioPlayerService is initialized to start pushing state.
   Future<void> init() async {
     if (_initialized) return;
@@ -325,6 +334,11 @@ class HomeWidgetService {
 
       debugPrint('[StatsWidget] Computed: today=${today}s week=${week}s streak=${streak}d booksThisYear=$booksYear (dailyMapKeys=${dailyMap.length})');
 
+      _todayBase = today;
+      _weekBase = week;
+      _localAddedToday = 0;
+      _localAddedWeek = 0;
+
       await HomeWidget.saveWidgetData<int>('widget_stats_today', today);
       await HomeWidget.saveWidgetData<int>('widget_stats_week', week);
       await HomeWidget.saveWidgetData<int>('widget_stats_streak', streak);
@@ -335,6 +349,25 @@ class HomeWidgetService {
       debugPrint('[StatsWidget] Refresh failed: $e');
     } finally {
       _refreshingStats = false;
+    }
+  }
+
+  /// Tick the widget's "today" and "this week" totals forward without hitting
+  /// the server. Called from the player's sync path after real playing time
+  /// accumulates, so the widget stays fresh while the app is backgrounded and
+  /// the 15-min stats timer is throttled by Android Doze.
+  Future<void> addLocalListeningSeconds(int seconds) async {
+    if (seconds <= 0) return;
+    _localAddedToday += seconds;
+    _localAddedWeek += seconds;
+    try {
+      await HomeWidget.saveWidgetData<int>(
+          'widget_stats_today', _todayBase + _localAddedToday);
+      await HomeWidget.saveWidgetData<int>(
+          'widget_stats_week', _weekBase + _localAddedWeek);
+      await HomeWidget.updateWidget(name: _androidWidgetStatsName);
+    } catch (e) {
+      debugPrint('[StatsWidget] Local add failed: $e');
     }
   }
 

@@ -19,6 +19,7 @@ import 'chapter_lookup.dart';
 import 'cold_start_play_policy.dart';
 import 'player_settings.dart';
 import 'session_cache.dart';
+import 'home_widget_service.dart';
 export 'player_settings.dart';
 
 // ─── AudioHandler (runs in background, controls notification) ───
@@ -2689,7 +2690,11 @@ class AudioPlayerService extends ChangeNotifier {
               final progressKey = _currentEpisodeId != null
                   ? '$_currentItemId-$_currentEpisodeId'
                   : _currentItemId!;
-              _progressSync.addOfflineListeningTime(progressKey, sinceLastSync.clamp(0, 300));
+              final offlineSeconds = sinceLastSync.clamp(0, 300);
+              _progressSync.addOfflineListeningTime(progressKey, offlineSeconds);
+              // Widget ticks forward even when the server is unreachable.
+              unawaited(HomeWidgetService()
+                  .addLocalListeningSeconds(offlineSeconds));
               // Reset the sync clock so the next tick waits a full interval
               // before accumulating again.
               _lastServerSync = DateTime.now();
@@ -2986,6 +2991,11 @@ class AudioPlayerService extends ChangeNotifier {
       duration: _totalDuration,
       timeListened: elapsed,
     );
+    if (ok && elapsed > 0) {
+      // Tick the StatsWidget forward locally so "today" stays fresh between
+      // 15-min authoritative refreshes (which Android Doze throttles).
+      unawaited(HomeWidgetService().addLocalListeningSeconds(elapsed));
+    }
     if (!ok && !_syncRecoveryInProgress) {
       debugPrint('[Player] Session sync failed - attempting recovery');
       _syncRecoveryInProgress = true;
