@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_carplay/flutter_carplay.dart';
+import 'package:flutter_carplay/models/template.dart' show CPTemplate;
 import 'package:audio_service/audio_service.dart';
 import 'android_auto_service.dart';
 import 'api_service.dart';
