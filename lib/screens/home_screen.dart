@@ -722,9 +722,12 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
       if (_tileScheme != null) setState(() => _tileScheme = null);
       return;
     }
-    final ImageProvider provider = coverUrl.startsWith('/')
-        ? FileImage(File(coverUrl))
-        : CachedNetworkImageProvider(coverUrl, headers: widget.lib.mediaHeaders);
+    final ImageProvider provider;
+    if (coverUrl.startsWith('/')) {
+      provider = FileImage(File(coverUrl));
+    } else {
+      provider = CachedNetworkImageProvider(coverUrl, headers: widget.lib.mediaHeaders);
+    }
     ColorScheme.fromImageProvider(provider: provider, brightness: brightness)
         .then((s) {
           if (!mounted) return;
@@ -834,10 +837,26 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Cover (square)
-              AspectRatio(
-                aspectRatio: 1,
-                child: Stack(children: [
+              // Floating cover with a colored glow
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.45),
+                        blurRadius: 14,
+                        spreadRadius: -2,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: Stack(children: [
                   Positioned.fill(
                     child: coverUrl != null
                         ? coverUrl.startsWith('/')
@@ -897,20 +916,30 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
                         ),
                       ),
                     ),
-                ]),
+                      ]),
+                    ),
+                  ),
+                ),
               ),
               // Text + progress area
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                          style: tt.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: cs.onSurface,
-                              height: 1.2)),
+                      // Reserve 2 lines of title height so the author row
+                      // stays in a consistent position whether the title
+                      // wraps or not.
+                      SizedBox(
+                        height: 30,
+                        child: Text(title, maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: tt.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface,
+                                height: 1.2)),
+                      ),
                       if (author.isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(author, maxLines: 1, overflow: TextOverflow.ellipsis,
