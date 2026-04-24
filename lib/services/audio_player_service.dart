@@ -2968,11 +2968,12 @@ class AudioPlayerService extends ChangeNotifier {
   bool _positionSyncInProgress = false;
   int _positionSyncFailures = 0;
 
-  Future<void> _syncToServer(Duration pos) async {
+  Future<void> _syncToServer(Duration pos, {int? timeListenedOverride}) async {
     if (_api == null || _playbackSessionId == null) return;
     final ct = pos.inMilliseconds / 1000.0;
     final now = DateTime.now();
-    final elapsed = now.difference(_lastServerSync).inSeconds.clamp(0, 300);
+    final elapsed = timeListenedOverride ??
+        now.difference(_lastServerSync).inSeconds.clamp(0, 300);
     _lastServerSync = now;
     // Alpha: volume/sessionId piggybacked for GH #179 (volume falls off).
     // We sample these on each sync tick so drift over time is visible.
@@ -3278,10 +3279,12 @@ class AudioPlayerService extends ChangeNotifier {
     _pauseStopTimer?.cancel();
     _pauseStopTimer = Timer(_pauseStopTimeout, () async {
       debugPrint('[Player] Pause timeout - releasing server session and audio focus');
-      // Close server playback session
+      // Close server playback session. timeListened=0 because the user has
+      // been paused for the whole pause-timeout window - the wall-clock diff
+      // would otherwise inflate server listening stats by up to 300s.
       if (_playbackSessionId != null && _api != null) {
         try {
-          await _syncToServer(position);
+          await _syncToServer(position, timeListenedOverride: 0);
           debugPrint('[Player] Closing session (pause timeout)');
           await _api!.closePlaybackSession(_playbackSessionId!);
         } catch (_) {}
@@ -3453,9 +3456,13 @@ class AudioPlayerService extends ChangeNotifier {
         .getBool('manual_offline_mode') ?? false;
 
     if (!manualOffline) {
-      // Try server sync
+      // Try server sync. If stop() was called while already paused, we were
+      // not playing in the interval since the last sync - pass timeListened=0
+      // so the wall-clock diff doesn't inflate server listening stats.
       if (_playbackSessionId != null && _api != null) {
-        await _syncToServer(position);
+        final wasPlaying = _player?.playing ?? false;
+        await _syncToServer(position,
+            timeListenedOverride: wasPlaying ? null : 0);
         try {
           debugPrint('[Player] Closing session (stop)');
           await _api!.closePlaybackSession(_playbackSessionId!);
