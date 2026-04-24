@@ -4551,4 +4551,13 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get androidAutoCatAuthors => 'Authors';
+
+  @override
+  String get showTipsAgain => '再次显示提示';
+
+  @override
+  String get showTipsAgainSubtitle => '恢复你已关闭的功能提示';
+
+  @override
+  String get tipsRestored => '已恢复提示';
 }

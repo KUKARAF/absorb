@@ -4632,4 +4632,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get androidAutoCatAuthors => 'Authors';
+
+  @override
+  String get showTipsAgain => 'Show tips again';
+
+  @override
+  String get showTipsAgainSubtitle => 'Bring back feature tips you\'ve dismissed';
+
+  @override
+  String get tipsRestored => 'Tips restored';
 }

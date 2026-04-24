@@ -18,6 +18,7 @@ import '../widgets/home_customize_sheet.dart';
 import '../widgets/playlist_detail_sheet.dart';
 import '../widgets/collection_detail_sheet.dart';
 import '../widgets/section_detail_sheet.dart';
+import '../widgets/feature_hint.dart';
 import 'app_shell.dart';
 import '../l10n/app_localizations.dart';
 
@@ -584,6 +585,13 @@ class HomeScreenState extends State<HomeScreen> {
                                     color: cs.outlineVariant.withValues(alpha: 0.2))),
                               ]),
                             ),
+                          ),
+                        ),
+                        const SliverToBoxAdapter(
+                          child: FeatureHint(
+                            prefKey: 'hint_continue_listening_gestures',
+                            message:
+                                'Tap a card to resume. Press and hold to see details.',
                           ),
                         ),
                         SliverToBoxAdapter(

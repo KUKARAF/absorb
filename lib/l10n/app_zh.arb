@@ -792,5 +792,8 @@
 
   "audible": "Audible",
   "iTunes": "iTunes",
-  "openLibrary": "打开媒体库"
+  "openLibrary": "打开媒体库",
+  "showTipsAgain": "再次显示提示",
+  "showTipsAgainSubtitle": "恢复你已关闭的功能提示",
+  "tipsRestored": "已恢复提示"
 }

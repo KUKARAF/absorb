@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:just_audio/just_audio.dart' show AudioPlayer;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -1764,6 +1765,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   isExpanded: _expandedSection == 'Issues & Support',
                   onExpansionChanged: (v) => _onSectionExpanded('Issues & Support', v),
                   children: [
+                    ListTile(
+                      leading: Icon(Icons.lightbulb_outline_rounded,
+                          color: cs.onSurfaceVariant),
+                      title: Text(l.showTipsAgain),
+                      subtitle: Text(l.showTipsAgainSubtitle,
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      onTap: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        for (final key in prefs.getKeys()) {
+                          if (key.startsWith('hint_')) {
+                            await prefs.remove(key);
+                          }
+                        }
+                        if (mounted) {
+                          showOverlayToast(context, l.tipsRestored,
+                              icon: Icons.lightbulb_outline_rounded);
+                        }
+                      },
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
                     ListTile(
                       leading: Icon(Icons.bug_report_outlined, color: cs.onSurfaceVariant),
                       title: Text(l.bugsAndFeatureRequests),

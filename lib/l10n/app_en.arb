@@ -1611,5 +1611,8 @@
   "androidAutoTabDownloads": "Downloads",
   "androidAutoCatBooks": "Books",
   "androidAutoCatSeries": "Series",
-  "androidAutoCatAuthors": "Authors"
+  "androidAutoCatAuthors": "Authors",
+  "showTipsAgain": "Show tips again",
+  "showTipsAgainSubtitle": "Bring back feature tips you've dismissed",
+  "tipsRestored": "Tips restored"
 }

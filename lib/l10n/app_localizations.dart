@@ -7983,6 +7983,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Authors'**
   String get androidAutoCatAuthors;
+
+  /// No description provided for @showTipsAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Show tips again'**
+  String get showTipsAgain;
+
+  /// No description provided for @showTipsAgainSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Bring back feature tips you\'ve dismissed'**
+  String get showTipsAgainSubtitle;
+
+  /// No description provided for @tipsRestored.
+  ///
+  /// In en, this message translates to:
+  /// **'Tips restored'**
+  String get tipsRestored;
 }
 
 class _AppLocalizationsDelegate
