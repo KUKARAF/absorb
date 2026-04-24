@@ -19,6 +19,7 @@ import 'chapter_lookup.dart';
 import 'cold_start_play_policy.dart';
 import 'player_settings.dart';
 import 'session_cache.dart';
+import 'home_widget_service.dart';
 export 'player_settings.dart';
 
 // ─── AudioHandler (runs in background, controls notification) ───
@@ -223,6 +224,18 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   Future<void> play() async {
     debugPrint('[Handler] play() called - routing to service (state=${_player.processingState.name})');
     debugPrint('[ClickDebug] play() entry: ${_clickDebugSnapshot()}');
+    // Mirror the click() guard: a raw play() arriving within 5s of a
+    // headphone/AA/BT disconnect is almost always the platform echoing a
+    // resume command, not the user. Drop it so playback doesn't jump to
+    // the phone speaker after the user unplugs or AA tears down.
+    if (_noisyPauseAt != null) {
+      final elapsed = DateTime.now().difference(_noisyPauseAt!).inMilliseconds;
+      if (elapsed < 5000) {
+        debugPrint('[Handler] Ignoring phantom play (${elapsed}ms after platform pause)');
+        return;
+      }
+      _noisyPauseAt = null;
+    }
     _lastHandlerPlayAt = DateTime.now();
     if (_service != null) {
       await _service!.play();
@@ -242,10 +255,20 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     // then see playing=false and misinterpret it as "user wants to play",
     // triggering a cold-start restore. Cancel any pending click so the
     // platform-initiated pause wins.
-    if (_clickTimer?.isActive ?? false) {
+    final clickPending = _clickTimer?.isActive ?? false;
+    if (clickPending) {
       debugPrint('[Handler] Cancelling pending click (platform pause)');
       _clickTimer!.cancel();
       _clickCount = 0;
+    }
+    // A pause arriving outside the click resolver is the platform signalling
+    // a disconnect (AA tearing down, BT going away, headphones unplugged).
+    // Stamp _noisyPauseAt so the play() / click() guards drop any spurious
+    // resume commands that follow in the next 5s. becomingNoisy already
+    // stamps for the headphone-unplug case; this covers AA/BT disconnect
+    // where no noisy event fires.
+    if (!_inClickResolver) {
+      _noisyPauseAt = DateTime.now();
     }
     if (_service != null) {
       await _service!.pause();
@@ -332,6 +355,10 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   int _clickCount = 0;
   DateTime? _hardwareButtonTime; // cooldown after hardware next/prev
   DateTime? _noisyPauseAt; // suppress clicks for a window after BT disconnect
+  // True while the click resolver is synchronously calling pause()/play().
+  // pause() uses this to skip stamping _noisyPauseAt for click-driven pauses,
+  // so legit user pause-then-play flows are not blocked by the disconnect guard.
+  bool _inClickResolver = false;
   // [ClickDebug] — timestamp of the last Handler-level pause() call.
   // Used to correlate phantom play/click commands with a preceding pause.
   DateTime? _lastHandlerPauseAt;
@@ -427,12 +454,17 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       debugPrint('[ClickDebug] click resolve (count=$count): ${_clickDebugSnapshot()}');
       switch (count) {
         case 1:
-          if (_player.playing) {
-            debugPrint('[Handler] → single press → PAUSE');
-            await pause();
-          } else {
-            debugPrint('[Handler] → single press → PLAY');
-            await play();
+          _inClickResolver = true;
+          try {
+            if (_player.playing) {
+              debugPrint('[Handler] → single press → PAUSE');
+              await pause();
+            } else {
+              debugPrint('[Handler] → single press → PLAY');
+              await play();
+            }
+          } finally {
+            _inClickResolver = false;
           }
           break;
         case 2:
@@ -2658,7 +2690,11 @@ class AudioPlayerService extends ChangeNotifier {
               final progressKey = _currentEpisodeId != null
                   ? '$_currentItemId-$_currentEpisodeId'
                   : _currentItemId!;
-              _progressSync.addOfflineListeningTime(progressKey, sinceLastSync.clamp(0, 300));
+              final offlineSeconds = sinceLastSync.clamp(0, 300);
+              _progressSync.addOfflineListeningTime(progressKey, offlineSeconds);
+              // Widget ticks forward even when the server is unreachable.
+              unawaited(HomeWidgetService()
+                  .addLocalListeningSeconds(offlineSeconds));
               // Reset the sync clock so the next tick waits a full interval
               // before accumulating again.
               _lastServerSync = DateTime.now();
@@ -2937,11 +2973,12 @@ class AudioPlayerService extends ChangeNotifier {
   bool _positionSyncInProgress = false;
   int _positionSyncFailures = 0;
 
-  Future<void> _syncToServer(Duration pos) async {
+  Future<void> _syncToServer(Duration pos, {int? timeListenedOverride}) async {
     if (_api == null || _playbackSessionId == null) return;
     final ct = pos.inMilliseconds / 1000.0;
     final now = DateTime.now();
-    final elapsed = now.difference(_lastServerSync).inSeconds.clamp(0, 300);
+    final elapsed = timeListenedOverride ??
+        now.difference(_lastServerSync).inSeconds.clamp(0, 300);
     _lastServerSync = now;
     // Alpha: volume/sessionId piggybacked for GH #179 (volume falls off).
     // We sample these on each sync tick so drift over time is visible.
@@ -2954,6 +2991,11 @@ class AudioPlayerService extends ChangeNotifier {
       duration: _totalDuration,
       timeListened: elapsed,
     );
+    if (ok && elapsed > 0) {
+      // Tick the StatsWidget forward locally so "today" stays fresh between
+      // 15-min authoritative refreshes (which Android Doze throttles).
+      unawaited(HomeWidgetService().addLocalListeningSeconds(elapsed));
+    }
     if (!ok && !_syncRecoveryInProgress) {
       debugPrint('[Player] Session sync failed - attempting recovery');
       _syncRecoveryInProgress = true;
@@ -3247,10 +3289,12 @@ class AudioPlayerService extends ChangeNotifier {
     _pauseStopTimer?.cancel();
     _pauseStopTimer = Timer(_pauseStopTimeout, () async {
       debugPrint('[Player] Pause timeout - releasing server session and audio focus');
-      // Close server playback session
+      // Close server playback session. timeListened=0 because the user has
+      // been paused for the whole pause-timeout window - the wall-clock diff
+      // would otherwise inflate server listening stats by up to 300s.
       if (_playbackSessionId != null && _api != null) {
         try {
-          await _syncToServer(position);
+          await _syncToServer(position, timeListenedOverride: 0);
           debugPrint('[Player] Closing session (pause timeout)');
           await _api!.closePlaybackSession(_playbackSessionId!);
         } catch (_) {}
@@ -3422,9 +3466,13 @@ class AudioPlayerService extends ChangeNotifier {
         .getBool('manual_offline_mode') ?? false;
 
     if (!manualOffline) {
-      // Try server sync
+      // Try server sync. If stop() was called while already paused, we were
+      // not playing in the interval since the last sync - pass timeListened=0
+      // so the wall-clock diff doesn't inflate server listening stats.
       if (_playbackSessionId != null && _api != null) {
-        await _syncToServer(position);
+        final wasPlaying = _player?.playing ?? false;
+        await _syncToServer(position,
+            timeListenedOverride: wasPlaying ? null : 0);
         try {
           debugPrint('[Player] Closing session (stop)');
           await _api!.closePlaybackSession(_playbackSessionId!);

@@ -15,8 +15,11 @@ import 'download_service.dart';
 
 const String _androidWidgetName = 'NowPlayingWidget';
 const String _androidWidgetCompactName = 'NowPlayingWidgetCompact';
+const String _androidWidgetStatsName = 'StatsWidget';
 const String _iOSWidgetName = 'NowPlayingWidget';
+const String _iOSStatsWidgetName = 'StatsWidget';
 const String _appGroupId = 'group.com.barnabas.absorb';
+const Duration _statsThrottle = Duration(minutes: 15);
 
 class HomeWidgetService {
   static final HomeWidgetService _instance = HomeWidgetService._();
@@ -24,15 +27,27 @@ class HomeWidgetService {
   HomeWidgetService._();
 
   Timer? _progressTimer;
+  Timer? _statsTimer;
   Timer? _pendingUpdate;
   String? _lastCoverItemId;
   DateTime? _lastUpdate;
+  DateTime? _lastStatsFetch;
   bool _initialized = false;
   bool _updating = false;
+  bool _refreshingStats = false;
   StreamSubscription? _clickSub;
   String? _groupContainerPath;
 
   static const _widgetChannel = MethodChannel('com.absorb.widget');
+
+  // Last authoritative values from the server, plus local additions since
+  // then. Lets us tick the widget forward on every playback sync without a
+  // network round-trip; refreshStats overwrites the base and resets the
+  // accumulators so drift is corrected on every successful server fetch.
+  int _todayBase = 0;
+  int _weekBase = 0;
+  int _localAddedToday = 0;
+  int _localAddedWeek = 0;
 
   /// Call after AudioPlayerService is initialized to start pushing state.
   Future<void> init() async {
@@ -91,10 +106,19 @@ class HomeWidgetService {
 
     // Push current state in case a widget already exists.
     _scheduleUpdate();
+    // Fetch stats in the background so the StatsWidget renders fresh on launch.
+    refreshStats();
+
+    // Stats timer runs even while the app is backgrounded so "today" keeps
+    // ticking on the widget during long listening sessions without needing
+    // the user to open the app. 15-min cadence matches the refresh throttle.
+    _statsTimer?.cancel();
+    _statsTimer = Timer.periodic(_statsThrottle, (_) => refreshStats());
   }
 
   void dispose() {
     _progressTimer?.cancel();
+    _statsTimer?.cancel();
     _pendingUpdate?.cancel();
     _clickSub?.cancel();
     AudioPlayerService().removeListener(_onPlayerChanged);
@@ -342,9 +366,208 @@ class HomeWidgetService {
     if (Platform.isAndroid) {
       await HomeWidget.updateWidget(name: _androidWidgetName);
       await HomeWidget.updateWidget(name: _androidWidgetCompactName);
+      await HomeWidget.updateWidget(name: _androidWidgetStatsName);
     } else if (Platform.isIOS) {
       await HomeWidget.updateWidget(iOSName: _iOSWidgetName);
+      await HomeWidget.updateWidget(iOSName: _iOSStatsWidgetName);
     }
+  }
+
+  Future<void> _updateStatsWidget() async {
+    if (Platform.isAndroid) {
+      await HomeWidget.updateWidget(name: _androidWidgetStatsName);
+    } else if (Platform.isIOS) {
+      await HomeWidget.updateWidget(iOSName: _iOSStatsWidgetName);
+    }
+  }
+
+  /// Fetch listening stats from the server and push them to the StatsWidget.
+  /// Throttled to once per 15 minutes since stats drift slowly. Pass `force`
+  /// to bypass the throttle (e.g. on app foreground after a long gap).
+  /// Wipe stats values so a stale user's numbers don't linger on the widget
+  /// during an account switch. Call before refreshStats so the widget shows
+  /// zeros for the few hundred ms until the new user's data arrives.
+  Future<void> clearStats() async {
+    try {
+      await HomeWidget.saveWidgetData<int>('widget_stats_today', 0);
+      await HomeWidget.saveWidgetData<int>('widget_stats_week', 0);
+      await HomeWidget.saveWidgetData<int>('widget_stats_streak', 0);
+      await HomeWidget.saveWidgetData<int>('widget_stats_books_year', 0);
+      await _updateStatsWidget();
+      _lastStatsFetch = null;
+      debugPrint('[StatsWidget] Cleared (account switch or logout)');
+    } catch (e) {
+      debugPrint('[StatsWidget] Clear failed: $e');
+    }
+  }
+
+  Future<void> refreshStats({bool force = false}) async {
+    if (_refreshingStats) {
+      debugPrint('[StatsWidget] Skipping refresh: already in flight');
+      return;
+    }
+    if (!force && _lastStatsFetch != null) {
+      final since = DateTime.now().difference(_lastStatsFetch!);
+      if (since < _statsThrottle) {
+        debugPrint('[StatsWidget] Skipping refresh: ${since.inSeconds}s since last (throttle=${_statsThrottle.inSeconds}s)');
+        return;
+      }
+    }
+    _refreshingStats = true;
+    try {
+      final api = await _buildApiService();
+      if (api == null) {
+        debugPrint('[StatsWidget] Skipping refresh: no server/token in prefs');
+        return;
+      }
+
+      debugPrint('[StatsWidget] Fetching listening-stats and /me');
+      final stats = await api.getListeningStats();
+      final me = await api.getMe();
+      _lastStatsFetch = DateTime.now();
+
+      if (stats == null) debugPrint('[StatsWidget] listening-stats returned null');
+      if (me == null) debugPrint('[StatsWidget] /me returned null');
+
+      final dailyMap = _extractDailyMap(stats);
+      final today = _todaySeconds(dailyMap).round();
+      final week = _weekSeconds(dailyMap).round();
+      final streak = _currentStreak(dailyMap);
+      final booksYear = _countBooksFinishedThisYear(me);
+
+      debugPrint('[StatsWidget] Computed: today=${today}s week=${week}s streak=${streak}d booksThisYear=$booksYear (dailyMapKeys=${dailyMap.length})');
+
+      _todayBase = today;
+      _weekBase = week;
+      _localAddedToday = 0;
+      _localAddedWeek = 0;
+
+      await HomeWidget.saveWidgetData<int>('widget_stats_today', today);
+      await HomeWidget.saveWidgetData<int>('widget_stats_week', week);
+      await HomeWidget.saveWidgetData<int>('widget_stats_streak', streak);
+      await HomeWidget.saveWidgetData<int>('widget_stats_books_year', booksYear);
+      await _updateStatsWidget();
+      debugPrint('[StatsWidget] Pushed and updateWidget(StatsWidget) called');
+    } catch (e) {
+      debugPrint('[StatsWidget] Refresh failed: $e');
+    } finally {
+      _refreshingStats = false;
+    }
+  }
+
+  /// Tick the widget's "today" and "this week" totals forward without hitting
+  /// the server. Called from the player's sync path after real playing time
+  /// accumulates, so the widget stays fresh while the app is backgrounded and
+  /// the 15-min stats timer is throttled by Android Doze.
+  Future<void> addLocalListeningSeconds(int seconds) async {
+    if (seconds <= 0) return;
+    _localAddedToday += seconds;
+    _localAddedWeek += seconds;
+    try {
+      await HomeWidget.saveWidgetData<int>(
+          'widget_stats_today', _todayBase + _localAddedToday);
+      await HomeWidget.saveWidgetData<int>(
+          'widget_stats_week', _weekBase + _localAddedWeek);
+      await _updateStatsWidget();
+    } catch (e) {
+      debugPrint('[StatsWidget] Local add failed: $e');
+    }
+  }
+
+  Future<ApiService?> _buildApiService() async {
+    final prefs = await SharedPreferences.getInstance();
+    final serverUrl = prefs.getString('server_url');
+    final token = prefs.getString('token');
+    if (serverUrl == null || token == null) return null;
+    final refreshToken = prefs.getString('refresh_token');
+
+    Map<String, String>? customHeaders;
+    final headersJson = prefs.getString('custom_headers');
+    if (headersJson != null) {
+      try {
+        customHeaders =
+            Map<String, String>.from(jsonDecode(headersJson) as Map);
+      } catch (_) {}
+    }
+
+    return ApiService(
+      baseUrl: serverUrl,
+      token: token,
+      refreshToken: refreshToken,
+      isLegacyToken: refreshToken == null,
+      customHeaders: customHeaders ?? const {},
+    );
+  }
+
+  Map<String, dynamic> _extractDailyMap(Map<String, dynamic>? stats) {
+    if (stats == null) return {};
+    for (final key in ['dayListeningMap', 'days']) {
+      final val = stats[key];
+      if (val is Map<String, dynamic>) return val;
+    }
+    return {};
+  }
+
+  String _dateKey(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  double _daySeconds(Map<String, dynamic> map, String key) {
+    final val = map[key];
+    if (val is num) return val.toDouble();
+    if (val is Map) {
+      final t = val['timeListening'];
+      if (t is num && t > 0) return t.toDouble();
+      final total = val['totalTime'];
+      if (total is num) return total.toDouble();
+    }
+    return 0;
+  }
+
+  double _todaySeconds(Map<String, dynamic> dailyMap) =>
+      _daySeconds(dailyMap, _dateKey(DateTime.now()));
+
+  double _weekSeconds(Map<String, dynamic> dailyMap) {
+    final now = DateTime.now();
+    double total = 0;
+    for (int i = 0; i < 7; i++) {
+      total += _daySeconds(dailyMap, _dateKey(now.subtract(Duration(days: i))));
+    }
+    return total;
+  }
+
+  int _currentStreak(Map<String, dynamic> dailyMap) {
+    int streak = 0;
+    final now = DateTime.now();
+    final startOffset = _daySeconds(dailyMap, _dateKey(now)) > 0 ? 0 : 1;
+    for (int i = startOffset; i < 365; i++) {
+      if (_daySeconds(dailyMap, _dateKey(now.subtract(Duration(days: i)))) > 0) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  int _countBooksFinishedThisYear(Map<String, dynamic>? me) {
+    if (me == null) return 0;
+    final progress = me['mediaProgress'];
+    if (progress is! List) return 0;
+    final year = DateTime.now().year;
+    var count = 0;
+    for (final entry in progress) {
+      if (entry is! Map) continue;
+      if (entry['isFinished'] != true) continue;
+      // episodeId is non-null for podcast entries — exclude so the "books"
+      // count doesn't inflate with every finished podcast episode.
+      final episodeId = entry['episodeId'];
+      if (episodeId is String && episodeId.isNotEmpty) continue;
+      final raw = entry['finishedAt'];
+      if (raw is! num) continue;
+      final dt = DateTime.fromMillisecondsSinceEpoch(raw.toInt());
+      if (dt.year == year) count++;
+    }
+    return count;
   }
 
   Future<void> _updateCoverArt(String itemId) async {
@@ -432,6 +655,9 @@ class HomeWidgetService {
     if (_progressTimer?.isActive == true) return;
     _progressTimer = Timer.periodic(const Duration(seconds: 120), (_) {
       _scheduleUpdate();
+      // Piggyback a stats refresh; the 15-min throttle inside refreshStats
+      // keeps this cheap even though the timer ticks every 2 minutes.
+      refreshStats();
     });
   }
 
@@ -449,5 +675,6 @@ class HomeWidgetService {
       _startProgressTimer();
       _scheduleUpdate();
     }
+    refreshStats();
   }
 }

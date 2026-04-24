@@ -590,7 +590,7 @@ class HomeScreenState extends State<HomeScreen> {
                           child: Padding(
                             padding: const EdgeInsets.only(top: 12),
                             child: SizedBox(
-                              height: 96,
+                              height: 250,
                               child: ListView.separated(
                                 scrollDirection: Axis.horizontal,
                                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -704,15 +704,41 @@ class _ContinueListeningCard extends StatefulWidget {
 
 class _ContinueListeningCardState extends State<_ContinueListeningCard> {
   bool _isLoading = false;
+  ColorScheme? _tileScheme;
+  String? _derivedCoverKey;
 
-  static String _fmtTime(double s) {
-    if (s <= 0) return '0:00';
+  static String _fmtRemaining(double s) {
+    if (s <= 0) return '';
     final h = (s / 3600).floor();
     final m = ((s % 3600) / 60).floor();
-    final sec = (s % 60).floor();
-    if (h > 0)
-      return '$h:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
-    return '$m:${sec.toString().padLeft(2, '0')}';
+    if (h > 0) return '${h}h ${m}m left';
+    if (m > 0) return '${m}m left';
+    return '<1m left';
+  }
+
+  void _deriveScheme(String? coverUrl) {
+    final brightness = Theme.of(context).brightness;
+    final key = coverUrl == null ? null : '$coverUrl|$brightness';
+    if (key == _derivedCoverKey) return;
+    _derivedCoverKey = key;
+    if (coverUrl == null) {
+      if (_tileScheme != null) setState(() => _tileScheme = null);
+      return;
+    }
+    final ImageProvider provider;
+    if (coverUrl.startsWith('/')) {
+      provider = FileImage(File(coverUrl));
+    } else {
+      provider = CachedNetworkImageProvider(coverUrl, headers: widget.lib.mediaHeaders);
+    }
+    ColorScheme.fromImageProvider(provider: provider, brightness: brightness)
+        .then((s) {
+          if (!mounted) return;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _tileScheme = s);
+          });
+        })
+        .catchError((_) {});
   }
 
   @override
@@ -730,7 +756,6 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
     final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
     final recentEpisode = item['recentEpisode'] as Map<String, dynamic>?;
 
-    // For podcasts with recentEpisode, show episode title + show name
     final title = recentEpisode != null
         ? (recentEpisode['title'] as String? ?? l.homeScreenEpisodeFallback)
         : (metadata['title'] as String? ?? l.unknown);
@@ -739,8 +764,8 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
         : (metadata['authorName'] as String? ?? '');
 
     final coverUrl = lib.getCoverUrl(itemId);
+    _deriveScheme(coverUrl);
 
-    // For podcast episodes, use compound key for progress
     final episodeId = recentEpisode?['id'] as String?;
     final progress = episodeId != null
         ? lib.getEpisodeProgress(itemId, episodeId)
@@ -751,7 +776,6 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
     final isCurrentItem = player.currentItemId == itemId;
     final serverCurrentTime = (progressData?['currentTime'] as num?)?.toDouble() ?? 0;
 
-    // For the active item, prefer live player data over stale _progressMap
     double currentTime;
     double totalDuration;
     if (isCurrentItem && player.hasBook) {
@@ -765,162 +789,199 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
               : (media['duration'] as num?)?.toDouble() ?? 0);
     }
 
+    final accent = _tileScheme?.primary ?? cs.primary;
+    final cardBg = _tileScheme != null
+        ? Color.alphaBlend(accent.withValues(alpha: 0.10), cs.surfaceContainerHigh)
+        : (isCurrentItem ? cs.primary.withValues(alpha: 0.08) : cs.surfaceContainerHigh);
+    final progressValue =
+        (totalDuration > 0 ? currentTime / totalDuration : progress).clamp(0.0, 1.0);
+    final remaining = totalDuration > 0 ? totalDuration - currentTime : 0.0;
+
+    void resume() {
+      if (_isLoading) return;
+      if (isCurrentItem) {
+        if (player.isPlaying) {
+          player.pause();
+        } else {
+          final playerPosSec = player.position.inMilliseconds / 1000.0;
+          if (serverCurrentTime > playerPosSec + 5.0) {
+            _startBook(context, itemId);
+          } else {
+            player.play();
+          }
+        }
+      } else {
+        _startBook(context, itemId);
+      }
+    }
+
+    void openDetails() {
+      if (lib.isPodcastLibrary) {
+        if (recentEpisode != null) {
+          EpisodeDetailSheet.show(context, item, recentEpisode);
+        } else {
+          EpisodeListSheet.show(context, item);
+        }
+      } else {
+        showBookDetailSheet(context, itemId);
+      }
+    }
+
     return Material(
-      color: isCurrentItem
-          ? cs.primary.withValues(alpha: 0.08)
-          : cs.surfaceContainerHigh,
+      color: cardBg,
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () {
-          if (lib.isPodcastLibrary) {
-            if (recentEpisode != null) {
-              EpisodeDetailSheet.show(context, item, recentEpisode);
-            } else {
-              EpisodeListSheet.show(context, item);
-            }
-          } else {
-            showBookDetailSheet(context, itemId);
-          }
-        },
+        onTap: resume,
+        onLongPress: openDetails,
         borderRadius: BorderRadius.circular(14),
         child: SizedBox(
-          width: 260,
-          child: Column(children: [
-            // Main content row
-            Expanded(
-              child: Row(children: [
-                // Cover with play overlay
-                ClipRect(
-                child: AspectRatio(
-                  aspectRatio: widget.rectangleCovers ? 2 / 3 : 1.0,
-                  child: Stack(children: [
-                    Positioned.fill(
-                      child: coverUrl != null
-                          ? coverUrl.startsWith('/')
-                              ? BlurPaddedCover(
-                                  enabled: !widget.rectangleCovers,
-                                  child: Image.file(File(coverUrl), fit: widget.rectangleCovers ? BoxFit.cover : BoxFit.contain,
-                                      errorBuilder: (_, __, ___) => Container(
-                                          color: cs.surfaceContainerHighest,
-                                          child: Icon(Icons.headphones_rounded,
-                                              size: 22, color: cs.onSurfaceVariant))),
-                                  blurChild: Image.file(File(coverUrl), fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const SizedBox.shrink()))
-                              : BlurPaddedCover(
-                                  enabled: !widget.rectangleCovers,
-                                  child: CachedNetworkImage(
-                                      imageUrl: coverUrl, fit: widget.rectangleCovers ? BoxFit.cover : BoxFit.contain,
-                                      httpHeaders: lib.mediaHeaders,
-                                      fadeInDuration: const Duration(milliseconds: 300),
-                                      placeholder: (_, __) => Container(
-                                          color: cs.surfaceContainerHighest,
-                                          child: Icon(Icons.headphones_rounded,
-                                              size: 22, color: cs.onSurfaceVariant)),
-                                      errorWidget: (_, __, ___) => Container(
-                                          color: cs.surfaceContainerHighest,
-                                          child: Icon(Icons.headphones_rounded,
-                                              size: 22, color: cs.onSurfaceVariant))),
-                                  blurChild: CachedNetworkImage(
-                                      imageUrl: coverUrl, fit: BoxFit.cover,
-                                      httpHeaders: lib.mediaHeaders,
-                                      errorWidget: (_, __, ___) => const SizedBox.shrink()))
-                          : Container(
-                              color: cs.surfaceContainerHighest,
-                              child: Icon(Icons.headphones_rounded,
-                                  size: 22, color: cs.onSurfaceVariant)),
-                    ),
-                    // Play button
+          width: 150,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Floating cover with a colored glow
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.45),
+                        blurRadius: 14,
+                        spreadRadius: -2,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: Stack(children: [
+                  Positioned.fill(
+                    child: coverUrl != null
+                        ? coverUrl.startsWith('/')
+                            ? BlurPaddedCover(
+                                child: Image.file(File(coverUrl), fit: BoxFit.contain,
+                                    errorBuilder: (_, __, ___) => Container(
+                                        color: cs.surfaceContainerHighest,
+                                        child: Icon(Icons.headphones_rounded,
+                                            size: 32, color: cs.onSurfaceVariant))),
+                                blurChild: Image.file(File(coverUrl), fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const SizedBox.shrink()))
+                            : BlurPaddedCover(
+                                child: CachedNetworkImage(
+                                    imageUrl: coverUrl, fit: BoxFit.contain,
+                                    httpHeaders: lib.mediaHeaders,
+                                    fadeInDuration: const Duration(milliseconds: 300),
+                                    placeholder: (_, __) => Container(
+                                        color: cs.surfaceContainerHighest,
+                                        child: Icon(Icons.headphones_rounded,
+                                            size: 32, color: cs.onSurfaceVariant)),
+                                    errorWidget: (_, __, ___) => Container(
+                                        color: cs.surfaceContainerHighest,
+                                        child: Icon(Icons.headphones_rounded,
+                                            size: 32, color: cs.onSurfaceVariant))),
+                                blurChild: CachedNetworkImage(
+                                    imageUrl: coverUrl, fit: BoxFit.cover,
+                                    httpHeaders: lib.mediaHeaders,
+                                    errorWidget: (_, __, ___) => const SizedBox.shrink()))
+                        : Container(
+                            color: cs.surfaceContainerHighest,
+                            child: Icon(Icons.headphones_rounded,
+                                size: 32, color: cs.onSurfaceVariant)),
+                  ),
+                  if (isCurrentItem && player.isPlaying)
                     Positioned(
-                      right: 4, bottom: 4,
-                      child: GestureDetector(
-                        onTap: _isLoading
-                            ? null
-                            : () {
-                                if (isCurrentItem) {
-                                  if (player.isPlaying) {
-                                    player.pause();
-                                  } else {
-                                    // If server progress is ahead of the player's
-                                    // position (e.g. user listened on another client),
-                                    // re-start so the full server comparison runs.
-                                    final playerPosSec = player.position.inMilliseconds / 1000.0;
-                                    if (serverCurrentTime > playerPosSec + 5.0) {
-                                      _startBook(context, itemId);
-                                    } else {
-                                      player.play();
-                                    }
-                                  }
-                                } else {
-                                  _startBook(context, itemId);
-                                }
-                              },
-                        child: Container(
-                          width: 30, height: 30,
-                          decoration: BoxDecoration(
-                            color: cs.primary,
-                            shape: BoxShape.circle,
-                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 4)],
+                      right: 6, bottom: 6,
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.graphic_eq_rounded,
+                            size: 14, color: Colors.white),
+                      ),
+                    ),
+                  if (_isLoading)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 22, height: 22,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
                           ),
-                          child: _isLoading
-                              ? Padding(
-                                  padding: const EdgeInsets.all(7),
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: cs.onPrimary))
-                              : Icon(
-                                  isCurrentItem && player.isPlaying
-                                      ? Icons.pause_rounded
-                                      : Icons.play_arrow_rounded,
-                                  size: 16, color: cs.onPrimary),
                         ),
                       ),
                     ),
-                  ]),
-                )),
-                // Info
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                            style: tt.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600, color: cs.onSurface, height: 1.2)),
-                        const SizedBox(height: 2),
-                        if (author.isNotEmpty)
-                          Text(author, maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: tt.labelSmall?.copyWith(
-                                  color: cs.onSurfaceVariant)),
-                        const Spacer(),
-                        Text.rich(TextSpan(children: [
-                          TextSpan(
-                              text: '${(totalDuration > 0 ? (currentTime / totalDuration * 100).round() : (progress * 100).round())}%',
-                              style: tt.labelSmall?.copyWith(
-                                  fontWeight: FontWeight.w700, color: cs.primary, fontSize: 11)),
-                          if (totalDuration > 0)
-                            TextSpan(
-                                text: '  ${_fmtTime(currentTime)} / ${_fmtTime(totalDuration)}',
-                                style: tt.labelSmall?.copyWith(
-                                    color: cs.onSurfaceVariant, fontSize: 10)),
-                        ])),
-                      ],
+                      ]),
                     ),
                   ),
                 ),
-              ]),
-            ),
-            // Progress bar flush at bottom
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(14)),
-              child: LinearProgressIndicator(
-                value: (totalDuration > 0 ? currentTime / totalDuration : progress).clamp(0.0, 1.0), minHeight: 3,
-                backgroundColor: Colors.transparent,
-                valueColor: AlwaysStoppedAnimation(cs.primary),
               ),
-            ),
-          ]),
+              // Text + progress area
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Reserve 2 lines of title height so the author row
+                      // stays in a consistent position whether the title
+                      // wraps or not.
+                      SizedBox(
+                        height: 30,
+                        child: Text(title, maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: tt.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface,
+                                height: 1.2)),
+                      ),
+                      if (author.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(author, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+                      ],
+                      const Spacer(),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: progressValue,
+                          minHeight: 3,
+                          backgroundColor: cs.outlineVariant.withValues(alpha: 0.3),
+                          valueColor: AlwaysStoppedAnimation(accent),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(children: [
+                        Text('${(progressValue * 100).round()}%',
+                            style: tt.labelSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: accent,
+                                fontSize: 11)),
+                        if (remaining > 0) ...[
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(_fmtRemaining(remaining),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: tt.labelSmall?.copyWith(
+                                    color: cs.onSurfaceVariant, fontSize: 10)),
+                          ),
+                        ],
+                      ]),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

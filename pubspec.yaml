@@ -2,11 +2,6 @@ name: absorb
 description: An Audiobookshelf Client
 publish_to: 'none'
 version: 1.8.76+96
-# v1.8.41: JWT auth (accessToken + refreshToken), MANAGE_EXTERNAL_STORAGE removed from playstore flavor
-# Build scripts (run from Git Bash):
-#  . ./build_bundle.sh    - Play Store AAB (no MANAGE_EXTERNAL_STORAGE)
-#  . ./build_github.sh    - GitHub APK (full permissions, includes update checker)
-# flutter run --flavor github = . ./run.sh 
 
 environment:
   sdk: '>=3.1.0 <4.0.0'
