@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:palette_generator/palette_generator.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -598,7 +599,9 @@ class HomeScreenState extends State<HomeScreen> {
                           child: Padding(
                             padding: const EdgeInsets.only(top: 12),
                             child: SizedBox(
-                              height: 250,
+                              // Taller row when 2:3 covers are on; the card's
+                              // cover alone is ~225 with rectangle covers.
+                              height: _rectangleCovers ? 320 : 250,
                               child: ListView.separated(
                                 scrollDirection: Axis.horizontal,
                                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -609,6 +612,7 @@ class HomeScreenState extends State<HomeScreen> {
                                   final item = clItems[i] as Map<String, dynamic>;
                                   return _ContinueListeningCard(
                                     item: item, lib: lib, player: _player,
+                                    rectangleCovers: _rectangleCovers,
                                   );
                                 },
                               ),
@@ -696,11 +700,13 @@ class _ContinueListeningCard extends StatefulWidget {
   final Map<String, dynamic> item;
   final LibraryProvider lib;
   final AudioPlayerService player;
+  final bool rectangleCovers;
 
   const _ContinueListeningCard({
     required this.item,
     required this.lib,
     required this.player,
+    required this.rectangleCovers,
   });
 
   @override
@@ -709,7 +715,7 @@ class _ContinueListeningCard extends StatefulWidget {
 
 class _ContinueListeningCardState extends State<_ContinueListeningCard> {
   bool _isLoading = false;
-  ColorScheme? _tileScheme;
+  Color? _accent;
   String? _derivedCoverKey;
 
   static String _fmtRemaining(double s) {
@@ -721,13 +727,17 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
     return '<1m left';
   }
 
+  /// Pull a vivid accent color from the cover. Uses PaletteGenerator instead
+  /// of ColorScheme.fromImageProvider because Material 3's harmonized palette
+  /// flattens vibrant covers into muted tones (a yellow/black cover ends up
+  /// looking olive-green). The vibrant/dominant swatch keeps the original
+  /// hue intact.
   void _deriveScheme(String? coverUrl) {
-    final brightness = Theme.of(context).brightness;
-    final key = coverUrl == null ? null : '$coverUrl|$brightness';
+    final key = coverUrl;
     if (key == _derivedCoverKey) return;
     _derivedCoverKey = key;
     if (coverUrl == null) {
-      if (_tileScheme != null) setState(() => _tileScheme = null);
+      if (_accent != null) setState(() => _accent = null);
       return;
     }
     final ImageProvider provider;
@@ -736,11 +746,17 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
     } else {
       provider = CachedNetworkImageProvider(coverUrl, headers: widget.lib.mediaHeaders);
     }
-    ColorScheme.fromImageProvider(provider: provider, brightness: brightness)
-        .then((s) {
+    PaletteGenerator.fromImageProvider(provider, maximumColorCount: 16)
+        .then((palette) {
           if (!mounted) return;
+          final picked = palette.vibrantColor?.color
+              ?? palette.lightVibrantColor?.color
+              ?? palette.darkVibrantColor?.color
+              ?? palette.dominantColor?.color
+              ?? palette.colors.firstOrNull;
+          if (picked == null) return;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) setState(() => _tileScheme = s);
+            if (mounted) setState(() => _accent = picked);
           });
         })
         .catchError((_) {});
@@ -794,10 +810,22 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
               : (media['duration'] as num?)?.toDouble() ?? 0);
     }
 
-    final accent = _tileScheme?.primary ?? cs.primary;
-    final cardBg = _tileScheme != null
-        ? Color.alphaBlend(accent.withValues(alpha: 0.10), cs.surfaceContainerHigh)
+    final accent = _accent ?? cs.primary;
+    // Force the cover's hue/sat into a theme-appropriate lightness so each
+    // card reads as its own tint rather than near-identical dark gray. Two
+    // shades are used as gradient stops to add depth.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final HSLColor? bgHsl = _accent == null
+        ? null
+        : HSLColor.fromColor(accent).withSaturation(
+            (HSLColor.fromColor(accent).saturation * (isDark ? 0.85 : 0.55))
+                .clamp(0.0, 1.0));
+    final Color cardBgTop = bgHsl != null
+        ? bgHsl.withLightness(isDark ? 0.19 : 0.95).toColor()
         : (isCurrentItem ? cs.primary.withValues(alpha: 0.08) : cs.surfaceContainerHigh);
+    final Color cardBgBottom = bgHsl != null
+        ? bgHsl.withLightness(isDark ? 0.11 : 0.88).toColor()
+        : cardBgTop;
     final progressValue =
         (totalDuration > 0 ? currentTime / totalDuration : progress).clamp(0.0, 1.0);
     final remaining = totalDuration > 0 ? totalDuration - currentTime : 0.0;
@@ -833,15 +861,24 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
     }
 
     return Material(
-      color: cardBg,
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: resume,
-        onLongPress: openDetails,
-        borderRadius: BorderRadius.circular(14),
-        child: SizedBox(
-          width: 150,
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [cardBgTop, cardBgBottom],
+          ),
+        ),
+        child: InkWell(
+          onTap: resume,
+          onLongPress: openDetails,
+          borderRadius: BorderRadius.circular(14),
+          child: SizedBox(
+            width: 150,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -863,13 +900,17 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: AspectRatio(
-                      aspectRatio: 1,
+                      aspectRatio: widget.rectangleCovers ? 2 / 3 : 1,
                       child: Stack(children: [
                   Positioned.fill(
                     child: coverUrl != null
                         ? coverUrl.startsWith('/')
                             ? BlurPaddedCover(
-                                child: Image.file(File(coverUrl), fit: BoxFit.contain,
+                                enabled: !widget.rectangleCovers,
+                                child: Image.file(File(coverUrl),
+                                    fit: widget.rectangleCovers
+                                        ? BoxFit.cover
+                                        : BoxFit.contain,
                                     errorBuilder: (_, __, ___) => Container(
                                         color: cs.surfaceContainerHighest,
                                         child: Icon(Icons.headphones_rounded,
@@ -877,8 +918,12 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
                                 blurChild: Image.file(File(coverUrl), fit: BoxFit.cover,
                                     errorBuilder: (_, __, ___) => const SizedBox.shrink()))
                             : BlurPaddedCover(
+                                enabled: !widget.rectangleCovers,
                                 child: CachedNetworkImage(
-                                    imageUrl: coverUrl, fit: BoxFit.contain,
+                                    imageUrl: coverUrl,
+                                    fit: widget.rectangleCovers
+                                        ? BoxFit.cover
+                                        : BoxFit.contain,
                                     httpHeaders: lib.mediaHeaders,
                                     fadeInDuration: const Duration(milliseconds: 300),
                                     placeholder: (_, __) => Container(
@@ -987,6 +1032,7 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
