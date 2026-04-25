@@ -2063,80 +2063,36 @@ class AppLocalizationsZh extends AppLocalizations {
   String get welcomeToAbsorb => '欢迎使用 Absorb';
 
   @override
-  String get welcomeOverview => '以下是功能快速介绍。';
-
-  @override
-  String get welcomeHomeTitle => '首页';
-
-  @override
-  String get welcomeHomeBody =>
-      '来自 Audiobookshelf 的个性化书架 - 继续收听、发现新书目，并浏览您的播放列表和合集。使用右上角的编辑按钮自定义显示的版块及其顺序。';
-
-  @override
-  String get welcomeLibraryTitle => '媒体库';
-
-  @override
-  String get welcomeLibraryBody =>
-      '通过书籍、系列和作者等标签页浏览您的完整媒体库。点击当前激活的标签页可以打开排序和筛选选项。';
+  String get welcomeTagline => '一个 Audiobookshelf 客户端。';
 
   @override
   String get welcomeAbsorbingTitle => '正在收听';
 
   @override
-  String get welcomeAbsorbingBody =>
-      '你的活跃收听队列。你开始播放的书籍会自动以可滑动卡片的形式显示在这里，并带有完整的播放控制。';
+  String get welcomeAbsorbingIntro => '我们用 \"absorb\" 代替 \"播放\" 和 \"收听\"。';
 
   @override
-  String get welcomeQueueModesTitle => '队列模式';
+  String get welcomeAbsorbingTabBullet => '正在收听标签页 - 你当前正在收听的内容';
 
   @override
-  String get welcomeQueueModeOff => '关闭 - 书籍播放完成后停止';
+  String get welcomeAbsorbButtonBullet => 'Absorb 按钮 - 开始播放';
 
   @override
-  String get welcomeQueueModeManual => '手动 - 自动播放队列中的下一张卡片';
+  String get welcomeFullyAbsorbBullet => 'Fully Absorb - 标记为已完成';
 
   @override
-  String get welcomeQueueModeAuto => '系列 - 自动查找并播放系列中的下一本书';
+  String get welcomeGettingAroundTitle => '界面操作';
 
   @override
-  String get welcomeManagingQueueTitle => '管理你的队列';
+  String get welcomeGettingAroundBody =>
+      '点击任意封面打开详情。继续收听卡片不一样 - 点击立即播放，长按打开详情。';
 
   @override
-  String get welcomeManagingCoverTap => '点击封面以播放/暂停（可在设置中切换）';
+  String get welcomeMakeItYoursTitle => '个性化设置';
 
   @override
-  String get welcomeManagingSwipeUp => '向上滑动卡片打开全屏播放器，向下滑动关闭';
-
-  @override
-  String get welcomeManagingSwipeRight => '在列表中向右滑动任意书籍，即可快速加入队列';
-
-  @override
-  String get welcomeManagingReorder => '点击排序图标拖动卡片到你喜欢的顺序，或滑动移除';
-
-  @override
-  String get welcomeManagingAdd => '从任何书籍的详情页手动添加书籍';
-
-  @override
-  String get welcomeManagingRemoveFinished => '播放完成的书籍会自动从队列中移除';
-
-  @override
-  String get welcomeMergeLibrariesTitle => '合并媒体库';
-
-  @override
-  String get welcomeMergeLibrariesBody => '在设置中启用，在一个队列中显示所有媒体库的内容';
-
-  @override
-  String get welcomeDownloadsTitle => '下载与离线';
-
-  @override
-  String get welcomeDownloadsBody =>
-      '下载书籍以离线收听。通过“正在收听”屏幕上的飞机图标切换离线模式。您的进度会在重新连接后自动同步回服务器。';
-
-  @override
-  String get welcomeSettingsTitle => '设置';
-
-  @override
-  String get welcomeSettingsBody => '配置队列行为、睡眠定时器、播放速度、本地服务器连接等更多选项。';
+  String get welcomeMakeItYoursBody =>
+      '在设置中自定义 Absorb 以符合你的喜好。小提示：在首页，点击右上角的编辑按钮可以调整分类顺序。';
 
   @override
   String get getStarted => '开始使用';
@@ -4119,13 +4075,6 @@ class AppLocalizationsZh extends AppLocalizations {
       'Long-press the bookmark button on any card to instantly drop a bookmark at your current position without opening the bookmark sheet.';
 
   @override
-  String get tipsSheetEditBookmarksTitle => 'Edit Bookmarks';
-
-  @override
-  String get tipsSheetEditBookmarksDesc =>
-      'Long-press any bookmark in the bookmark sheet to edit its title and add notes.';
-
-  @override
   String get tipsSheetCoverPlayPauseTitle => 'Cover Play/Pause';
 
   @override
@@ -4210,39 +4159,53 @@ class AppLocalizationsZh extends AppLocalizations {
       'Tap the airplane button on the Absorbing screen to enter offline mode. This stops syncing, saves data, and only shows your downloaded books. Great for flights or low signal areas.';
 
   @override
-  String get tipsSheetStopPlaybackTitle => 'Stop Playback';
+  String get tipsSheetUpcomingReleasesTitle => 'Upcoming Releases';
 
   @override
-  String get tipsSheetStopPlaybackDesc =>
-      'The Stop button in the Absorbing header ends your listening session and saves your progress. Your progress syncs automatically in the background.';
+  String get tipsSheetUpcomingReleasesDesc =>
+      'Open the Library top-right menu to see new and upcoming books across all the series in your library, sorted by release date.';
 
   @override
-  String get tipsSheetDownloadOfflineTitle => 'Download for Offline';
+  String get tipsSheetPerBookEqTitle => 'Per-Book Equalizer';
 
   @override
-  String get tipsSheetDownloadOfflineDesc =>
-      'Tap the download button in any book\'s detail popup to save it for offline listening. Downloaded books are available in offline mode without any internet connection.';
+  String get tipsSheetPerBookEqDesc =>
+      'Each book remembers its own equalizer settings. Tweak EQ once for a sci-fi epic and the next time you play it, it sounds the same.';
 
   @override
-  String get tipsSheetCustomizeHomeTitle => 'Customize Home';
+  String get tipsSheetPerBookSpeedTitle => 'Per-Book Speed';
 
   @override
-  String get tipsSheetCustomizeHomeDesc =>
-      'Tap the edit button in the top right of the Home screen to rearrange, hide, or show sections. Drag sections into your preferred order.';
+  String get tipsSheetPerBookSpeedDesc =>
+      'Playback speed is saved per book. Run nonfiction at 1.5x and dramatic fiction at 1.0x without setting it every time.';
 
   @override
-  String get tipsSheetPlaylistsTitle => 'Playlists';
+  String get tipsSheetAutoSleepWindowTitle => 'Auto Sleep Window';
 
   @override
-  String get tipsSheetPlaylistsDesc =>
-      'Create and manage playlists on your Audiobookshelf server and they\'ll appear as sections on your Home screen. Add books to playlists from any book\'s detail popup.';
+  String get tipsSheetAutoSleepWindowDesc =>
+      'Pick the hours you usually fall asleep and the sleep timer will start itself when you begin listening in that window.';
 
   @override
-  String get tipsSheetCollectionsTitle => 'Collections';
+  String get tipsSheetSleepFadeChimeTitle => 'Sleep Fade and Chime';
 
   @override
-  String get tipsSheetCollectionsDesc =>
-      'Collections group related books together and show up as Home sections. Root admins can add books and edit collections from the detail popup.';
+  String get tipsSheetSleepFadeChimeDesc =>
+      'When the sleep timer ends, audio gradually fades out and an optional chime plays so it doesn\'t cut off mid-sentence.';
+
+  @override
+  String get tipsSheetCarModeTitle => 'Car Mode';
+
+  @override
+  String get tipsSheetCarModeDesc =>
+      'Tap the car icon to switch to giant-button mode designed for safer use while driving.';
+
+  @override
+  String get tipsSheetAudibleSeriesTitle => 'Audible Series Discovery';
+
+  @override
+  String get tipsSheetAudibleSeriesDesc =>
+      'Open a series and tap the search icon to pull the full series list from Audible, including missing entries and books you haven\'t started.';
 
   @override
   String get bookCardUnknownTitle => 'Unknown Title';

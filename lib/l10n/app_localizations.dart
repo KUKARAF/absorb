@@ -3950,35 +3950,11 @@ abstract class AppLocalizations {
   /// **'Welcome to Absorb'**
   String get welcomeToAbsorb;
 
-  /// No description provided for @welcomeOverview.
+  /// No description provided for @welcomeTagline.
   ///
   /// In en, this message translates to:
-  /// **'Here\'s a quick overview of how things work.'**
-  String get welcomeOverview;
-
-  /// No description provided for @welcomeHomeTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Home'**
-  String get welcomeHomeTitle;
-
-  /// No description provided for @welcomeHomeBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Your personalized shelves from Audiobookshelf - continue listening, discover new titles, and browse your playlists and collections. Use the edit button in the top right to customize which sections appear and their order.'**
-  String get welcomeHomeBody;
-
-  /// No description provided for @welcomeLibraryTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Library'**
-  String get welcomeLibraryTitle;
-
-  /// No description provided for @welcomeLibraryBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Browse your full library with tabs for books, series, and authors. Tap the active tab to open sort and filter options.'**
-  String get welcomeLibraryBody;
+  /// **'An Audiobookshelf client.'**
+  String get welcomeTagline;
 
   /// No description provided for @welcomeAbsorbingTitle.
   ///
@@ -3986,113 +3962,53 @@ abstract class AppLocalizations {
   /// **'Absorbing'**
   String get welcomeAbsorbingTitle;
 
-  /// No description provided for @welcomeAbsorbingBody.
+  /// No description provided for @welcomeAbsorbingIntro.
   ///
   /// In en, this message translates to:
-  /// **'Your active listening queue. Books you start playing automatically appear here as swipeable cards with full playback controls.'**
-  String get welcomeAbsorbingBody;
+  /// **'We use \"absorb\" in place of \"play\" and \"listen\".'**
+  String get welcomeAbsorbingIntro;
 
-  /// No description provided for @welcomeQueueModesTitle.
+  /// No description provided for @welcomeAbsorbingTabBullet.
   ///
   /// In en, this message translates to:
-  /// **'Queue modes'**
-  String get welcomeQueueModesTitle;
+  /// **'Absorbing tab - what you\'re currently listening to'**
+  String get welcomeAbsorbingTabBullet;
 
-  /// No description provided for @welcomeQueueModeOff.
+  /// No description provided for @welcomeAbsorbButtonBullet.
   ///
   /// In en, this message translates to:
-  /// **'Off - playback stops when a book finishes'**
-  String get welcomeQueueModeOff;
+  /// **'Absorb button - start playback'**
+  String get welcomeAbsorbButtonBullet;
 
-  /// No description provided for @welcomeQueueModeManual.
+  /// No description provided for @welcomeFullyAbsorbBullet.
   ///
   /// In en, this message translates to:
-  /// **'Manual - auto-plays the next card in your queue'**
-  String get welcomeQueueModeManual;
+  /// **'Fully Absorb - mark as finished'**
+  String get welcomeFullyAbsorbBullet;
 
-  /// No description provided for @welcomeQueueModeAuto.
+  /// No description provided for @welcomeGettingAroundTitle.
   ///
   /// In en, this message translates to:
-  /// **'Series - automatically finds and plays the next book in a series'**
-  String get welcomeQueueModeAuto;
+  /// **'Getting around'**
+  String get welcomeGettingAroundTitle;
 
-  /// No description provided for @welcomeManagingQueueTitle.
+  /// No description provided for @welcomeGettingAroundBody.
   ///
   /// In en, this message translates to:
-  /// **'Managing your queue'**
-  String get welcomeManagingQueueTitle;
+  /// **'Tap any cover to open its details. Continue Listening cards are different - tap to play right away, press and hold to open details.'**
+  String get welcomeGettingAroundBody;
 
-  /// No description provided for @welcomeManagingCoverTap.
+  /// No description provided for @welcomeMakeItYoursTitle.
   ///
   /// In en, this message translates to:
-  /// **'Tap the cover art to play/pause (toggleable in Settings)'**
-  String get welcomeManagingCoverTap;
+  /// **'Make it yours'**
+  String get welcomeMakeItYoursTitle;
 
-  /// No description provided for @welcomeManagingSwipeUp.
+  /// No description provided for @welcomeMakeItYoursBody.
   ///
   /// In en, this message translates to:
-  /// **'Swipe up on a card to open the full screen player, swipe down to dismiss'**
-  String get welcomeManagingSwipeUp;
-
-  /// No description provided for @welcomeManagingSwipeRight.
-  ///
-  /// In en, this message translates to:
-  /// **'Swipe right on any book in a list sheet to quickly add it to your queue'**
-  String get welcomeManagingSwipeRight;
-
-  /// No description provided for @welcomeManagingReorder.
-  ///
-  /// In en, this message translates to:
-  /// **'Tap the reorder icon to drag cards into your preferred order or swipe to remove'**
-  String get welcomeManagingReorder;
-
-  /// No description provided for @welcomeManagingAdd.
-  ///
-  /// In en, this message translates to:
-  /// **'Add books manually from any book\'s detail sheet'**
-  String get welcomeManagingAdd;
-
-  /// No description provided for @welcomeManagingRemoveFinished.
-  ///
-  /// In en, this message translates to:
-  /// **'Finished books are automatically removed from your queue'**
-  String get welcomeManagingRemoveFinished;
-
-  /// No description provided for @welcomeMergeLibrariesTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Merge libraries'**
-  String get welcomeMergeLibrariesTitle;
-
-  /// No description provided for @welcomeMergeLibrariesBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Enable in Settings to show all your libraries together in one queue'**
-  String get welcomeMergeLibrariesBody;
-
-  /// No description provided for @welcomeDownloadsTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Downloads & Offline'**
-  String get welcomeDownloadsTitle;
-
-  /// No description provided for @welcomeDownloadsBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Download books for offline listening. Toggle offline mode with the airplane icon on the Absorbing screen. Your progress syncs back to the server automatically when you reconnect.'**
-  String get welcomeDownloadsBody;
-
-  /// No description provided for @welcomeSettingsTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Settings'**
-  String get welcomeSettingsTitle;
-
-  /// No description provided for @welcomeSettingsBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Configure queue behavior, sleep timers, playback speed, local server connections, and more.'**
-  String get welcomeSettingsBody;
+  /// **'Mess around in Settings to tune Absorb to your taste. Quick tip: on the Home page, tap the edit button in the top right to rearrange categories.'**
+  String get welcomeMakeItYoursBody;
 
   /// No description provided for @getStarted.
   ///
@@ -7342,18 +7258,6 @@ abstract class AppLocalizations {
   /// **'Long-press the bookmark button on any card to instantly drop a bookmark at your current position without opening the bookmark sheet.'**
   String get tipsSheetQuickBookmarksDesc;
 
-  /// No description provided for @tipsSheetEditBookmarksTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit Bookmarks'**
-  String get tipsSheetEditBookmarksTitle;
-
-  /// No description provided for @tipsSheetEditBookmarksDesc.
-  ///
-  /// In en, this message translates to:
-  /// **'Long-press any bookmark in the bookmark sheet to edit its title and add notes.'**
-  String get tipsSheetEditBookmarksDesc;
-
   /// No description provided for @tipsSheetCoverPlayPauseTitle.
   ///
   /// In en, this message translates to:
@@ -7498,65 +7402,89 @@ abstract class AppLocalizations {
   /// **'Tap the airplane button on the Absorbing screen to enter offline mode. This stops syncing, saves data, and only shows your downloaded books. Great for flights or low signal areas.'**
   String get tipsSheetOfflineModeDesc;
 
-  /// No description provided for @tipsSheetStopPlaybackTitle.
+  /// No description provided for @tipsSheetUpcomingReleasesTitle.
   ///
   /// In en, this message translates to:
-  /// **'Stop Playback'**
-  String get tipsSheetStopPlaybackTitle;
+  /// **'Upcoming Releases'**
+  String get tipsSheetUpcomingReleasesTitle;
 
-  /// No description provided for @tipsSheetStopPlaybackDesc.
+  /// No description provided for @tipsSheetUpcomingReleasesDesc.
   ///
   /// In en, this message translates to:
-  /// **'The Stop button in the Absorbing header ends your listening session and saves your progress. Your progress syncs automatically in the background.'**
-  String get tipsSheetStopPlaybackDesc;
+  /// **'Open the Library top-right menu to see new and upcoming books across all the series in your library, sorted by release date.'**
+  String get tipsSheetUpcomingReleasesDesc;
 
-  /// No description provided for @tipsSheetDownloadOfflineTitle.
+  /// No description provided for @tipsSheetPerBookEqTitle.
   ///
   /// In en, this message translates to:
-  /// **'Download for Offline'**
-  String get tipsSheetDownloadOfflineTitle;
+  /// **'Per-Book Equalizer'**
+  String get tipsSheetPerBookEqTitle;
 
-  /// No description provided for @tipsSheetDownloadOfflineDesc.
+  /// No description provided for @tipsSheetPerBookEqDesc.
   ///
   /// In en, this message translates to:
-  /// **'Tap the download button in any book\'s detail popup to save it for offline listening. Downloaded books are available in offline mode without any internet connection.'**
-  String get tipsSheetDownloadOfflineDesc;
+  /// **'Each book remembers its own equalizer settings. Tweak EQ once for a sci-fi epic and the next time you play it, it sounds the same.'**
+  String get tipsSheetPerBookEqDesc;
 
-  /// No description provided for @tipsSheetCustomizeHomeTitle.
+  /// No description provided for @tipsSheetPerBookSpeedTitle.
   ///
   /// In en, this message translates to:
-  /// **'Customize Home'**
-  String get tipsSheetCustomizeHomeTitle;
+  /// **'Per-Book Speed'**
+  String get tipsSheetPerBookSpeedTitle;
 
-  /// No description provided for @tipsSheetCustomizeHomeDesc.
+  /// No description provided for @tipsSheetPerBookSpeedDesc.
   ///
   /// In en, this message translates to:
-  /// **'Tap the edit button in the top right of the Home screen to rearrange, hide, or show sections. Drag sections into your preferred order.'**
-  String get tipsSheetCustomizeHomeDesc;
+  /// **'Playback speed is saved per book. Run nonfiction at 1.5x and dramatic fiction at 1.0x without setting it every time.'**
+  String get tipsSheetPerBookSpeedDesc;
 
-  /// No description provided for @tipsSheetPlaylistsTitle.
+  /// No description provided for @tipsSheetAutoSleepWindowTitle.
   ///
   /// In en, this message translates to:
-  /// **'Playlists'**
-  String get tipsSheetPlaylistsTitle;
+  /// **'Auto Sleep Window'**
+  String get tipsSheetAutoSleepWindowTitle;
 
-  /// No description provided for @tipsSheetPlaylistsDesc.
+  /// No description provided for @tipsSheetAutoSleepWindowDesc.
   ///
   /// In en, this message translates to:
-  /// **'Create and manage playlists on your Audiobookshelf server and they\'ll appear as sections on your Home screen. Add books to playlists from any book\'s detail popup.'**
-  String get tipsSheetPlaylistsDesc;
+  /// **'Pick the hours you usually fall asleep and the sleep timer will start itself when you begin listening in that window.'**
+  String get tipsSheetAutoSleepWindowDesc;
 
-  /// No description provided for @tipsSheetCollectionsTitle.
+  /// No description provided for @tipsSheetSleepFadeChimeTitle.
   ///
   /// In en, this message translates to:
-  /// **'Collections'**
-  String get tipsSheetCollectionsTitle;
+  /// **'Sleep Fade and Chime'**
+  String get tipsSheetSleepFadeChimeTitle;
 
-  /// No description provided for @tipsSheetCollectionsDesc.
+  /// No description provided for @tipsSheetSleepFadeChimeDesc.
   ///
   /// In en, this message translates to:
-  /// **'Collections group related books together and show up as Home sections. Root admins can add books and edit collections from the detail popup.'**
-  String get tipsSheetCollectionsDesc;
+  /// **'When the sleep timer ends, audio gradually fades out and an optional chime plays so it doesn\'t cut off mid-sentence.'**
+  String get tipsSheetSleepFadeChimeDesc;
+
+  /// No description provided for @tipsSheetCarModeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Car Mode'**
+  String get tipsSheetCarModeTitle;
+
+  /// No description provided for @tipsSheetCarModeDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the car icon to switch to giant-button mode designed for safer use while driving.'**
+  String get tipsSheetCarModeDesc;
+
+  /// No description provided for @tipsSheetAudibleSeriesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Audible Series Discovery'**
+  String get tipsSheetAudibleSeriesTitle;
+
+  /// No description provided for @tipsSheetAudibleSeriesDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a series and tap the search icon to pull the full series list from Audible, including missing entries and books you haven\'t started.'**
+  String get tipsSheetAudibleSeriesDesc;
 
   /// No description provided for @bookCardUnknownTitle.
   ///
