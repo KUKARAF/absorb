@@ -76,7 +76,23 @@ class LibraryProvider extends ChangeNotifier
           '[Library] updateAuth: key=$authKey lastKey=$_lastAuthKey isNewUser=$isNewUser isFreshLogin=$isFreshLogin isDuplicate=$isDuplicate');
       _lastAuthKey = authKey;
 
-      if (isDuplicate) return;
+      if (isDuplicate) {
+        // The remote auth key didn't change, but the active server URL might
+        // have flipped (local <-> remote). When it does, library data was
+        // fetched from the OLD server and the home page can render with stale
+        // or empty sections. Refresh once on each transition.
+        if (_lastUseLocalServer != null && _lastUseLocalServer != auth.useLocalServer) {
+          _lastUseLocalServer = auth.useLocalServer;
+          if (!_networkOffline && !_manualOffline) {
+            debugPrint('[Library] Active server switched - refreshing library data');
+            refresh();
+          }
+        } else {
+          _lastUseLocalServer = auth.useLocalServer;
+        }
+        return;
+      }
+      _lastUseLocalServer = auth.useLocalServer;
 
       if (isNewUser || isFreshLogin) {
         _libraries = [];
@@ -161,6 +177,7 @@ class LibraryProvider extends ChangeNotifier
       });
     } else {
       _lastAuthKey = null;
+      _lastUseLocalServer = null;
       _idleDisconnectTimer?.cancel();
       _idleDisconnectTimer = null;
       _libraries = [];

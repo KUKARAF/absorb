@@ -63,6 +63,9 @@ mixin _StateMixin on ChangeNotifier {
   bool _deviceHasConnectivity = true;
   Timer? _serverPingTimer;
   Timer? _healthCheckTimer;
+  Timer? _localProbeTimer;
+  int _localProbeFailures = 0;
+  DateTime? _localLastReachableAt;
 
   bool _isBackgrounded = false;
   bool _socketSoftDisconnected = false;
@@ -83,6 +86,7 @@ mixin _StateMixin on ChangeNotifier {
   StreamSubscription? _connectivitySub;
   bool _listeningToDownloads = false;
   String? _lastAuthKey;
+  bool? _lastUseLocalServer;
 
   final Map<String, Set<String>> _knownEpisodeIds = {};
 

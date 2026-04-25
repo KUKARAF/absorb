@@ -519,19 +519,19 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
       _deviceHasConnectivity = !result.contains(ConnectivityResult.none);
       if (!_deviceHasConnectivity) {
         _stopServerPingTimer();
+        _stopLocalProbeTimer();
         setNetworkOffline(true);
       } else if (_networkOffline && !_manualOffline) {
-        if (result.contains(ConnectivityResult.wifi)) {
-          _auth?.checkLocalServer().then((_) {
-            if (_auth?.serverReachable == true || _auth?.useLocalServer == true) {
-              setNetworkOffline(false);
-            } else {
-              _startServerPingTimer();
-            }
-          });
-        } else {
-          _startServerPingTimer();
-        }
+        _auth?.checkLocalServer().then((_) {
+          if (_auth?.serverReachable == true || _auth?.useLocalServer == true) {
+            setNetworkOffline(false);
+          } else {
+            _startServerPingTimer();
+          }
+          _startLocalProbeTimer();
+        });
+      } else if (_deviceHasConnectivity) {
+        _startLocalProbeTimer();
       }
     });
     _connectivitySub = Connectivity().onConnectivityChanged.listen((result) async {
@@ -539,58 +539,37 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
       _deviceHasConnectivity = hasConnectivity;
       if (!hasConnectivity) {
         _stopServerPingTimer();
+        _stopLocalProbeTimer();
         setNetworkOffline(true);
-        _auth?.clearLocalOverride();
-      } else if (!_manualOffline) {
-        if (result.contains(ConnectivityResult.wifi)) {
-          // Verify server is actually reachable before flipping to online.
-          // A wifi reconnect during a server outage should not make the cloud
-          // icon look connected while API calls are still 5xx.
-          await _auth?.checkLocalServer();
-          final serverUrl = _auth?.activeServerUrl ?? _auth?.serverUrl ?? '';
-          final reachable = serverUrl.isNotEmpty
-              ? await ApiService.pingServer(serverUrl, customHeaders: _auth?.customHeaders ?? {})
-                  .timeout(const Duration(seconds: 5), onTimeout: () => false)
-              : false;
-          if (reachable) {
-            setNetworkOffline(false);
-            if (_rollingDownloadSeries.isNotEmpty) _catchUpRollingDownloads();
-            _catchUpQueueAutoDownloads();
-            (this as LibraryProvider).catchUpSubscribedPodcasts();
-          } else {
-            debugPrint('[Library] Wifi connected but server unreachable — starting ping timer');
-            if (_networkOffline) {
-              _startServerPingTimer();
-            } else {
-              _goOffline();
-            }
-          }
+        // Don't flip the local/remote choice here. The local server may still
+        // be reachable on a lower-priority interface (e.g. wifi briefly drops
+        // out of the connectivity list during scans). The probe timer decides.
+        return;
+      }
+      if (_manualOffline) return;
+
+      // Got connectivity back - re-probe and potentially come online.
+      // We pick the active server based on actual reachability, not on
+      // whether the connectivity list happens to contain wifi this tick.
+      final activeUrl = _auth?.activeServerUrl ?? _auth?.serverUrl ?? '';
+      final reachable = activeUrl.isNotEmpty
+          ? await ApiService.pingServer(activeUrl, customHeaders: _auth?.customHeaders ?? {})
+              .timeout(const Duration(seconds: 5), onTimeout: () => false)
+          : false;
+      if (reachable) {
+        setNetworkOffline(false);
+        if (_rollingDownloadSeries.isNotEmpty) _catchUpRollingDownloads();
+        _catchUpQueueAutoDownloads();
+        (this as LibraryProvider).catchUpSubscribedPodcasts();
+      } else {
+        debugPrint('[Library] Connectivity changed but server unreachable — starting ping timer');
+        if (_networkOffline) {
+          _startServerPingTimer();
         } else {
-          _auth?.clearLocalOverride();
-          final serverUrl = _auth?.serverUrl ?? '';
-          if (_StateMixin._isLocalUrl(serverUrl)) {
-            debugPrint('[Library] Mobile data only with local server URL - staying offline');
-            if (_networkOffline) {
-              _startServerPingTimer();
-            } else {
-              _goOffline();
-            }
-          } else {
-            final reachable = await ApiService.pingServer(serverUrl, customHeaders: _auth?.customHeaders ?? {})
-                .timeout(const Duration(seconds: 5), onTimeout: () => false);
-            if (reachable) {
-              setNetworkOffline(false);
-            } else {
-              debugPrint('[Library] Mobile data but remote unreachable — starting ping timer');
-              if (_networkOffline) {
-                _startServerPingTimer();
-              } else {
-                _goOffline();
-              }
-            }
-          }
+          _goOffline();
         }
       }
+      _startLocalProbeTimer();
     });
   }
 
@@ -636,6 +615,96 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
     _serverPingTimer = null;
   }
 
+  // ── Local server reachability probe ──
+  //
+  // Replaces the old "react to every onConnectivityChanged event" switching,
+  // which would flap between local and remote whenever the connectivity list
+  // briefly dropped wifi (signal blips, mobile interface coming up, etc).
+  // Polls every 30s with hysteresis: 2 consecutive failures to switch off
+  // local, 1 success to switch back on. Skips the ping if some other code
+  // path (progress sync, health check) already proved local is reachable
+  // within the past 25s.
+  static const _localProbeInterval = Duration(seconds: 30);
+  static const _localProbeFailuresToFlip = 2;
+  static const _localProbePiggybackWindow = Duration(seconds: 25);
+
+  void _startLocalProbeTimer() {
+    final auth = _auth;
+    if (auth == null) return;
+    if (!auth.localServerEnabled || auth.localServerUrl.isEmpty) {
+      _stopLocalProbeTimer();
+      return;
+    }
+    // Don't run when truly idle in the background (battery).
+    if (_isBackgrounded && !AudioPlayerService().isPlaying) {
+      _stopLocalProbeTimer();
+      return;
+    }
+    if (_localProbeTimer != null) return;
+    _localProbeFailures = 0;
+    _localProbeTimer = Timer.periodic(_localProbeInterval, (_) => _probeLocalServer());
+  }
+
+  void _stopLocalProbeTimer() {
+    _localProbeTimer?.cancel();
+    _localProbeTimer = null;
+    _localProbeFailures = 0;
+  }
+
+  /// Mark local-server reachability based on a successful API call, so the
+  /// next probe tick can skip its own ping. Call sites: progress sync ok,
+  /// health check ok - anything that confirms the active server responded.
+  void notifyServerReachable(String url) {
+    final auth = _auth;
+    if (auth == null) return;
+    if (auth.localServerUrl.isEmpty) return;
+    if (url == auth.localServerUrl) {
+      _localLastReachableAt = DateTime.now();
+      _localProbeFailures = 0;
+    }
+  }
+
+  Future<void> _probeLocalServer() async {
+    final auth = _auth;
+    if (auth == null || _manualOffline) return;
+    if (!auth.localServerEnabled || auth.localServerUrl.isEmpty) {
+      _stopLocalProbeTimer();
+      return;
+    }
+    // Piggy-back: skip if another path proved reachability recently.
+    final last = _localLastReachableAt;
+    if (auth.useLocalServer && last != null &&
+        DateTime.now().difference(last) < _localProbePiggybackWindow) {
+      return;
+    }
+
+    final reachable = await ApiService.pingServer(
+      auth.localServerUrl,
+      customHeaders: auth.customHeaders,
+    ).timeout(const Duration(seconds: 3), onTimeout: () => false);
+
+    if (auth.useLocalServer) {
+      if (reachable) {
+        _localLastReachableAt = DateTime.now();
+        _localProbeFailures = 0;
+      } else {
+        _localProbeFailures++;
+        if (_localProbeFailures >= _localProbeFailuresToFlip) {
+          debugPrint('[Library] Local probe failed ${_localProbeFailures}x — switching to remote');
+          auth.clearLocalOverride();
+          _localProbeFailures = 0;
+        } else {
+          debugPrint('[Library] Local probe miss ${_localProbeFailures}/$_localProbeFailuresToFlip');
+        }
+      }
+    } else if (reachable) {
+      debugPrint('[Library] Local probe succeeded — switching to local');
+      await auth.checkLocalServer();
+      _localLastReachableAt = DateTime.now();
+      _localProbeFailures = 0;
+    }
+  }
+
   // ── Health check (proactive reachability verification while online) ──
   //
   // The offline state only flips via explicit triggers (connectivity change,
@@ -658,6 +727,8 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
       if (!reachable) {
         debugPrint('[Library] Health check failed — server unreachable, going offline');
         setNetworkOffline(true);
+      } else {
+        notifyServerReachable(serverUrl);
       }
     });
   }
@@ -673,6 +744,9 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
     _isBackgrounded = true;
     _stopServerPingTimer();
     _stopHealthCheckTimer();
+    if (!AudioPlayerService().isPlaying) {
+      _stopLocalProbeTimer();
+    }
     _idleDisconnectTimer?.cancel(); // No timers in background
     _idleDisconnectTimer = null;
     _softDisconnectSocket(); // Always disconnect, even during playback
@@ -686,6 +760,7 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
     } else if (!_networkOffline && !_manualOffline) {
       _startHealthCheckTimer();
     }
+    _startLocalProbeTimer();
     _restartIdleTimer();
   }
 
@@ -704,11 +779,13 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
     } else {
     }
     _idleDisconnectTimer?.cancel();
+    _startLocalProbeTimer();
   }
 
   void onPlaybackStopped() {
     if (_isBackgrounded) {
       _softDisconnectSocket();
+      _stopLocalProbeTimer();
     } else {
       _restartIdleTimer();
     }
