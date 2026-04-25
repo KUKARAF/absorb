@@ -2165,7 +2165,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get welcomeMakeItYoursBody =>
-      'Mess around in Settings to tune Absorb to your taste. Quick tip: on the Home page, tap the edit button in the top right to rearrange categories.';
+      'Mess around in Settings to tune Absorb to your taste. The Tips & Hidden Features section in there is worth a look.';
 
   @override
   String get getStarted => 'Get Started';

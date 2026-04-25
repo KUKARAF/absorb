@@ -4007,7 +4007,7 @@ abstract class AppLocalizations {
   /// No description provided for @welcomeMakeItYoursBody.
   ///
   /// In en, this message translates to:
-  /// **'Mess around in Settings to tune Absorb to your taste. Quick tip: on the Home page, tap the edit button in the top right to rearrange categories.'**
+  /// **'Mess around in Settings to tune Absorb to your taste. The Tips & Hidden Features section in there is worth a look.'**
   String get welcomeMakeItYoursBody;
 
   /// No description provided for @getStarted.

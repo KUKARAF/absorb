@@ -2092,7 +2092,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get welcomeMakeItYoursBody =>
-      '在设置中自定义 Absorb 以符合你的喜好。小提示：在首页，点击右上角的编辑按钮可以调整分类顺序。';
+      '在设置中自定义 Absorb 以符合你的喜好。其中的「技巧与隐藏功能」区块值得一看。';
 
   @override
   String get getStarted => '开始使用';
