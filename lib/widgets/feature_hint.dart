@@ -21,6 +21,23 @@ class FeatureHint extends StatefulWidget {
     this.padding = const EdgeInsets.fromLTRB(20, 8, 20, 4),
   });
 
+  /// Bumped whenever [resetAll] runs, so live hint widgets re-read their
+  /// dismissed state instead of staying hidden until the next cold start.
+  static final ValueNotifier<int> resetTick = ValueNotifier<int>(0);
+
+  /// Wipe all dismissal flags (and the welcome-dialog flag) and notify any
+  /// currently-mounted hints to reappear without an app restart.
+  static Future<void> resetAll() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in prefs.getKeys()) {
+      if (key.startsWith('hint_')) {
+        await prefs.remove(key);
+      }
+    }
+    await prefs.remove('has_seen_welcome');
+    resetTick.value = resetTick.value + 1;
+  }
+
   @override
   State<FeatureHint> createState() => _FeatureHintState();
 }
@@ -31,10 +48,20 @@ class _FeatureHintState extends State<FeatureHint> {
   @override
   void initState() {
     super.initState();
-    SharedPreferences.getInstance().then((prefs) {
-      if (!mounted) return;
-      setState(() => _dismissed = prefs.getBool(widget.prefKey) ?? false);
-    });
+    _readState();
+    FeatureHint.resetTick.addListener(_readState);
+  }
+
+  @override
+  void dispose() {
+    FeatureHint.resetTick.removeListener(_readState);
+    super.dispose();
+  }
+
+  Future<void> _readState() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _dismissed = prefs.getBool(widget.prefKey) ?? false);
   }
 
   Future<void> _dismiss() async {

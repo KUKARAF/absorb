@@ -8,7 +8,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:just_audio/just_audio.dart' show AudioPlayer;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
@@ -29,6 +28,8 @@ import '../widgets/absorb_slider.dart';
 import '../widgets/collapsible_section.dart';
 import '../widgets/overlay_toast.dart';
 import '../widgets/tips_sheet.dart';
+import '../widgets/feature_hint.dart';
+import '../widgets/welcome_sheet.dart';
 import '../l10n/app_localizations.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -1772,16 +1773,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       subtitle: Text(l.showTipsAgainSubtitle,
                         style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                       onTap: () async {
-                        final prefs = await SharedPreferences.getInstance();
-                        for (final key in prefs.getKeys()) {
-                          if (key.startsWith('hint_')) {
-                            await prefs.remove(key);
-                          }
-                        }
-                        if (mounted) {
-                          showOverlayToast(context, l.tipsRestored,
-                              icon: Icons.lightbulb_outline_rounded);
-                        }
+                        await FeatureHint.resetAll();
+                        if (!mounted) return;
+                        showOverlayToast(context, l.tipsRestored,
+                            icon: Icons.lightbulb_outline_rounded);
+                        // Re-trigger the welcome dialog without an app
+                        // restart. resetAll() already cleared the flag.
+                        WelcomeSheet.showIfNeeded(context);
                       },
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),

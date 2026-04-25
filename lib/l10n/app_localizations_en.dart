@@ -2134,90 +2134,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String get welcomeToAbsorb => 'Welcome to Absorb';
 
   @override
-  String get welcomeOverview => 'Here\'s a quick overview of how things work.';
-
-  @override
-  String get welcomeHomeTitle => 'Home';
-
-  @override
-  String get welcomeHomeBody =>
-      'Your personalized shelves from Audiobookshelf - continue listening, discover new titles, and browse your playlists and collections. Use the edit button in the top right to customize which sections appear and their order.';
-
-  @override
-  String get welcomeLibraryTitle => 'Library';
-
-  @override
-  String get welcomeLibraryBody =>
-      'Browse your full library with tabs for books, series, and authors. Tap the active tab to open sort and filter options.';
+  String get welcomeTagline => 'An Audiobookshelf client.';
 
   @override
   String get welcomeAbsorbingTitle => 'Absorbing';
 
   @override
-  String get welcomeAbsorbingBody =>
-      'Your active listening queue. Books you start playing automatically appear here as swipeable cards with full playback controls.';
+  String get welcomeAbsorbingIntro =>
+      'We use \"absorb\" in place of \"play\" and \"listen\".';
 
   @override
-  String get welcomeQueueModesTitle => 'Queue modes';
+  String get welcomeAbsorbingTabBullet =>
+      'Absorbing tab - what you\'re currently listening to';
 
   @override
-  String get welcomeQueueModeOff => 'Off - playback stops when a book finishes';
+  String get welcomeAbsorbButtonBullet => 'Absorb button - start playback';
 
   @override
-  String get welcomeQueueModeManual =>
-      'Manual - auto-plays the next card in your queue';
+  String get welcomeFullyAbsorbBullet => 'Fully Absorb - mark as finished';
 
   @override
-  String get welcomeQueueModeAuto =>
-      'Series - automatically finds and plays the next book in a series';
+  String get welcomeGettingAroundTitle => 'Getting around';
 
   @override
-  String get welcomeManagingQueueTitle => 'Managing your queue';
+  String get welcomeGettingAroundBody =>
+      'Tap any cover to open its details. Continue Listening cards are different - tap to play right away, press and hold to open details.';
 
   @override
-  String get welcomeManagingCoverTap =>
-      'Tap the cover art to play/pause (toggleable in Settings)';
+  String get welcomeMakeItYoursTitle => 'Make it yours';
 
   @override
-  String get welcomeManagingSwipeUp =>
-      'Swipe up on a card to open the full screen player, swipe down to dismiss';
-
-  @override
-  String get welcomeManagingSwipeRight =>
-      'Swipe right on any book in a list sheet to quickly add it to your queue';
-
-  @override
-  String get welcomeManagingReorder =>
-      'Tap the reorder icon to drag cards into your preferred order or swipe to remove';
-
-  @override
-  String get welcomeManagingAdd =>
-      'Add books manually from any book\'s detail sheet';
-
-  @override
-  String get welcomeManagingRemoveFinished =>
-      'Finished books are automatically removed from your queue';
-
-  @override
-  String get welcomeMergeLibrariesTitle => 'Merge libraries';
-
-  @override
-  String get welcomeMergeLibrariesBody =>
-      'Enable in Settings to show all your libraries together in one queue';
-
-  @override
-  String get welcomeDownloadsTitle => 'Downloads & Offline';
-
-  @override
-  String get welcomeDownloadsBody =>
-      'Download books for offline listening. Toggle offline mode with the airplane icon on the Absorbing screen. Your progress syncs back to the server automatically when you reconnect.';
-
-  @override
-  String get welcomeSettingsTitle => 'Settings';
-
-  @override
-  String get welcomeSettingsBody =>
-      'Configure queue behavior, sleep timers, playback speed, local server connections, and more.';
+  String get welcomeMakeItYoursBody =>
+      'Mess around in Settings to tune Absorb to your taste. Quick tip: on the Home page, tap the edit button in the top right to rearrange categories.';
 
   @override
   String get getStarted => 'Get Started';
@@ -4200,13 +4148,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Long-press the bookmark button on any card to instantly drop a bookmark at your current position without opening the bookmark sheet.';
 
   @override
-  String get tipsSheetEditBookmarksTitle => 'Edit Bookmarks';
-
-  @override
-  String get tipsSheetEditBookmarksDesc =>
-      'Long-press any bookmark in the bookmark sheet to edit its title and add notes.';
-
-  @override
   String get tipsSheetCoverPlayPauseTitle => 'Cover Play/Pause';
 
   @override
@@ -4291,39 +4232,53 @@ class AppLocalizationsEn extends AppLocalizations {
       'Tap the airplane button on the Absorbing screen to enter offline mode. This stops syncing, saves data, and only shows your downloaded books. Great for flights or low signal areas.';
 
   @override
-  String get tipsSheetStopPlaybackTitle => 'Stop Playback';
+  String get tipsSheetUpcomingReleasesTitle => 'Upcoming Releases';
 
   @override
-  String get tipsSheetStopPlaybackDesc =>
-      'The Stop button in the Absorbing header ends your listening session and saves your progress. Your progress syncs automatically in the background.';
+  String get tipsSheetUpcomingReleasesDesc =>
+      'Open the Library top-right menu to see new and upcoming books across all the series in your library, sorted by release date.';
 
   @override
-  String get tipsSheetDownloadOfflineTitle => 'Download for Offline';
+  String get tipsSheetPerBookEqTitle => 'Per-Book Equalizer';
 
   @override
-  String get tipsSheetDownloadOfflineDesc =>
-      'Tap the download button in any book\'s detail popup to save it for offline listening. Downloaded books are available in offline mode without any internet connection.';
+  String get tipsSheetPerBookEqDesc =>
+      'Each book remembers its own equalizer settings. Tweak EQ once for a sci-fi epic and the next time you play it, it sounds the same.';
 
   @override
-  String get tipsSheetCustomizeHomeTitle => 'Customize Home';
+  String get tipsSheetPerBookSpeedTitle => 'Per-Book Speed';
 
   @override
-  String get tipsSheetCustomizeHomeDesc =>
-      'Tap the edit button in the top right of the Home screen to rearrange, hide, or show sections. Drag sections into your preferred order.';
+  String get tipsSheetPerBookSpeedDesc =>
+      'Playback speed is saved per book. Run nonfiction at 1.5x and dramatic fiction at 1.0x without setting it every time.';
 
   @override
-  String get tipsSheetPlaylistsTitle => 'Playlists';
+  String get tipsSheetAutoSleepWindowTitle => 'Auto Sleep Window';
 
   @override
-  String get tipsSheetPlaylistsDesc =>
-      'Create and manage playlists on your Audiobookshelf server and they\'ll appear as sections on your Home screen. Add books to playlists from any book\'s detail popup.';
+  String get tipsSheetAutoSleepWindowDesc =>
+      'Pick the hours you usually fall asleep and the sleep timer will start itself when you begin listening in that window.';
 
   @override
-  String get tipsSheetCollectionsTitle => 'Collections';
+  String get tipsSheetSleepFadeChimeTitle => 'Sleep Fade and Chime';
 
   @override
-  String get tipsSheetCollectionsDesc =>
-      'Collections group related books together and show up as Home sections. Root admins can add books and edit collections from the detail popup.';
+  String get tipsSheetSleepFadeChimeDesc =>
+      'When the sleep timer ends, audio gradually fades out and an optional chime plays so it doesn\'t cut off mid-sentence.';
+
+  @override
+  String get tipsSheetCarModeTitle => 'Car Mode';
+
+  @override
+  String get tipsSheetCarModeDesc =>
+      'Tap the car icon to switch to giant-button mode designed for safer use while driving.';
+
+  @override
+  String get tipsSheetAudibleSeriesTitle => 'Audible Series Discovery';
+
+  @override
+  String get tipsSheetAudibleSeriesDesc =>
+      'Open a series and tap the search icon to pull the full series list from Audible, including missing entries and books you haven\'t started.';
 
   @override
   String get bookCardUnknownTitle => 'Unknown Title';
@@ -4637,7 +4592,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showTipsAgain => 'Show tips again';
 
   @override
-  String get showTipsAgainSubtitle => 'Bring back feature tips you\'ve dismissed';
+  String get showTipsAgainSubtitle =>
+      'Bring back feature tips you\'ve dismissed';
 
   @override
   String get tipsRestored => 'Tips restored';
