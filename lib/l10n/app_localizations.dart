@@ -7327,7 +7327,7 @@ abstract class AppLocalizations {
   /// No description provided for @tipsSheetSwipeBetweenBooksDesc.
   ///
   /// In en, this message translates to:
-  /// **'On the Absorbing screen, swipe left and right to switch between your in-progress books. The dots at the top show which book you\'re viewing.'**
+  /// **'Swipe left and right on the Absorbing screen to switch between your in-progress books. With Manual queue mode on, the cards also act as your queue, so the next one auto-plays when the current one finishes.'**
   String get tipsSheetSwipeBetweenBooksDesc;
 
   /// No description provided for @tipsSheetTapToSeekTitle.

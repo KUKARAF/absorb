@@ -1469,7 +1469,7 @@
   "tipsSheetSeriesNavigationTitle": "Series Navigation",
   "tipsSheetSeriesNavigationDesc": "Tap the series name in any book's detail popup to see all books in the series, sorted in reading order with sequence badges on each cover.",
   "tipsSheetSwipeBetweenBooksTitle": "Swipe Between Books",
-  "tipsSheetSwipeBetweenBooksDesc": "On the Absorbing screen, swipe left and right to switch between your in-progress books. The dots at the top show which book you're viewing.",
+  "tipsSheetSwipeBetweenBooksDesc": "Swipe left and right on the Absorbing screen to switch between your in-progress books. With Manual queue mode on, the cards also act as your queue, so the next one auto-plays when the current one finishes.",
   "tipsSheetTapToSeekTitle": "Tap to Seek",
   "tipsSheetTapToSeekDesc": "Tap anywhere on the chapter or book progress bar to jump directly to that position. You can also drag the bars for fine-grained control.",
   "tipsSheetSpeedAdjustedTimeTitle": "Speed-Adjusted Time",
