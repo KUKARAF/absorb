@@ -4114,7 +4114,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get tipsSheetSwipeBetweenBooksDesc =>
-      'On the Absorbing screen, swipe left and right to switch between your in-progress books. The dots at the top show which book you\'re viewing.';
+      'Swipe left and right on the Absorbing screen to switch between your in-progress books. With Manual queue mode on, the cards also act as your queue, so the next one auto-plays when the current one finishes.';
 
   @override
   String get tipsSheetTapToSeekTitle => 'Tap to Seek';
