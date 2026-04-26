@@ -21,6 +21,11 @@ workflows:
           EOF
       - name: Build GitHub APK
         script: flutter build apk --release --flavor github --dart-define=GITHUB_BUILD=true
+      - name: Rename APK with version
+        script: |
+          VERSION=$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)
+          APK_SRC=$(ls build/app/outputs/apk/github/release/*.apk | head -1)
+          mv "$APK_SRC" "build/app/outputs/apk/github/release/absorb-${VERSION}.apk"
       - name: Publish to GitHub Draft Release
         script: |
           VERSION="v$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)"
@@ -63,9 +68,11 @@ workflows:
         script: flutter build apk --release --flavor github --dart-define=GITHUB_BUILD=true
       - name: Build Play Store AAB
         script: flutter build appbundle --release --flavor playstore --dart-define=PLAYSTORE_BUILD=true
-      - name: Rename AAB with version
+      - name: Rename APK and AAB with version
         script: |
           VERSION=$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)
+          APK_SRC=$(ls build/app/outputs/apk/github/release/*.apk | head -1)
+          mv "$APK_SRC" "build/app/outputs/apk/github/release/absorb-${VERSION}.apk"
           AAB_SRC=$(ls build/app/outputs/bundle/playstoreRelease/*.aab | head -1)
           mv "$AAB_SRC" "build/app/outputs/bundle/playstoreRelease/absorb-${VERSION}.aab"
       - name: Publish to GitHub Draft Release
@@ -169,9 +176,11 @@ workflows:
         script: flutter build appbundle --release --flavor playstore --dart-define=PLAYSTORE_BUILD=true
       - name: Build iOS IPA
         script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
-      - name: Rename AAB and IPA with version
+      - name: Rename APK, AAB and IPA with version
         script: |
           VERSION=$(grep 'version:' pubspec.yaml | head -1 | sed 's/version: //' | cut -d'+' -f1)
+          APK_SRC=$(ls build/app/outputs/apk/github/release/*.apk | head -1)
+          mv "$APK_SRC" "build/app/outputs/apk/github/release/absorb-${VERSION}.apk"
           AAB_SRC=$(ls build/app/outputs/bundle/playstoreRelease/*.aab | head -1)
           mv "$AAB_SRC" "build/app/outputs/bundle/playstoreRelease/absorb-${VERSION}.aab"
           IPA_SRC=$(ls build/ios/ipa/*.ipa | head -1)
