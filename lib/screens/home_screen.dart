@@ -610,10 +610,10 @@ class HomeScreenState extends State<HomeScreen> {
                                 separatorBuilder: (_, __) => const SizedBox(width: 10),
                                 itemBuilder: (context, i) {
                                   final item = clItems[i] as Map<String, dynamic>;
-                                  return _ContinueListeningCard(
+                                  return RepaintBoundary(child: _ContinueListeningCard(
                                     item: item, lib: lib, player: _player,
                                     rectangleCovers: _rectangleCovers,
-                                  );
+                                  ));
                                 },
                               ),
                             ),
@@ -692,6 +692,11 @@ class HomeScreenState extends State<HomeScreen> {
   }
 }
 
+// Process-wide cache of cover-derived accent colors. Same cover URL never
+// runs PaletteGenerator twice in a session - extraction is image-decode +
+// k-means clustering, far too expensive to repeat as tiles scroll past.
+final Map<String, Color> _accentCache = {};
+
 // ══════════════════════════════════════════════════════════════
 // Continue Listening Card — compact card with play button
 // ══════════════════════════════════════════════════════════════
@@ -727,17 +732,47 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
     return '<1m left';
   }
 
+  Widget _buildCoverImage(String? coverUrl, ColorScheme cs, Map<String, String> headers) {
+    final fallback = Container(
+      color: cs.surfaceContainerHighest,
+      child: Icon(Icons.headphones_rounded, size: 32, color: cs.onSurfaceVariant),
+    );
+    if (coverUrl == null) return fallback;
+    if (coverUrl.startsWith('/')) {
+      return Image.file(
+        File(coverUrl),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => fallback,
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: coverUrl,
+      fit: BoxFit.cover,
+      httpHeaders: headers,
+      fadeInDuration: Duration.zero,
+      fadeOutDuration: Duration.zero,
+      placeholder: (_, __) => fallback,
+      errorWidget: (_, __, ___) => fallback,
+    );
+  }
+
   /// Pull a vivid accent color from the cover. Uses PaletteGenerator instead
   /// of ColorScheme.fromImageProvider because Material 3's harmonized palette
   /// flattens vibrant covers into muted tones (a yellow/black cover ends up
   /// looking olive-green). The vibrant/dominant swatch keeps the original
-  /// hue intact.
+  /// hue intact. Results are memoized in `_accentCache` so the same cover
+  /// never runs the extraction twice in a session.
   void _deriveScheme(String? coverUrl) {
     final key = coverUrl;
     if (key == _derivedCoverKey) return;
     _derivedCoverKey = key;
     if (coverUrl == null) {
       if (_accent != null) setState(() => _accent = null);
+      return;
+    }
+    final cached = _accentCache[coverUrl];
+    if (cached != null) {
+      _accent = cached;
       return;
     }
     final ImageProvider provider;
@@ -748,13 +783,14 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
     }
     PaletteGenerator.fromImageProvider(provider, maximumColorCount: 16)
         .then((palette) {
-          if (!mounted) return;
           final picked = palette.vibrantColor?.color
               ?? palette.lightVibrantColor?.color
               ?? palette.darkVibrantColor?.color
               ?? palette.dominantColor?.color
               ?? palette.colors.firstOrNull;
           if (picked == null) return;
+          _accentCache[coverUrl] = picked;
+          if (!mounted) return;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) setState(() => _accent = picked);
           });
@@ -903,45 +939,7 @@ class _ContinueListeningCardState extends State<_ContinueListeningCard> {
                       aspectRatio: widget.rectangleCovers ? 2 / 3 : 1,
                       child: Stack(children: [
                   Positioned.fill(
-                    child: coverUrl != null
-                        ? coverUrl.startsWith('/')
-                            ? BlurPaddedCover(
-                                enabled: !widget.rectangleCovers,
-                                child: Image.file(File(coverUrl),
-                                    fit: widget.rectangleCovers
-                                        ? BoxFit.cover
-                                        : BoxFit.contain,
-                                    errorBuilder: (_, __, ___) => Container(
-                                        color: cs.surfaceContainerHighest,
-                                        child: Icon(Icons.headphones_rounded,
-                                            size: 32, color: cs.onSurfaceVariant))),
-                                blurChild: Image.file(File(coverUrl), fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const SizedBox.shrink()))
-                            : BlurPaddedCover(
-                                enabled: !widget.rectangleCovers,
-                                child: CachedNetworkImage(
-                                    imageUrl: coverUrl,
-                                    fit: widget.rectangleCovers
-                                        ? BoxFit.cover
-                                        : BoxFit.contain,
-                                    httpHeaders: lib.mediaHeaders,
-                                    fadeInDuration: const Duration(milliseconds: 300),
-                                    placeholder: (_, __) => Container(
-                                        color: cs.surfaceContainerHighest,
-                                        child: Icon(Icons.headphones_rounded,
-                                            size: 32, color: cs.onSurfaceVariant)),
-                                    errorWidget: (_, __, ___) => Container(
-                                        color: cs.surfaceContainerHighest,
-                                        child: Icon(Icons.headphones_rounded,
-                                            size: 32, color: cs.onSurfaceVariant))),
-                                blurChild: CachedNetworkImage(
-                                    imageUrl: coverUrl, fit: BoxFit.cover,
-                                    httpHeaders: lib.mediaHeaders,
-                                    errorWidget: (_, __, ___) => const SizedBox.shrink()))
-                        : Container(
-                            color: cs.surfaceContainerHighest,
-                            child: Icon(Icons.headphones_rounded,
-                                size: 32, color: cs.onSurfaceVariant)),
+                    child: _buildCoverImage(coverUrl, cs, lib.mediaHeaders),
                   ),
                   if (isCurrentItem && player.isPlaying)
                     Positioned(
