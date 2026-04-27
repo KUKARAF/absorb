@@ -1,14 +1,23 @@
 import Flutter
 import UIKit
 import AVFoundation
+import MediaPlayer
 import just_audio
 
+let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadlessExecution: true)
+
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate {
+  private var widgetChannel: FlutterMethodChannel?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // Start the shared Flutter engine (used by both phone scene and CarPlay scene)
+    flutterEngine.run()
+    GeneratedPluginRegistrant.register(with: flutterEngine)
+
     // Register for remote control events so lock screen / Control Center
     // media controls appear. The audio_service plugin activates
     // MPRemoteCommandCenter but doesn't call this, which can prevent
@@ -25,16 +34,84 @@ import just_audio
       print("[AppDelegate] Audio session setup failed: \(error)")
     }
 
+    // Listen for Darwin notifications from the widget extension so controls
+    // work without opening the app.
+    registerWidgetNotifications()
+
+    // Register platform channels on the shared engine
+    registerPlatformChannels()
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
-  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+  /// Forwards a log line to the Dart LogService via the widget channel so it
+  /// appears in the in-app log viewer (NSLog alone only shows in Xcode /
+  /// Console.app on a Mac).
+  private func logToFlutter(_ message: String) {
+    NSLog("[WidgetDebug] %@", message)
+    DispatchQueue.main.async { [weak self] in
+      self?.widgetChannel?.invokeMethod("log", arguments: ["msg": message])
+    }
+  }
 
-    guard let controller = window?.rootViewController as? FlutterViewController else { return }
+  private func registerWidgetNotifications() {
+    let center = CFNotificationCenterGetDarwinNotifyCenter()
+    let observer = Unmanaged.passUnretained(self).toOpaque()
+
+    let names = [
+      "com.barnabas.absorb.widget.playPause",
+      "com.barnabas.absorb.widget.skipBack",
+      "com.barnabas.absorb.widget.skipForward",
+    ]
+    for name in names {
+      CFNotificationCenterAddObserver(
+        center, observer,
+        { (_, observer, name, _, _) in
+          guard let observer = observer,
+                let rawName = name?.rawValue as String? else { return }
+          NSLog("[WidgetDebug] AppDelegate received Darwin notification: %@", rawName)
+          let appDelegate = Unmanaged<AppDelegate>.fromOpaque(observer).takeUnretainedValue()
+          let action: String
+          switch rawName {
+          case "com.barnabas.absorb.widget.playPause":   action = "playPause"
+          case "com.barnabas.absorb.widget.skipBack":    action = "skipBack"
+          case "com.barnabas.absorb.widget.skipForward": action = "skipForward"
+          default: return
+          }
+          DispatchQueue.main.async {
+            NSLog("[WidgetDebug] AppDelegate dispatching widget action to Flutter: %@", action)
+            appDelegate.widgetChannel?.invokeMethod("widgetAction", arguments: ["action": action])
+          }
+        },
+        name as CFString,
+        nil,
+        .deliverImmediately
+      )
+    }
+    NSLog("[WidgetDebug] AppDelegate registered %d Darwin notification observers", names.count)
+  }
+
+  private func registerPlatformChannels() {
+    let messenger = flutterEngine.binaryMessenger
+
+    // iOS audio output device switching is not implemented yet — iOS routes
+    // through the system's MPVolumeView/AVRoutePicker rather than letting apps
+    // pick output devices directly. Stub these so the channel responds.
+    let channel = FlutterMethodChannel(name: "com.absorb.audio_output",
+                                       binaryMessenger: messenger)
+    channel.setMethodCallHandler { (call, result) in
+      switch call.method {
+      case "getAudioOutputDevices":
+        result([])
+      case "setAudioOutputDevice", "resetAudioOutput":
+        result(false)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
 
     let storageChannel = FlutterMethodChannel(name: "com.absorb.storage",
-                                              binaryMessenger: controller.binaryMessenger)
+                                              binaryMessenger: messenger)
     storageChannel.setMethodCallHandler { (call, result) in
       switch call.method {
       case "getDeviceStorage":
@@ -50,8 +127,26 @@ import just_audio
       }
     }
 
+    let widgetChannel = FlutterMethodChannel(name: "com.absorb.widget",
+                                               binaryMessenger: messenger)
+    self.widgetChannel = widgetChannel
+    widgetChannel.setMethodCallHandler { (call, result) in
+      switch call.method {
+      case "getGroupContainerPath":
+        if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.barnabas.absorb") {
+          NSLog("[WidgetDebug] getGroupContainerPath resolved: %@", url.path)
+          result(url.path)
+        } else {
+          NSLog("[WidgetDebug] getGroupContainerPath: containerURL returned nil - app group entitlement missing or misconfigured")
+          result(nil)
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     let eqChannel = FlutterMethodChannel(name: "com.absorb.equalizer",
-                                          binaryMessenger: controller.binaryMessenger)
+                                          binaryMessenger: messenger)
     eqChannel.setMethodCallHandler { [weak self] (call, result) in
       let args = call.arguments as? [String: Any]
       switch call.method {

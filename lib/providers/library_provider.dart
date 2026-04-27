@@ -11,6 +11,7 @@ import '../services/api_service.dart';
 import '../services/progress_sync_service.dart';
 import '../services/download_service.dart';
 import '../services/android_auto_service.dart';
+import '../services/carplay_service.dart';
 import '../services/chromecast_service.dart';
 import '../services/bookmark_service.dart';
 import '../services/session_cache.dart';
@@ -280,6 +281,7 @@ class LibraryProvider extends ChangeNotifier
     notifyListeners();
     await loadPersonalizedView(force: true);
     AndroidAutoService().refresh(force: true);
+    CarPlayService().refreshTemplates();
   }
 
 

@@ -21,6 +21,7 @@ import 'services/sleep_timer_service.dart';
 import 'services/scoped_prefs.dart';
 import 'services/user_account_service.dart';
 import 'services/android_auto_service.dart';
+import 'services/carplay_service.dart';
 import 'services/chromecast_service.dart';
 import 'services/home_widget_service.dart';
 import 'services/log_service.dart';
@@ -492,6 +493,12 @@ class _AuthGateState extends State<AuthGate> {
       if (Platform.isAndroid) {
         // Pre-populate Android Auto browse tree in background.
         Future.microtask(() => AndroidAutoService().refresh());
+      }
+      if (Platform.isIOS) {
+        // Initialize CarPlay browse tree.
+        CarPlayService().init();
+      }
+      if (Platform.isAndroid || Platform.isIOS) {
         // Initialize homescreen widget
         await HomeWidgetService().init();
       }

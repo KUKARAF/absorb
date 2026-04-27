@@ -1,0 +1,381 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_carplay/flutter_carplay.dart';
+import 'package:audio_service/audio_service.dart';
+import 'android_auto_service.dart';
+import 'api_service.dart';
+
+/// Manages Apple CarPlay browse tree and playback integration.
+/// Mirrors the Android Auto layout: 3 tabs (Continue, Library, Downloads)
+/// with hierarchical drilling into books/series/authors and podcasts.
+class CarPlayService {
+  static final CarPlayService _instance = CarPlayService._();
+  factory CarPlayService() => _instance;
+  CarPlayService._();
+
+  final _autoService = AndroidAutoService();
+  final _flutterCarplay = FlutterCarplay();
+  bool _initialized = false;
+  bool _buildingRoot = false;
+  DateTime? _lastRootBuilt;
+  CPTabBarTemplate? _rootTemplate;
+
+  void init() {
+    if (!Platform.isIOS || _initialized) return;
+    _initialized = true;
+    _flutterCarplay.addListenerOnConnectionChange(_onConnectionChange);
+    debugPrint('[CarPlay] Initialized');
+    // Eagerly load auto browse data so the first CarPlay connect lands with
+    // full content already cached. Without this, the user's first open would
+    // either show empty Continue Listening / Library tabs or wait the full
+    // server-fetch time before anything appeared.
+    _autoService.refresh().then((_) {
+      debugPrint('[CarPlay] Init refresh done'
+          ' continue=${_autoService.continueListening.length}'
+          ' downloads=${_autoService.downloaded.length}'
+          ' libraries=${_autoService.libraries.length}');
+    }).catchError((e) {
+      debugPrint('[CarPlay] Init refresh failed: $e');
+    });
+  }
+
+  void dispose() {
+    _flutterCarplay.removeListenerOnConnectionChange();
+  }
+
+  void _onConnectionChange(ConnectionStatusTypes status) {
+    debugPrint('[CarPlay] Connection status: $status');
+    if (status == ConnectionStatusTypes.disconnected) {
+      _rootTemplate = null;
+      _lastRootBuilt = null;
+      return;
+    }
+    if (status != ConnectionStatusTypes.connected) return;
+
+    // Guard duplicate `connected` events that iOS fires in quick succession.
+    final now = DateTime.now();
+    if (_buildingRoot) return;
+    if (_lastRootBuilt != null &&
+        now.difference(_lastRootBuilt!) < const Duration(seconds: 1)) {
+      return;
+    }
+
+    _connectAndRender();
+  }
+
+  Future<void> _connectAndRender() async {
+    // Make sure data is loaded before rendering. Init kicked off a refresh at
+    // app start, so this usually returns instantly. On a cold connect right
+    // after app launch we wait the full ~1s so the very first template the
+    // user sees has real content.
+    //
+    // We avoid calling setRootTemplate twice (once empty, once full) because
+    // the flutter_carplay native side appears to leave the first template
+    // visible and the second call doesn't re-render. Same for
+    // updateTabBarTemplates - it updates the cached template but doesn't
+    // refresh the displayed UI and (worse) breaks tap routing on the new
+    // items. So we wait, then setRootTemplate once with full data.
+    try {
+      await _autoService.refresh();
+    } catch (e) {
+      debugPrint('[CarPlay] Pre-render refresh failed: $e');
+    }
+    await _setRootTemplate(label: 'on-connect');
+  }
+
+  /// Clear cache and rebuild templates (e.g. on account switch).
+  Future<void> clearAndRefresh() async {
+    if (!_initialized) return;
+    await _autoService.refresh(force: true);
+    await _setRootTemplate(label: 'clear-and-refresh');
+  }
+
+  /// Refresh CarPlay templates (e.g. after download completes).
+  Future<void> refreshTemplates() async {
+    if (!_initialized) return;
+    await _setRootTemplate(label: 'refresh-templates');
+  }
+
+  // ─── Root template ──────────────────────────────────────────────────
+
+  Future<List<CPListTemplate>> _buildTabs() async {
+    final continueTab = await _buildContinueTab();
+    final libraryTab = await _buildLibraryTab();
+    final downloadsTab = await _buildDownloadsTab();
+    return [continueTab, libraryTab, downloadsTab];
+  }
+
+  Future<void> _setRootTemplate({String label = ''}) async {
+    _buildingRoot = true;
+    try {
+      final tabs = await _buildTabs();
+      final root = CPTabBarTemplate(templates: tabs);
+      _rootTemplate = root;
+      await FlutterCarplay.setRootTemplate(rootTemplate: root, animated: false);
+      _lastRootBuilt = DateTime.now();
+      debugPrint('[CarPlay] Root template set ($label)'
+          ' continue=${_autoService.continueListening.length}'
+          ' downloads=${_autoService.downloaded.length}'
+          ' libraries=${_autoService.libraries.length}');
+    } finally {
+      _buildingRoot = false;
+    }
+  }
+
+  // ─── Continue Listening tab ─────────────────────────────────────────
+
+  Future<CPListTemplate> _buildContinueTab() async {
+    final api = await _autoService.getApi();
+    final entries = _autoService.continueListening;
+    final items = entries.map((e) => _playableListItem(e, api)).toList();
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: 'Continue',
+      systemIcon: 'play.circle.fill',
+    );
+  }
+
+  // ─── Library tab ────────────────────────────────────────────────────
+
+  Future<CPListTemplate> _buildLibraryTab() async {
+    final libs = _autoService.libraries;
+
+    // Single library: skip picker, show sub-categories or shows directly
+    if (libs.length == 1) {
+      final lib = libs.first;
+      if (lib.isPodcast) {
+        return _buildPodcastShowsList(lib.id, lib.name);
+      }
+      return _buildBookSubCategories(lib.id, 'Library');
+    }
+
+    // Multiple libraries: show library picker
+    final items = libs.map((lib) {
+      return CPListItem(
+        text: lib.name,
+        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        onPress: (complete, self) async {
+          if (lib.isPodcast) {
+            final template = await _buildPodcastShowsList(lib.id, lib.name);
+            FlutterCarplay.push(template: template);
+          } else {
+            final template = await _buildBookSubCategories(lib.id, lib.name);
+            FlutterCarplay.push(template: template);
+          }
+          complete();
+        },
+      );
+    }).toList();
+
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: 'Library',
+      systemIcon: 'books.vertical.fill',
+    );
+  }
+
+  // ─── Downloads tab ──────────────────────────────────────────────────
+
+  Future<CPListTemplate> _buildDownloadsTab() async {
+    final api = await _autoService.getApi();
+    final entries = _autoService.downloaded;
+    final items = entries.map((e) => _playableListItem(e, api)).toList();
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: 'Downloads',
+      systemIcon: 'arrow.down.circle.fill',
+    );
+  }
+
+  // ─── Book library sub-categories ───────────────────────────────────
+
+  Future<CPListTemplate> _buildBookSubCategories(String libraryId, String title) async {
+    final items = [
+      CPListItem(
+        text: 'Books',
+        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        onPress: (complete, self) async {
+          final template = await _buildBooksList(libraryId);
+          FlutterCarplay.push(template: template);
+          complete();
+        },
+      ),
+      CPListItem(
+        text: 'Series',
+        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        onPress: (complete, self) async {
+          final template = await _buildSeriesList(libraryId);
+          FlutterCarplay.push(template: template);
+          complete();
+        },
+      ),
+      CPListItem(
+        text: 'Authors',
+        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        onPress: (complete, self) async {
+          final template = await _buildAuthorsList(libraryId);
+          FlutterCarplay.push(template: template);
+          complete();
+        },
+      ),
+    ];
+
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: title,
+      systemIcon: 'books.vertical',
+    );
+  }
+
+  // ─── Books list ────────────────────────────────────────────────────
+
+  Future<CPListTemplate> _buildBooksList(String libraryId) async {
+    final api = await _autoService.getApi();
+    final entries = await _autoService.fetchLibraryBooksData(libraryId);
+    final items = entries.map((e) => _playableListItem(e, api)).toList();
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: 'Books',
+      systemIcon: 'book.fill',
+    );
+  }
+
+  // ─── Series list ───────────────────────────────────────────────────
+
+  Future<CPListTemplate> _buildSeriesList(String libraryId) async {
+    final seriesData = await _autoService.fetchLibrarySeriesData(libraryId);
+    final items = seriesData.map((s) {
+      return CPListItem(
+        text: s.name,
+        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        onPress: (complete, self) async {
+          final template = await _buildSeriesBooks(s.id, libraryId, s.name);
+          FlutterCarplay.push(template: template);
+          complete();
+        },
+      );
+    }).toList();
+
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: 'Series',
+      systemIcon: 'rectangle.stack.fill',
+    );
+  }
+
+  Future<CPListTemplate> _buildSeriesBooks(String seriesId, String libraryId, String title) async {
+    final api = await _autoService.getApi();
+    final entries = await _autoService.fetchSeriesBooksData(seriesId, libraryId);
+    final items = entries.map((e) => _playableListItem(e, api)).toList();
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: title,
+      systemIcon: 'rectangle.stack.fill',
+    );
+  }
+
+  // ─── Authors list ──────────────────────────────────────────────────
+
+  Future<CPListTemplate> _buildAuthorsList(String libraryId) async {
+    final authorsData = await _autoService.fetchLibraryAuthorsData(libraryId);
+    final items = authorsData.map((a) {
+      return CPListItem(
+        text: a.name,
+        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        onPress: (complete, self) async {
+          final template = await _buildAuthorBooks(a.id, libraryId, a.name);
+          FlutterCarplay.push(template: template);
+          complete();
+        },
+      );
+    }).toList();
+
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: 'Authors',
+      systemIcon: 'person.2.fill',
+    );
+  }
+
+  Future<CPListTemplate> _buildAuthorBooks(String authorId, String libraryId, String title) async {
+    final api = await _autoService.getApi();
+    final entries = await _autoService.fetchAuthorBooksData(authorId, libraryId);
+    final items = entries.map((e) => _playableListItem(e, api)).toList();
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: title,
+      systemIcon: 'person.fill',
+    );
+  }
+
+  // ─── Podcast shows ─────────────────────────────────────────────────
+
+  Future<CPListTemplate> _buildPodcastShowsList(String libraryId, String title) async {
+    final showsData = await _autoService.fetchPodcastShowsData(libraryId);
+    final items = showsData.map((s) {
+      return CPListItem(
+        text: s.title,
+        image: s.coverUrl,
+        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        onPress: (complete, self) async {
+          final template = await _buildShowEpisodes(s.id, libraryId, s.title);
+          FlutterCarplay.push(template: template);
+          complete();
+        },
+      );
+    }).toList();
+
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: title,
+      systemIcon: 'mic.fill',
+    );
+  }
+
+  Future<CPListTemplate> _buildShowEpisodes(String showId, String libraryId, String title) async {
+    final api = await _autoService.getApi();
+    final entries = await _autoService.fetchShowEpisodesData(showId, libraryId);
+    final items = entries.map((e) => _playableListItem(e, api)).toList();
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: title,
+      systemIcon: 'mic.fill',
+    );
+  }
+
+  // ─── Helpers ───────────────────────────────────────────────────────
+
+  /// Build a playable CPListItem from an AutoBookEntry.
+  CPListItem _playableListItem(AutoBookEntry entry, ApiService? api) {
+    // Use HTTP cover URL for iOS (CarPlay loads images from HTTP directly)
+    final coverItemId = entry.showId ?? entry.id;
+    final coverUrl = api?.getCoverUrl(coverItemId);
+
+    // Build the media ID matching the Android Auto scheme
+    final mediaId = (entry.episodeId != null && entry.showId != null)
+        ? AutoMediaIds.itemId('${entry.showId}-${entry.episodeId}')
+        : AutoMediaIds.itemId(entry.id);
+
+    return CPListItem(
+      text: entry.title,
+      detailText: entry.author.isNotEmpty ? entry.author : null,
+      image: coverUrl,
+      playbackProgress: _playbackProgress(entry),
+      onPress: (complete, self) {
+        _playItem(mediaId);
+        complete();
+      },
+    );
+  }
+
+  double _playbackProgress(AutoBookEntry entry) {
+    if (entry.currentTime == null || entry.duration <= 0) return 0;
+    return (entry.currentTime! / entry.duration).clamp(0.0, 1.0);
+  }
+
+  void _playItem(String mediaId) {
+    debugPrint('[CarPlay] Playing: $mediaId');
+    // Delegate to the audio handler which routes through _playFromAutoMediaId
+    AudioService.playFromMediaId(mediaId);
+  }
+}

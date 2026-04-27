@@ -15,6 +15,7 @@ import '../main.dart'
     show snappyTransitionsNotifier, coverSchemeNotifier, rootNavigatorKey;
 import '../l10n/app_localizations.dart';
 import '../services/android_auto_service.dart';
+import '../services/carplay_service.dart';
 import '../widgets/expanded_card.dart';
 import 'absorbing_screen.dart';
 import 'home_screen.dart';
@@ -481,8 +482,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     if (_lastRefresh == null || now.difference(_lastRefresh!) > _refreshCooldown) {
       _lastRefresh = now;
       lib.refresh();
-      // Keep Android Auto browse tree in sync
+      // Keep Android Auto / CarPlay browse tree in sync
       AndroidAutoService().refresh();
+      CarPlayService().refreshTemplates();
     }
   }
 

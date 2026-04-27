@@ -1,7 +1,7 @@
 name: absorb
 description: An Audiobookshelf Client
 publish_to: 'none'
-version: 1.8.77+100
+version: 1.8.77+101
 
 environment:
   sdk: '>=3.1.0 <4.0.0'
@@ -37,6 +37,9 @@ dependencies:
     path: packages/just_audio
     
   audio_service: ^0.18.13
+
+  # CarPlay
+  flutter_carplay: ^1.2.11
   
   # Permissions
   permission_handler: ^12.0.1

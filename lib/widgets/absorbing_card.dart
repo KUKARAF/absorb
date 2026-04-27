@@ -535,11 +535,18 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(24, compact ? 6 : 10, 24, 0),
                   child: StreamBuilder<Duration>(
-                    stream: widget.player.absolutePositionStream,
+                    stream: _isCastingThis
+                        ? cast.castPositionStream
+                        : widget.player.absolutePositionStream,
                     builder: (_, snap) {
                       final double pos;
-                      if (_isActive) {
+                      final double dur;
+                      if (_isCastingThis) {
+                        pos = cast.castPosition.inMilliseconds / 1000.0;
+                        dur = cast.castingDuration;
+                      } else if (_isActive) {
                         pos = (snap.data?.inMilliseconds ?? 0) / 1000.0;
+                        dur = _effectiveDuration;
                       } else {
                         // Use exact currentTime from server progress if available,
                         // otherwise fall back to progress ratio * duration.
@@ -548,10 +555,12 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                             : lib.getProgressData(_itemId);
                         final ct = (pd?['currentTime'] as num?)?.toDouble();
                         pos = (ct != null && ct > 0) ? ct : bookProgress * _effectiveDuration;
+                        dur = _effectiveDuration;
                       }
                       final speed = _speedAdjustedTime ? (_isActive ? widget.player.speed : _savedSpeed) : 1.0;
+                      final liveBookProgress = dur > 0 ? (pos / dur).clamp(0.0, 1.0) : bookProgress;
                       final elapsed = pos / speed;
-                      final remaining = (_effectiveDuration - pos) / speed;
+                      final remaining = (dur - pos) / speed;
                       final timeStyle = tt.labelSmall?.copyWith(
                         color: isDark ? Colors.white.withValues(alpha: 0.55) : cs.onSurface,
                         fontWeight: FontWeight.w500, fontSize: compact ? 10 : 11,
@@ -570,7 +579,7 @@ class AbsorbingCardState extends State<AbsorbingCard> with AutomaticKeepAliveCli
                                 Text('-${fmtTime(remaining)}', style: timeStyle),
                             ],
                           ),
-                          Text('${(bookProgress * 100).clamp(0, 100).toStringAsFixed(1)}%',
+                          Text('${(liveBookProgress * 100).clamp(0, 100).toStringAsFixed(1)}%',
                             style: timeStyle),
                         ],
                       );
