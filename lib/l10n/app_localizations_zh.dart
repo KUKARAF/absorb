@@ -172,6 +172,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get loginTrustAllCertificates => '信任所有证书（用于自签名/自定义 CA 配置）';
 
   @override
+  String get loginApiKey => 'API 密钥';
+
+  @override
+  String get loginApiKeyDescription =>
+      '使用管理员生成的 API 密钥代替用户名/密码。当账号的令牌刷新失败时很有用。';
+
+  @override
   String get loginWaitingForSso => '正在等待单点登录(SSO)...';
 
   @override
@@ -4356,6 +4363,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get authInvalidUsernameOrPassword => 'Invalid username or password';
+
+  @override
+  String get authInvalidApiKey => 'Invalid API key';
 
   @override
   String get authLoginFailedDetail =>

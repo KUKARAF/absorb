@@ -422,6 +422,18 @@ abstract class AppLocalizations {
   /// **'Trust all certificates (for self-signed / custom CA setups)'**
   String get loginTrustAllCertificates;
 
+  /// No description provided for @loginApiKey.
+  ///
+  /// In en, this message translates to:
+  /// **'API Key'**
+  String get loginApiKey;
+
+  /// No description provided for @loginApiKeyDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Use an admin-generated API key instead of username/password. Useful when token refresh fails for your account.'**
+  String get loginApiKeyDescription;
+
   /// No description provided for @loginWaitingForSso.
   ///
   /// In en, this message translates to:
@@ -7713,6 +7725,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Invalid username or password'**
   String get authInvalidUsernameOrPassword;
+
+  /// No description provided for @authInvalidApiKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid API key'**
+  String get authInvalidApiKey;
 
   /// No description provided for @authLoginFailedDetail.
   ///

@@ -327,6 +327,90 @@ class AuthProvider extends ChangeNotifier {
     return true;
   }
 
+  /// Login with an admin-generated API key. Skips `/login` entirely - the key
+  /// is just a bearer token. Treated as a legacy token (no refresh) since API
+  /// keys don't expire and don't have a refresh-token counterpart.
+  Future<bool> loginWithApiKey({
+    required String serverUrl,
+    required String apiKey,
+    Map<String, String> customHeaders = const {},
+    AppLocalizations? l,
+  }) async {
+    _errorMessage = null;
+
+    String url = serverUrl.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'http://$url';
+    }
+    if (url.endsWith('/')) {
+      url = url.substring(0, url.length - 1);
+    }
+
+    final reachable = await ApiService.pingServer(url, customHeaders: customHeaders);
+    if (!reachable) {
+      _errorMessage = l?.authCannotReachServer(url) ?? 'Cannot reach server at $url';
+      return false;
+    }
+
+    final (user, statusCode) = await ApiService.loginWithApiKey(
+      serverUrl: url,
+      apiKey: apiKey,
+      customHeaders: customHeaders,
+    );
+
+    if (user == null) {
+      _errorMessage = statusCode == 401
+          ? (l?.authInvalidApiKey ?? 'Invalid API key')
+          : (l?.authLoginFailedDetail ?? 'Login failed - check your server address and API key');
+      return false;
+    }
+
+    _serverUrl = url;
+    _accessToken = apiKey;
+    _refreshToken = null;
+    _isLegacyToken = true;
+    _username = user['username'] as String?;
+    _userId = user['id'] as String?;
+    _defaultLibraryId = null;
+    _userJson = user;
+    _serverSettings = null;
+    _customHeaders = customHeaders;
+
+    _fetchServerVersion(url);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('server_url', _serverUrl!);
+      await prefs.setString('token', _accessToken!);
+      await prefs.remove('refresh_token');
+      if (_username != null) await prefs.setString('username', _username!);
+      if (_userId != null) await prefs.setString('user_id', _userId!);
+      if (customHeaders.isNotEmpty) {
+        await prefs.setString('custom_headers', jsonEncode(customHeaders));
+      } else {
+        await prefs.remove('custom_headers');
+      }
+    } catch (_) {}
+
+    try {
+      await UserAccountService().saveAccount(SavedAccount(
+        serverUrl: _serverUrl!,
+        username: _username ?? '',
+        token: _accessToken!,
+        refreshToken: null,
+        userId: _userId,
+        isLegacyToken: true,
+      ));
+    } catch (_) {}
+
+    await HomeWidgetService().clearStats();
+    HomeWidgetService().refreshStats(force: true);
+
+    _isLoading = false;
+    notifyListeners();
+    return true;
+  }
+
   /// Login using OIDC callback response data.
   /// [result] is the JSON from /auth/openid/callback — same shape as /login response.
   ///

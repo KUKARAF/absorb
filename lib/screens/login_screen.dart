@@ -30,9 +30,11 @@ class _LoginScreenState extends State<LoginScreen>
   final _serverController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _apiKeyController = TextEditingController();
   final _usernameFocus = FocusNode();
 
   bool _obscurePassword = true;
+  bool _obscureApiKey = true;
   bool _isConnecting = false;
   String _protocol = 'https://';
 
@@ -99,6 +101,7 @@ class _LoginScreenState extends State<LoginScreen>
     _serverController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    _apiKeyController.dispose();
     _usernameFocus.dispose();
     for (final (k, v) in _headerControllers) { k.dispose(); v.dispose(); }
     OidcService().cancel();
@@ -203,7 +206,11 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) return;
+    final apiKey = _apiKeyController.text.trim();
+
+    // Skip form validation when an API key is supplied — the username
+    // field's required-validator would otherwise block the submit.
+    if (apiKey.isEmpty && !_formKey.currentState!.validate()) return;
 
     // Validate server first if not yet checked
     if (!_serverValid) {
@@ -232,13 +239,20 @@ class _LoginScreenState extends State<LoginScreen>
       if (k.isNotEmpty && v.isNotEmpty) headers[k] = v;
     }
 
-    final success = await auth.login(
-      serverUrl: fullUrl,
-      username: _usernameController.text.trim(),
-      password: _passwordController.text,
-      customHeaders: headers,
-      l: AppLocalizations.of(context),
-    );
+    final success = apiKey.isNotEmpty
+        ? await auth.loginWithApiKey(
+            serverUrl: fullUrl,
+            apiKey: apiKey,
+            customHeaders: headers,
+            l: AppLocalizations.of(context),
+          )
+        : await auth.login(
+            serverUrl: fullUrl,
+            username: _usernameController.text.trim(),
+            password: _passwordController.text,
+            customHeaders: headers,
+            l: AppLocalizations.of(context),
+          );
 
     if (mounted) {
       setState(() => _isConnecting = false);
@@ -626,6 +640,39 @@ class _LoginScreenState extends State<LoginScreen>
                                         ),
                                       ],
                                     ),
+                                    const SizedBox(height: 8),
+                                    const Divider(height: 1),
+                                    const SizedBox(height: 8),
+                                    Text(l.loginApiKey, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
+                                    const SizedBox(height: 4),
+                                    Text(l.loginApiKeyDescription,
+                                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.4))),
+                                    const SizedBox(height: 8),
+                                    TextField(
+                                      controller: _apiKeyController,
+                                      obscureText: _obscureApiKey,
+                                      autocorrect: false,
+                                      enableSuggestions: false,
+                                      style: TextStyle(fontSize: 13, color: cs.onSurface),
+                                      onChanged: (_) => setState(() {}),
+                                      decoration: InputDecoration(
+                                        hintText: l.loginApiKey,
+                                        hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.3), fontSize: 13),
+                                        filled: true,
+                                        fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        prefixIcon: Icon(Icons.vpn_key_rounded, size: 18, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+                                        suffixIcon: IconButton(
+                                          icon: Icon(
+                                            _obscureApiKey ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                            size: 18,
+                                            color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                                          ),
+                                          onPressed: () => setState(() => _obscureApiKey = !_obscureApiKey),
+                                        ),
+                                      ),
+                                    ),
                                   ],
 
                                   // SSO / OIDC button — only shown when server supports it
@@ -1003,6 +1050,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   Widget _buildCredentialFields(ColorScheme cs, TextTheme tt) {
     final l = AppLocalizations.of(context)!;
+    final usingApiKey = _apiKeyController.text.trim().isNotEmpty;
     return AutofillGroup(
       child: Column(
       children: [
@@ -1035,50 +1083,52 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
 
-        // Username
-        _buildInputField(
-          controller: _usernameController,
-          focusNode: _usernameFocus,
-          label: l.loginUsername,
-          cs: cs,
-          textInputAction: TextInputAction.next,
-          autofillHints: const [AutofillHints.username],
-          prefixIcon: Icon(Icons.person_outline_rounded, size: 20,
-            color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
-          validator: (v) {
-            if (v == null || v.trim().isEmpty) {
-              return l.loginUsernameRequired;
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 14),
-
-        // Password
-        _buildInputField(
-          controller: _passwordController,
-          label: l.loginPassword,
-          cs: cs,
-          obscureText: _obscurePassword,
-          textInputAction: TextInputAction.done,
-          autofillHints: const [AutofillHints.password],
-          onFieldSubmitted: (_) => _handleLogin(),
-          prefixIcon: Icon(Icons.lock_outline_rounded, size: 20,
-            color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
-          suffixIcon: IconButton(
-            icon: Icon(
-              _obscurePassword
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              size: 20,
-              color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-            onPressed: () {
-              setState(() => _obscurePassword = !_obscurePassword);
+        if (!usingApiKey) ...[
+          // Username
+          _buildInputField(
+            controller: _usernameController,
+            focusNode: _usernameFocus,
+            label: l.loginUsername,
+            cs: cs,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.username],
+            prefixIcon: Icon(Icons.person_outline_rounded, size: 20,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) {
+                return l.loginUsernameRequired;
+              }
+              return null;
             },
           ),
-          // No validator — ABS allows passwordless accounts
-        ),
+          const SizedBox(height: 14),
+
+          // Password
+          _buildInputField(
+            controller: _passwordController,
+            label: l.loginPassword,
+            cs: cs,
+            obscureText: _obscurePassword,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.password],
+            onFieldSubmitted: (_) => _handleLogin(),
+            prefixIcon: Icon(Icons.lock_outline_rounded, size: 20,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                size: 20,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+              ),
+              onPressed: () {
+                setState(() => _obscurePassword = !_obscurePassword);
+              },
+            ),
+            // No validator — ABS allows passwordless accounts
+          ),
+        ],
         const SizedBox(height: 24),
 
         // Sign In button

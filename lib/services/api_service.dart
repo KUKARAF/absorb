@@ -229,6 +229,33 @@ class ApiService {
     }
   }
 
+  /// Validate an API key by hitting `/api/me`. Returns the user JSON and the
+  /// HTTP status code. API keys are sent as a Bearer token, same as JWT/legacy
+  /// tokens, so successful validation lets us reuse the legacy-token path
+  /// (no refresh, persists like any other session).
+  static Future<(Map<String, dynamic>?, int)> loginWithApiKey({
+    required String serverUrl,
+    required String apiKey,
+    Map<String, String> customHeaders = const {},
+  }) async {
+    final base = serverUrl.endsWith('/') ? serverUrl : '$serverUrl/';
+    final url = '${base}api/me';
+
+    try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {...customHeaders, 'Authorization': 'Bearer $apiKey'},
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        return (jsonDecode(response.body) as Map<String, dynamic>, 200);
+      }
+      return (null, response.statusCode);
+    } catch (_) {
+      return (null, 0);
+    }
+  }
+
   /// Ping the server to check connectivity.
   static Future<bool> pingServer(String serverUrl, {Map<String, String> customHeaders = const {}}) async {
     final url = serverUrl.endsWith('/')

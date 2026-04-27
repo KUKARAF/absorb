@@ -174,6 +174,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Trust all certificates (for self-signed / custom CA setups)';
 
   @override
+  String get loginApiKey => 'API Key';
+
+  @override
+  String get loginApiKeyDescription =>
+      'Use an admin-generated API key instead of username/password. Useful when token refresh fails for your account.';
+
+  @override
   String get loginWaitingForSso => 'Waiting for SSO...';
 
   @override
@@ -4429,6 +4436,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get authInvalidUsernameOrPassword => 'Invalid username or password';
+
+  @override
+  String get authInvalidApiKey => 'Invalid API key';
 
   @override
   String get authLoginFailedDetail =>
