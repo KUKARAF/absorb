@@ -39,6 +39,7 @@ class AutoMediaIds {
   // Root tabs
   static const root = 'root';
   static const continueListening = 'continue';
+  static const recentlyAdded = 'recently-added';
   static const library = 'library';
   static const downloads = 'downloads';
 
@@ -178,11 +179,13 @@ class AndroidAutoService {
 
   // ── Cached data ──
   List<AutoBookEntry> _continueListening = [];
+  List<AutoBookEntry> _recentlyAdded = [];
   List<AutoBookEntry> _downloaded = [];
   List<AutoLibraryEntry> _libraries = [];
 
   /// Public read-only access to cached data (used by CarPlayService)
   List<AutoBookEntry> get continueListening => _continueListening;
+  List<AutoBookEntry> get recentlyAdded => _recentlyAdded;
   List<AutoBookEntry> get downloaded => _downloaded;
   List<AutoLibraryEntry> get libraries => _libraries;
 
@@ -193,6 +196,7 @@ class AndroidAutoService {
   /// on the next access.  Call when the user switches accounts or logs out.
   void clearCache() {
     _continueListening = [];
+    _recentlyAdded = [];
     _downloaded = [];
     _libraries = [];
     _lastRefresh = null;
@@ -260,6 +264,7 @@ class AndroidAutoService {
       _lastRefresh = DateTime.now();
       debugPrint('[AutoBrowse] Refresh done: '
           '${_continueListening.length} continue, '
+          '${_recentlyAdded.length} recent, '
           '${_downloaded.length} downloaded, '
           '${_libraries.length} libraries '
           '(${_libraries.where((l) => l.isBook).length} book, '
@@ -347,6 +352,7 @@ class AndroidAutoService {
     final manualOffline = prefs.getBool('manual_offline_mode') ?? false;
     if (manualOffline) {
       _continueListening = [];
+      _recentlyAdded = [];
       _libraries = [];
       return;
     }
@@ -363,48 +369,73 @@ class AndroidAutoService {
         );
       }).where((l) => l.id.isNotEmpty && (l.isBook || l.isPodcast)).toList();
 
-      // ── Continue Listening (merged from all libraries) ──
+      // ── Personalized shelves merged from all libraries ──
       final clFutures = _libraries.map((lib) => api.getPersonalizedView(
             lib.id,
             include: const ['numEpisodesIncomplete'],
-            shelves: const ['continue-listening', 'continue-series'],
+            shelves: const ['continue-listening', 'continue-series', 'recently-added'],
             limit: 10,
           ));
       final allSections = await Future.wait(clFutures);
 
-      // Collect all entities across libraries, deduplicate, sort by recency
-      final seenIds = <String>{};
-      final allEntities = <Map<String, dynamic>>[];
+      // Continue Listening: collect, dedupe, sort by lastUpdate desc
+      final continueSeenIds = <String>{};
+      final continueEntities = <Map<String, dynamic>>[];
+      // Recently Added: collect, dedupe, sort by addedAt desc
+      final recentSeenIds = <String>{};
+      final recentEntities = <Map<String, dynamic>>[];
+
       for (final sections in allSections) {
         for (final section in sections) {
           final sectionId = section['id'] as String? ?? '';
+          final entities = section['entities'] as List<dynamic>? ?? [];
           if (sectionId == 'continue-listening' || sectionId == 'continue-series') {
-            for (final entity in (section['entities'] as List<dynamic>? ?? [])) {
+            for (final entity in entities) {
               if (entity is Map<String, dynamic>) {
                 final id = entity['id'] as String? ?? '';
                 final ep = entity['recentEpisode'] as Map<String, dynamic>?;
                 final key = ep != null ? '$id-${ep['id'] ?? ''}' : id;
-                if (key.isNotEmpty && seenIds.add(key)) {
-                  allEntities.add(entity);
+                if (key.isNotEmpty && continueSeenIds.add(key)) {
+                  continueEntities.add(entity);
+                }
+              }
+            }
+          } else if (sectionId == 'recently-added') {
+            for (final entity in entities) {
+              if (entity is Map<String, dynamic>) {
+                final id = entity['id'] as String? ?? '';
+                if (id.isNotEmpty && recentSeenIds.add(id)) {
+                  recentEntities.add(entity);
                 }
               }
             }
           }
         }
       }
-      // Sort by last listened time (most recent first)
-      allEntities.sort((a, b) {
+
+      continueEntities.sort((a, b) {
         final aTime = ((a['mediaProgress'] as Map<String, dynamic>?)?['lastUpdate'] as num?)?.toDouble() ?? 0;
         final bTime = ((b['mediaProgress'] as Map<String, dynamic>?)?['lastUpdate'] as num?)?.toDouble() ?? 0;
         return bTime.compareTo(aTime);
       });
-      _continueListening = allEntities
+      _continueListening = continueEntities
+          .map((e) => _entityToEntry(e, api))
+          .whereType<AutoBookEntry>()
+          .toList();
+
+      recentEntities.sort((a, b) {
+        final aTime = (a['addedAt'] as num?)?.toDouble() ?? 0;
+        final bTime = (b['addedAt'] as num?)?.toDouble() ?? 0;
+        return bTime.compareTo(aTime);
+      });
+      _recentlyAdded = recentEntities
           .map((e) => _entityToEntry(e, api))
           .whereType<AutoBookEntry>()
           .toList();
     } catch (e) {
       // Server unreachable — clear stale tabs so only Downloads shows offline
       _continueListening = [];
+      _recentlyAdded = [];
       _libraries = [];
       debugPrint('[AutoBrowse] Server fetch error: $e');
     }
@@ -512,6 +543,11 @@ class AndroidAutoService {
         playable: false,
       ),
       MediaItem(
+        id: AutoMediaIds.recentlyAdded,
+        title: 'Recently Added',
+        playable: false,
+      ),
+      MediaItem(
         id: AutoMediaIds.library,
         title: l?.androidAutoTabLibrary ?? 'Library',
         playable: false,
@@ -577,6 +613,16 @@ class AndroidAutoService {
         }
       }
       return _continueListening.map((e) => e.toMediaItem()).toList();
+    }
+    if (parentMediaId == AutoMediaIds.recentlyAdded) {
+      if (_recentlyAdded.isEmpty) {
+        try {
+          await _refreshFromServer();
+        } catch (e) {
+          debugPrint('[AutoBrowse] On-demand recent fetch failed: $e');
+        }
+      }
+      return _recentlyAdded.map((e) => e.toMediaItem()).toList();
     }
     if (parentMediaId == AutoMediaIds.downloads) {
       return _downloaded.map((e) => e.toMediaItem()).toList();
@@ -1176,7 +1222,7 @@ class AndroidAutoService {
   // ─── Lookup helpers ────────────────────────────────────────────────
 
   AutoBookEntry? findEntry(String absItemId) {
-    for (final list in [_continueListening, _downloaded]) {
+    for (final list in [_continueListening, _recentlyAdded, _downloaded]) {
       for (final entry in list) {
         if (entry.id == absItemId) return entry;
       }

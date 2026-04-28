@@ -100,9 +100,10 @@ class CarPlayService {
 
   Future<List<CPListTemplate>> _buildTabs() async {
     final continueTab = await _buildContinueTab();
+    final recentlyAddedTab = await _buildRecentlyAddedTab();
     final libraryTab = await _buildLibraryTab();
     final downloadsTab = await _buildDownloadsTab();
-    return [continueTab, libraryTab, downloadsTab];
+    return [continueTab, recentlyAddedTab, libraryTab, downloadsTab];
   }
 
   Future<void> _setRootTemplate({String label = ''}) async {
@@ -112,6 +113,9 @@ class CarPlayService {
       final root = CPTabBarTemplate(templates: tabs);
       _rootTemplate = root;
       await FlutterCarplay.setRootTemplate(rootTemplate: root, animated: false);
+      // Without this the native side may not register onPress callbacks on
+      // the new list items, leaving taps stuck on an infinite spinner.
+      await _flutterCarplay.forceUpdateRootTemplate();
       _lastRootBuilt = DateTime.now();
       debugPrint('[CarPlay] Root template set ($label)'
           ' continue=${_autoService.continueListening.length}'
@@ -132,6 +136,19 @@ class CarPlayService {
       sections: [CPListSection(items: items)],
       title: 'Continue',
       systemIcon: 'play.circle.fill',
+    );
+  }
+
+  // ─── Recently Added tab ────────────────────────────────────────────
+
+  Future<CPListTemplate> _buildRecentlyAddedTab() async {
+    final api = await _autoService.getApi();
+    final entries = _autoService.recentlyAdded;
+    final items = entries.map((e) => _playableListItem(e, api)).toList();
+    return CPListTemplate(
+      sections: [CPListSection(items: items)],
+      title: 'Recently Added',
+      systemIcon: 'sparkles',
     );
   }
 
