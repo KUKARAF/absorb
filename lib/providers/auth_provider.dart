@@ -318,6 +318,8 @@ class AuthProvider extends ChangeNotifier {
       ));
     } catch (_) {}
 
+    await _onAccountActivated();
+
     // Wipe any previous user's stats from the widget and pull this user's.
     await HomeWidgetService().clearStats();
     HomeWidgetService().refreshStats(force: true);
@@ -403,6 +405,8 @@ class AuthProvider extends ChangeNotifier {
       ));
     } catch (_) {}
 
+    await _onAccountActivated();
+
     await HomeWidgetService().clearStats();
     HomeWidgetService().refreshStats(force: true);
 
@@ -484,6 +488,8 @@ class AuthProvider extends ChangeNotifier {
       ));
     } catch (_) {}
 
+    await _onAccountActivated();
+
     // Wipe any previous user's stats from the widget and pull this user's.
     await HomeWidgetService().clearStats();
     HomeWidgetService().refreshStats(force: true);
@@ -499,6 +505,31 @@ class AuthProvider extends ChangeNotifier {
     _localServerUrl = await PlayerSettings.getLocalServerUrl();
     if (_localServerEnabled) {
       debugPrint('[Auth] Local server config loaded: enabled=$_localServerEnabled, url=${_localServerUrl.isNotEmpty ? "(set)" : "(empty)"}');
+    }
+  }
+
+  /// Refresh in-memory state to match the now-active account's scope. Call
+  /// after `UserAccountService.saveAccount()` so settings cached from the
+  /// previous account don't leak across. The big one is the local-server
+  /// override: if left stale, API calls route to the previous account's
+  /// local URL with the new account's token, producing 401s.
+  Future<void> _onAccountActivated() async {
+    PlayerSettings.notifySettingsChanged();
+    await EqualizerService().reloadForActiveAccount();
+
+    await _loadLocalServerSettings();
+    _useLocalServer = false;
+    if (_localServerEnabled && _localServerUrl.isNotEmpty) {
+      final connectivity = await Connectivity().checkConnectivity();
+      if (connectivity.contains(ConnectivityResult.wifi)) {
+        final localReachable = await ApiService.pingServer(
+                _localServerUrl, customHeaders: _customHeaders)
+            .timeout(const Duration(seconds: 2), onTimeout: () => false);
+        if (localReachable) {
+          debugPrint('[Auth] Local server reachable - using local');
+          _useLocalServer = true;
+        }
+      }
     }
   }
 
