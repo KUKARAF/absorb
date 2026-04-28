@@ -21,12 +21,16 @@ private func postDarwinNotification(_ name: String) {
 
 // MARK: - App Intents (background-capable widget buttons)
 
-struct SkipBackIntent: AppIntent {
+// AudioPlaybackIntent (iOS 17+) tells the system this intent controls audio
+// playback. The system will wake the host app from suspension to run perform()
+// and grants the audio-session permissions needed to start playback in the
+// background. Without this, after iOS suspends the app (~6s after pause when
+// the Dynamic Island disappears), the Darwin notification fires into a dead
+// observer and nothing happens.
+
+struct SkipBackIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Skip Back"
     static var description = IntentDescription("Skip backward in the current audiobook.")
-    // Run the intent in the widget extension process; do not bring the app UI
-    // to the foreground.
-    static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
         NSLog("[WidgetDebug] SkipBackIntent.perform fired")
@@ -35,10 +39,9 @@ struct SkipBackIntent: AppIntent {
     }
 }
 
-struct PlayPauseIntent: AppIntent {
+struct PlayPauseIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Play or Pause"
     static var description = IntentDescription("Toggle audiobook playback.")
-    static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
         NSLog("[WidgetDebug] PlayPauseIntent.perform fired")
@@ -57,10 +60,9 @@ struct PlayPauseIntent: AppIntent {
     }
 }
 
-struct SkipForwardIntent: AppIntent {
+struct SkipForwardIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Skip Forward"
     static var description = IntentDescription("Skip forward in the current audiobook.")
-    static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
         NSLog("[WidgetDebug] SkipForwardIntent.perform fired")
