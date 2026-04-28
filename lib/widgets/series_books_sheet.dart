@@ -225,7 +225,23 @@ class _SeriesBooksSheetState extends State<SeriesBooksSheet> {
       return seriesRaw['sequence'].toString();
     }
     final fallback = metadata['seriesSequence'];
-    return fallback?.toString();
+    if (fallback != null) return fallback.toString();
+
+    // Author endpoint returns minified items that only have `seriesName` as a
+    // joined string ("Foundation #1, Cosmere #6") with no structured `series`
+    // array, so fall back to parsing the matching entry by name.
+    final seriesNameRaw = metadata['seriesName'] as String? ?? '';
+    if (seriesNameRaw.isNotEmpty) {
+      final target = widget.seriesName.toLowerCase();
+      for (final entry in seriesNameRaw.split(',').map((e) => e.trim())) {
+        final match = RegExp(r'^(.+?)\s*#\s*([\d.]+)$').firstMatch(entry);
+        if (match != null) {
+          final name = (match.group(1) ?? '').trim().toLowerCase();
+          if (name == target) return match.group(2);
+        }
+      }
+    }
+    return null;
   }
 
   /// Parse a sortable number from a sequence string.
