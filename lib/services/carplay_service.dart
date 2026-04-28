@@ -362,13 +362,33 @@ class CarPlayService {
 
   // ─── Helpers ───────────────────────────────────────────────────────
 
-  /// Build a playable CPListItem from an AutoBookEntry.
+  /// Build a playable CPListItem from an AutoBookEntry. Recently-added
+  /// podcast shows aren't directly playable, so build a browseable item that
+  /// drills into the show's episodes.
   CPListItem _playableListItem(AutoBookEntry entry, ApiService? api) {
-    // Use HTTP cover URL for iOS (CarPlay loads images from HTTP directly)
     final coverItemId = entry.showId ?? entry.id;
     final coverUrl = api?.getCoverUrl(coverItemId);
 
-    // Build the media ID matching the Android Auto scheme
+    final isPodcastShow = entry.mediaType == 'podcast' &&
+        entry.episodeId == null &&
+        entry.libraryId != null &&
+        entry.libraryId!.isNotEmpty;
+
+    if (isPodcastShow) {
+      return CPListItem(
+        text: entry.title,
+        detailText: entry.author.isNotEmpty ? entry.author : null,
+        image: coverUrl,
+        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        onPress: (complete, self) async {
+          final template = await _buildShowEpisodes(
+              entry.id, entry.libraryId!, entry.title);
+          FlutterCarplay.push(template: template);
+          complete();
+        },
+      );
+    }
+
     final mediaId = (entry.episodeId != null && entry.showId != null)
         ? AutoMediaIds.itemId('${entry.showId}-${entry.episodeId}')
         : AutoMediaIds.itemId(entry.id);

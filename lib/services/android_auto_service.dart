@@ -123,6 +123,11 @@ class AutoBookEntry {
   final String? episodeId;
   /// Non-null for podcast episodes — the show (podcast) ID.
   final String? showId;
+  /// 'book' or 'podcast'. Used to route recently-added podcast shows into
+  /// browseable show drilldown instead of unplayable item ids.
+  final String mediaType;
+  /// Library ID. Required to build a `show:` browse id for podcast shows.
+  final String? libraryId;
 
   const AutoBookEntry({
     required this.id,
@@ -134,10 +139,32 @@ class AutoBookEntry {
     this.currentTime,
     this.episodeId,
     this.showId,
+    this.mediaType = 'book',
+    this.libraryId,
   });
+
+  /// True when this entry represents a podcast show (not a single episode)
+  /// that can only be browsed, not played directly.
+  bool get _isPodcastShow =>
+      mediaType == 'podcast' &&
+      episodeId == null &&
+      libraryId != null &&
+      libraryId!.isNotEmpty;
 
   MediaItem toMediaItem() {
     final uri = coverUrl != null ? Uri.tryParse(coverUrl!) : null;
+
+    // Recently-added podcast show — browseable, drills into episodes.
+    if (_isPodcastShow) {
+      return MediaItem(
+        id: AutoMediaIds.showId(id, libraryId!),
+        title: title,
+        artUri: uri,
+        playable: false,
+        extras: uri != null ? {'artUri': uri.toString()} : null,
+      );
+    }
+
     // For podcast episodes, use compound key as the playable media ID
     final mediaId = (episodeId != null && showId != null)
         ? AutoMediaIds.itemId('$showId-$episodeId')
@@ -461,6 +488,8 @@ class AndroidAutoService {
     final metadata = media?['metadata'] as Map<String, dynamic>? ?? {};
     final showTitle = metadata['title'] as String? ?? 'Unknown';
     final author = metadata['authorName'] as String? ?? '';
+    final mediaType = entity['mediaType'] as String? ?? 'book';
+    final libraryId = entity['libraryId'] as String?;
 
     final progress = entity['mediaProgress'] as Map<String, dynamic>?;
     final currentTime = (progress?['currentTime'] as num?)?.toDouble();
@@ -484,10 +513,12 @@ class AndroidAutoService {
         currentTime: currentTime,
         episodeId: episodeId,
         showId: id,
+        mediaType: mediaType,
+        libraryId: libraryId,
       );
     }
 
-    // Regular book entity
+    // Regular book entity, or recently-added podcast show.
     final duration = (media?['duration'] as num?)?.toDouble() ?? 0;
     final chapters = media?['chapters'] as List<dynamic>? ?? [];
 
@@ -499,6 +530,8 @@ class AndroidAutoService {
       coverUrl: localCoverUri(id),
       chapters: chapters,
       currentTime: currentTime,
+      mediaType: mediaType,
+      libraryId: libraryId,
     );
   }
 
