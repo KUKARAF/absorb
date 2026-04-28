@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_carplay/flutter_carplay.dart';
-import 'package:audio_service/audio_service.dart';
 import 'android_auto_service.dart';
 import 'api_service.dart';
+import 'audio_player_service.dart';
 
 /// Manages Apple CarPlay browse tree and playback integration.
 /// Mirrors the Android Auto layout: 3 tabs (Continue, Library, Downloads)
@@ -392,7 +392,9 @@ class CarPlayService {
 
   void _playItem(String mediaId) {
     debugPrint('[CarPlay] Playing: $mediaId');
-    // Delegate to the audio handler which routes through _playFromAutoMediaId
-    AudioService.playFromMediaId(mediaId);
+    // Call the handler directly. The static AudioService.playFromMediaId is a
+    // deprecated compat shim wired only in the old AudioService.start() flow;
+    // with the modern AudioService.init() it routes to a no-op BaseAudioHandler.
+    AudioPlayerService.handler?.playFromMediaId(mediaId);
   }
 }
