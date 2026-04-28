@@ -78,6 +78,16 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
           case "com.barnabas.absorb.widget.skipForward": action = "skipForward"
           default: return
           }
+          // Re-activate the audio session as soon as the host app process
+          // sees the notification, before the async hop to Flutter. The
+          // widget extension already activates it in perform(), but doing it
+          // again here from the host app's process is the belt-and-suspenders
+          // guarantee that AVAudioSession is hot when player.play() runs.
+          do {
+            try AVAudioSession.sharedInstance().setActive(true)
+          } catch {
+            NSLog("[WidgetDebug] AppDelegate setActive failed: %@", error.localizedDescription)
+          }
           DispatchQueue.main.async {
             NSLog("[WidgetDebug] AppDelegate dispatching widget action to Flutter: %@", action)
             appDelegate.widgetChannel?.invokeMethod("widgetAction", arguments: ["action": action])

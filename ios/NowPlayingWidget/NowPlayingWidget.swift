@@ -1,6 +1,7 @@
 import AppIntents
 import WidgetKit
 import SwiftUI
+import AVFAudio
 
 private let appGroup = "group.com.barnabas.absorb"
 
@@ -19,14 +20,31 @@ private func postDarwinNotification(_ name: String) {
     CFNotificationCenterPostNotification(center, CFNotificationName(name as CFString), nil, nil, true)
 }
 
+/// Activate the system audio session from inside an AudioPlaybackIntent's
+/// perform(). AVAudioSession is system-wide, so flipping it on here keeps it
+/// active by the time the host app's audio engine runs play() a few hundred
+/// ms later. Without this, the iOS-granted "audio playback" privilege from
+/// AudioPlaybackIntent expires before the Darwin notification reaches Flutter
+/// and the host app's setActive(true) silently fails — engine state flips to
+/// playing=true but no sound comes out.
+private func activateAudioSession() {
+    let session = AVAudioSession.sharedInstance()
+    do {
+        try session.setCategory(.playback, mode: .spokenAudio, options: [])
+        try session.setActive(true)
+        NSLog("[WidgetDebug] AVAudioSession activated in widget perform()")
+    } catch {
+        NSLog("[WidgetDebug] AVAudioSession activate error: %@", error.localizedDescription)
+    }
+}
+
 // MARK: - App Intents (background-capable widget buttons)
 
 // AudioPlaybackIntent (iOS 17+) tells the system this intent controls audio
-// playback. The system will wake the host app from suspension to run perform()
-// and grants the audio-session permissions needed to start playback in the
-// background. Without this, after iOS suspends the app (~6s after pause when
-// the Dynamic Island disappears), the Darwin notification fires into a dead
-// observer and nothing happens.
+// playback. The system grants perform() the audio-session privilege; we
+// exercise it by activating AVAudioSession before posting the Darwin
+// notification so the host app's player can start audio without iOS
+// re-checking permissions.
 
 struct SkipBackIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Skip Back"
@@ -34,6 +52,7 @@ struct SkipBackIntent: AudioPlaybackIntent {
 
     func perform() async throws -> some IntentResult {
         NSLog("[WidgetDebug] SkipBackIntent.perform fired")
+        activateAudioSession()
         postDarwinNotification("com.barnabas.absorb.widget.skipBack")
         return .result()
     }
@@ -54,6 +73,7 @@ struct PlayPauseIntent: AudioPlaybackIntent {
               !wasPlaying ? "true" : "false",
               defaults == nil ? "nil" : "ok")
 
+        activateAudioSession()
         postDarwinNotification("com.barnabas.absorb.widget.playPause")
         WidgetCenter.shared.reloadTimelines(ofKind: "NowPlayingWidget")
         return .result()
@@ -66,6 +86,7 @@ struct SkipForwardIntent: AudioPlaybackIntent {
 
     func perform() async throws -> some IntentResult {
         NSLog("[WidgetDebug] SkipForwardIntent.perform fired")
+        activateAudioSession()
         postDarwinNotification("com.barnabas.absorb.widget.skipForward")
         return .result()
     }
