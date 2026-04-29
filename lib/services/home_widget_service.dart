@@ -461,6 +461,21 @@ class HomeWidgetService {
     await HomeWidget.saveWidgetData<String>(
         'np_stream_headers_json', jsonEncode(player.activeStreamHeaders));
 
+    // Multi-track support: cumulative track start offsets so the native
+    // core can figure out which track contains a given absolute position
+    // (e.g. saved-position 4500s in a 3-file book might fall in track 2).
+    await HomeWidget.saveWidgetData<String>(
+        'np_track_offsets_json', jsonEncode(player.trackStartOffsets));
+
+    // Server URL + API token so the native core can push progress updates
+    // directly to ABS while Flutter is dead. Lets users listen for hours
+    // via the widget without their server progress falling behind.
+    final api = player.currentApi;
+    if (api != null) {
+      await HomeWidget.saveWidgetData<String>('np_server_url', api.baseUrl);
+      await HomeWidget.saveWidgetData<String>('np_api_token', api.token);
+    }
+
     // Cover path piggybacks on the existing widget_cover_path entry, but
     // expose it under the np_ namespace too for clarity on the native side.
     final coverPath = await HomeWidget.getWidgetData<String>('widget_cover_path');
@@ -471,6 +486,13 @@ class HomeWidgetService {
         'np_title', player.currentTitle ?? '');
     await HomeWidget.saveWidgetData<String>(
         'np_author', player.currentAuthor ?? '');
+
+    debugPrint('[WidgetDebug] [NativeCore] Stashed: item=$itemId ep=${player.currentEpisodeId} '
+        'pos=${posSec.toStringAsFixed(1)}s tot=${player.totalDuration.toStringAsFixed(0)}s '
+        'speed=${player.speed} dl=${paths.isNotEmpty} '
+        'streams=${player.activeStreamUrls.length} '
+        'tracks=${player.trackStartOffsets.length} '
+        'server=${api?.baseUrl ?? "none"}');
   }
 
   Future<void> _updateAllWidgets() async {

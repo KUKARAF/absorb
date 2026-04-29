@@ -821,6 +821,7 @@ class AudioPlayerService extends ChangeNotifier {
   // For ConcatenatingAudioSource, _player.position is track-relative.
   // We store cumulative start offsets so we can compute absolute book position.
   List<double> _trackStartOffsets = []; // [0, dur0, dur0+dur1, ...]
+  List<double> get trackStartOffsets => _trackStartOffsets;
   int _currentTrackIndex = 0;
   int _lastNotifiedChapterIndex = -1;
   int _lastChapterCheckSec = -1;
