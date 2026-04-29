@@ -1743,7 +1743,7 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
         author: metadata['title'] as String? ?? '',
         coverUrl: getCoverUrl(podcastId),
         episodeId: epId,
-        libraryId: _selectedLibraryId,
+        libraryId: cached?['libraryId'] as String? ?? _selectedLibraryId,
       );
       downloaded++;
     }
