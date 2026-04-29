@@ -268,6 +268,22 @@ class DownloadService extends ChangeNotifier {
   /// (the app group entitlement may roll in mid-session).
   String? _iosAppGroupContainerPath;
 
+  /// Stops iCloud from backing up an audio file. Audiobooks are large and
+  /// re-downloadable from the user's ABS server, so eating their iCloud
+  /// quota would only cause problems (system backup breaks once quota is
+  /// hit). iOS-only no-op elsewhere.
+  Future<void> _excludeFromBackup(String path) async {
+    if (!Platform.isIOS) return;
+    try {
+      await _widgetChannel.invokeMethod<bool>(
+        'excludeFromBackup',
+        {'path': path},
+      );
+    } catch (e) {
+      debugPrint('[Download] excludeFromBackup failed for $path: $e');
+    }
+  }
+
   /// Returns the iOS app group's audio directory (`<group>/audio/downloads`),
   /// or null on Android / when the app group entitlement isn't available.
   /// Audio downloads live here so the native player core can read them
@@ -499,6 +515,7 @@ class DownloadService extends ChangeNotifier {
             try { newFile.deleteSync(); } catch (_) {}
           }
           await oldFile.rename(newPath);
+          await _excludeFromBackup(newPath);
           newPaths.add(newPath);
           needsUpdate = true;
           moved++;
@@ -1018,6 +1035,7 @@ class DownloadService extends ChangeNotifier {
           await sink.close();
         }
         localPaths[i] = filePath;
+        await _excludeFromBackup(filePath);
       }
 
       // Download tracks in parallel batches of 3

@@ -179,6 +179,23 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
           NSLog("[WidgetDebug] getGroupContainerPath: containerURL returned nil - app group entitlement missing or misconfigured")
           result(nil)
         }
+      case "excludeFromBackup":
+        // Stops iCloud from backing up downloaded audio files. Audiobooks
+        // are large and re-downloadable, no point eating user's iCloud
+        // quota. Called by DownloadService for each file post-download or
+        // post-migration.
+        let args = call.arguments as? [String: Any]
+        guard let path = args?["path"] as? String else { result(false); return }
+        var url = URL(fileURLWithPath: path)
+        do {
+          var values = URLResourceValues()
+          values.isExcludedFromBackup = true
+          try url.setResourceValues(values)
+          result(true)
+        } catch {
+          NSLog("[WidgetDebug] excludeFromBackup failed for %@: %@", path, error.localizedDescription)
+          result(false)
+        }
       default:
         result(FlutterMethodNotImplemented)
       }

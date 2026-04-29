@@ -141,6 +141,29 @@ class HomeWidgetService {
     }
   }
 
+  /// Phase 1.6: read the native player core's last position for an item, so
+  /// when Flutter wakes up after a widget-driven session it can pick up
+  /// where native left off. Returns null if the stashed `np_item_id` doesn't
+  /// match (the app group has data for some other item) or if reads fail.
+  ///
+  /// iOS only - Android doesn't have the native core path.
+  Future<double?> getNativeNowPlayingPosition(
+      String itemId, String? episodeId) async {
+    if (!Platform.isIOS) return null;
+    try {
+      final stashedItem = await HomeWidget.getWidgetData<String>('np_item_id');
+      if (stashedItem != itemId) return null;
+      final stashedEpisode =
+          await HomeWidget.getWidgetData<String>('np_episode_id');
+      if (stashedEpisode != episodeId) return null;
+      final pos = await HomeWidget.getWidgetData<double>('np_position_s');
+      return pos;
+    } catch (e) {
+      debugPrint('[WidgetDebug] getNativeNowPlayingPosition failed: $e');
+      return null;
+    }
+  }
+
   void dispose() {
     _progressTimer?.cancel();
     _statsTimer?.cancel();
@@ -424,13 +447,30 @@ class HomeWidgetService {
     }
 
     // Downloaded audio file paths (one per track for multi-file books).
-    // Empty list => streaming-only, native core will skip Phase 1 playback
-    // for now and Phase 2 will pick up streaming via auth token.
     final download = DownloadService().getInfo(itemId);
     final paths = download.localPaths;
     await HomeWidget.saveWidgetData<String>(
         'np_audio_paths_json', jsonEncode(paths));
     await HomeWidget.saveWidgetData<bool>('np_is_downloaded', paths.isNotEmpty);
+
+    // Streaming endpoints (token already in URL, plus any reverse-proxy
+    // headers like Cloudflare Access). Native picks these up when
+    // np_is_downloaded is false.
+    await HomeWidget.saveWidgetData<String>(
+        'np_stream_urls_json', jsonEncode(player.activeStreamUrls));
+    await HomeWidget.saveWidgetData<String>(
+        'np_stream_headers_json', jsonEncode(player.activeStreamHeaders));
+
+    // Cover path piggybacks on the existing widget_cover_path entry, but
+    // expose it under the np_ namespace too for clarity on the native side.
+    final coverPath = await HomeWidget.getWidgetData<String>('widget_cover_path');
+    if (coverPath != null) {
+      await HomeWidget.saveWidgetData<String>('np_cover_path', coverPath);
+    }
+    await HomeWidget.saveWidgetData<String>(
+        'np_title', player.currentTitle ?? '');
+    await HomeWidget.saveWidgetData<String>(
+        'np_author', player.currentAuthor ?? '');
   }
 
   Future<void> _updateAllWidgets() async {

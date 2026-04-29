@@ -786,6 +786,14 @@ class AudioPlayerService extends ChangeNotifier {
   ApiService? _api;
   ApiService? get currentApi => _api;
   String? _playbackSessionId;
+  /// Phase 1.7: latest streaming URLs (with auth token already in the
+  /// query string) and custom HTTP headers needed by reverse proxies like
+  /// Cloudflare Access. Stashed to the iOS app group on each player update
+  /// so the native widget core can keep playing if Flutter dies.
+  List<String> _activeStreamUrls = const [];
+  Map<String, String> _activeStreamHeaders = const {};
+  List<String> get activeStreamUrls => _activeStreamUrls;
+  Map<String, String> get activeStreamHeaders => _activeStreamHeaders;
   bool _isOfflineMode = false;
   bool _isBackgrounded = false;
   bool get isBackgrounded => _isBackgrounded;
@@ -981,6 +989,22 @@ class AudioPlayerService extends ChangeNotifier {
       _trackStartOffsets.add(acc);
     }
     debugPrint('[Player] Track offsets: $_trackStartOffsets');
+  }
+
+  /// Phase 1.7: snapshot the URLs and HTTP headers used to build the
+  /// streaming AudioSource so the iOS native widget core can hit the same
+  /// endpoints if Flutter dies. Token is already in the URL; custom headers
+  /// (Cloudflare Access etc.) ride along for reverse-proxy auth.
+  void _captureStreamUrls(List<dynamic> audioTracks, ApiService api) {
+    final urls = <String>[];
+    for (final t in audioTracks) {
+      final track = t as Map<String, dynamic>;
+      final contentUrl = track['contentUrl'] as String? ?? '';
+      if (contentUrl.isEmpty) continue;
+      urls.add(api.buildTrackUrl(contentUrl));
+    }
+    _activeStreamUrls = urls;
+    _activeStreamHeaders = Map<String, String>.from(api.mediaHeaders);
   }
 
   /// Subscribe to track index changes for multi-file playback.
@@ -1362,6 +1386,18 @@ class AudioPlayerService extends ChangeNotifier {
       if (startTime == 0 || localPos > startTime + 1.0) {
         debugPrint('[Player] Resuming from local position: ${localPos}s (caller startTime was ${startTime}s)');
         startTime = localPos;
+      }
+    }
+
+    // Phase 1.6: if the iOS native player core was driving while Flutter was
+    // dead, it stamped a fresher `np_position_s` to the app group. Pick that
+    // up so opening absorb after a widget-tap session shows the right spot.
+    if (Platform.isIOS && !forceStartTime) {
+      final nativePos = await HomeWidgetService()
+          .getNativeNowPlayingPosition(itemId, episodeId);
+      if (nativePos != null && nativePos > startTime + 1.0) {
+        debugPrint('[Player] Resuming from native widget position: ${nativePos}s (was ${startTime}s)');
+        startTime = nativePos;
       }
     }
 
@@ -1797,6 +1833,7 @@ class AudioPlayerService extends ChangeNotifier {
       _currentTrackIndex = 0;
       final audioHeaders = api.mediaHeaders;
       _buildTrackOffsets(audioTracks);
+      _captureStreamUrls(audioTracks, api);
       AudioSource source;
       if (audioTracks.length == 1) {
         final track = audioTracks.first as Map<String, dynamic>;
@@ -2030,8 +2067,9 @@ class AudioPlayerService extends ChangeNotifier {
       _currentTrackIndex = 0;
       final audioHeaders = api.mediaHeaders;
 
-      // Build audio source — one source per track file
+      // Build audio source - one source per track file
       _buildTrackOffsets(audioTracks);
+      _captureStreamUrls(audioTracks, api);
       AudioSource source;
       if (audioTracks.length == 1) {
         final track = audioTracks.first as Map<String, dynamic>;
