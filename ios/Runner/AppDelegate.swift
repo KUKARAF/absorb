@@ -209,6 +209,40 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
       case "isBluetoothAudioConnected":
         result(self?.isBluetoothAudioConnected() ?? false)
 
+      case "getAudioDiagnostics":
+        // Snapshot of AVAudioSession state for the "tap play, no sound"
+        // diagnosis. Returns category, mode, options, output volume,
+        // current route ports, and the session-active hint that iOS
+        // exposes. Dart side logs all of it via [AudioDiag] markers.
+        let session = AVAudioSession.sharedInstance()
+        let route = session.currentRoute
+        let outputs = route.outputs.map { port -> [String: String] in
+          [
+            "name": port.portName,
+            "type": port.portType.rawValue,
+            "uid": port.uid,
+          ]
+        }
+        let inputs = route.inputs.map { port -> [String: String] in
+          [
+            "name": port.portName,
+            "type": port.portType.rawValue,
+          ]
+        }
+        let info: [String: Any] = [
+          "category": session.category.rawValue,
+          "mode": session.mode.rawValue,
+          "categoryOptions": session.categoryOptions.rawValue,
+          "outputVolume": session.outputVolume,
+          "isOtherAudioPlaying": session.isOtherAudioPlaying,
+          "secondaryAudioShouldBeSilencedHint": session.secondaryAudioShouldBeSilencedHint,
+          "outputs": outputs,
+          "inputs": inputs,
+          "sampleRate": session.sampleRate,
+          "ioBufferDuration": session.ioBufferDuration,
+        ]
+        result(info)
+
       case "init":
         // iOS has no system EQ, so we advertise a fixed 5-band layout that
         // matches what AudioEQProcessor's biquad filters handle.
