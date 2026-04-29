@@ -20,6 +20,9 @@
 		AB10020000000000000E0001 /* NowPlayingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB10010000000000000E0001 /* NowPlayingWidget.swift */; };
 		AB10020000000000000E0002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB10010000000000000E0002 /* Assets.xcassets */; };
 		AB10020000000000000E0003 /* NowPlayingWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = AB10010000000000000E0004 /* NowPlayingWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BB10020000000000000E0001 /* AbsorbPlayerCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB10010000000000000E0001 /* AbsorbPlayerCore.swift */; };
+		BB10020000000000000E0020 /* AbsorbPlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = BB10010000000000000E0020 /* AbsorbPlayerCore */; };
+		BB10020000000000000E0021 /* AbsorbPlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = BB10010000000000000E0021 /* AbsorbPlayerCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -90,6 +93,7 @@
 		AB10010000000000000E0004 /* NowPlayingWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NowPlayingWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB10010000000000000E0005 /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
 		AB10010000000000000E0006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BB10010000000000000E0001 /* AbsorbPlayerCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AbsorbPlayerCore.swift; sourceTree = "<group>"; };
 		B7990BE5669E13951B2BAD46 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		DAACD72AEC68ADA3FA213E6C /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4A191144C46AC47851AEE49 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -110,6 +114,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				62440589FF82FB058D477B96 /* Pods_Runner.framework in Frameworks */,
+				BB10020000000000000E0020 /* AbsorbPlayerCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -117,6 +122,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB10020000000000000E0021 /* AbsorbPlayerCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -199,6 +205,7 @@
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
+				BB10010000000000000E0001 /* AbsorbPlayerCore.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -258,6 +265,9 @@
 				AB10070000000000000E0001 /* PBXTargetDependency */,
 			);
 			name = Runner;
+			packageProductDependencies = (
+				BB10010000000000000E0020 /* AbsorbPlayerCore */,
+			);
 			productName = Runner;
 			productReference = 97C146EE1CF9000F007C117D /* Runner.app */;
 			productType = "com.apple.product-type.application";
@@ -275,6 +285,9 @@
 			dependencies = (
 			);
 			name = NowPlayingWidgetExtension;
+			packageProductDependencies = (
+				BB10010000000000000E0021 /* AbsorbPlayerCore */,
+			);
 			productName = NowPlayingWidgetExtension;
 			productReference = AB10010000000000000E0004 /* NowPlayingWidgetExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -311,6 +324,9 @@
 				Base,
 			);
 			mainGroup = 97C146E51CF9000F007C117D;
+			packageReferences = (
+				BB10010000000000000E0010 /* XCLocalSwiftPackageReference "AbsorbPlayerCore" */,
+			);
 			productRefGroup = 97C146EF1CF9000F007C117D /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -479,6 +495,7 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				BB10020000000000000E0001 /* AbsorbPlayerCore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -941,6 +958,24 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		BB10010000000000000E0010 /* XCLocalSwiftPackageReference "AbsorbPlayerCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = AbsorbPlayerCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BB10010000000000000E0020 /* AbsorbPlayerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AbsorbPlayerCore;
+		};
+		BB10010000000000000E0021 /* AbsorbPlayerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AbsorbPlayerCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 97C146E61CF9000F007C117D /* Project object */;
 }

@@ -1,3 +1,5 @@
+import AbsorbPlayerCore
+import AppIntents
 import Flutter
 import UIKit
 import AVFoundation
@@ -38,8 +40,29 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
     // work without opening the app.
     registerWidgetNotifications()
 
-    // Register platform channels on the shared engine
+    // Register platform channels on the shared engine. Must come before the
+    // logSink wiring below so widgetChannel exists when we hand it off.
     registerPlatformChannels()
+
+    // Route native player core log output into the Flutter widget channel's
+    // "log" method, which surfaces lines as `[WidgetDebug] [NativeCore] ...`
+    // in absorb's in-app log viewer. No Mac/Xcode needed to verify behavior.
+    AbsorbPlayerCore.logSink = { [weak self] line in
+      DispatchQueue.main.async {
+        self?.widgetChannel?.invokeMethod("log", arguments: ["msg": line])
+      }
+    }
+
+    // Register the native player core as an AppIntent dependency. The widget
+    // intent declares `@Dependency var core: AbsorbPlayerCoreProtocol` — that
+    // signals to iOS to launch this host app process to run the intent's
+    // perform(), and the dependency manager hands back this concrete instance
+    // so the intent can drive audio in-process. Without this, the widget
+    // intent runs in the widget extension's sandbox and can't reach our audio
+    // engine.
+    let core: AbsorbPlayerCoreProtocol = AbsorbPlayerCore.shared
+    AppDependencyManager.shared.add(dependency: core)
+    AbsorbPlayerCore.logSink?("[NativeCore] Registered as AppIntent dependency")
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

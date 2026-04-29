@@ -1,3 +1,4 @@
+import AbsorbPlayerCore
 import AppIntents
 import WidgetKit
 import SwiftUI
@@ -62,18 +63,30 @@ struct PlayPauseIntent: AudioPlaybackIntent {
     static var title: LocalizedStringResource = "Play or Pause"
     static var description = IntentDescription("Toggle audiobook playback.")
 
+    /// Declaring this dependency tells iOS to launch the host app's process
+    /// to run perform() — the AppDependencyManager registration lives in
+    /// Runner's AppDelegate. Without this the intent runs in the widget
+    /// extension's sandbox where it can't drive audio.
+    @Dependency
+    private var core: AbsorbPlayerCoreProtocol
+
     func perform() async throws -> some IntentResult {
-        NSLog("[WidgetDebug] PlayPauseIntent.perform fired")
+        // Routing through core.log lands the line in absorb's in-app log
+        // viewer (via the widget channel's "log" method) — that's how we
+        // verify Phase 1 without needing Xcode console access.
+        core.log("[NativeCore] PlayPauseIntent.perform fired (host process)")
         // Optimistic UI: flip the stored state so the widget redraws immediately.
         let defaults = UserDefaults(suiteName: appGroup)
         let wasPlaying = defaults?.bool(forKey: "widget_is_playing") ?? false
         defaults?.set(!wasPlaying, forKey: "widget_is_playing")
-        NSLog("[WidgetDebug]   wasPlaying=%@ -> %@ (defaults=%@)",
-              wasPlaying ? "true" : "false",
-              !wasPlaying ? "true" : "false",
-              defaults == nil ? "nil" : "ok")
+        core.log("[NativeCore]   wasPlaying=\(wasPlaying) -> \(!wasPlaying) defaults=\(defaults == nil ? "nil" : "ok")")
 
         activateAudioSession()
+        // Phase 1: native core just logs so we can confirm @Dependency
+        // resolution actually puts us in the host app process. Once that's
+        // verified, the core will drive AVAudioEngine here directly and the
+        // Darwin notification fallback can go away.
+        core.toggle()
         postDarwinNotification("com.barnabas.absorb.widget.playPause")
         WidgetCenter.shared.reloadTimelines(ofKind: "NowPlayingWidget")
         return .result()
