@@ -3300,6 +3300,7 @@ class AudioPlayerService extends ChangeNotifier {
   Future<void> skipForward([int seconds = 30]) async {
     if (_player == null) return;
     _resetStuckDetection();
+    if (!_player!.playing) _seekedWhilePaused = true;
     // Multiply by speed so the skip feels like the configured amount of real time
     final adjusted = (seconds * speed).round();
     debugPrint('[Service] skipForward(${seconds}s × ${speed}x = ${adjusted}s) — playing=${_player!.playing}');
@@ -3314,6 +3315,7 @@ class AudioPlayerService extends ChangeNotifier {
   Future<void> skipBackward([int seconds = 10]) async {
     if (_player == null) return;
     _resetStuckDetection();
+    if (!_player!.playing) _seekedWhilePaused = true;
     // Multiply by speed so the skip feels like the configured amount of real time
     final adjusted = (seconds * speed).round();
     final posS = position.inMilliseconds / 1000.0;
@@ -3354,6 +3356,7 @@ class AudioPlayerService extends ChangeNotifier {
   Future<void> skipToNextChapter() async {
     if (_player == null || _chapters.isEmpty) return;
     _resetStuckDetection();
+    if (!_player!.playing) _seekedWhilePaused = true;
     final posS = position.inMilliseconds / 1000.0;
     for (int i = 0; i < _chapters.length; i++) {
       final start = (_chapters[i]['start'] as num?)?.toDouble() ?? 0;
@@ -3370,6 +3373,7 @@ class AudioPlayerService extends ChangeNotifier {
   Future<void> skipToPreviousChapter() async {
     if (_player == null || _chapters.isEmpty) return;
     _resetStuckDetection();
+    if (!_player!.playing) _seekedWhilePaused = true;
     final posS = position.inMilliseconds / 1000.0;
     // If more than 3s into current chapter, go to start of current chapter
     // Otherwise go to previous chapter
