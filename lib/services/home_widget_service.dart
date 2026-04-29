@@ -28,6 +28,7 @@ class HomeWidgetService {
 
   Timer? _progressTimer;
   Timer? _statsTimer;
+  Timer? _heartbeatTimer;
   Timer? _pendingUpdate;
   String? _lastCoverItemId;
   DateTime? _lastUpdate;
@@ -114,11 +115,36 @@ class HomeWidgetService {
     // the user to open the app. 15-min cadence matches the refresh throttle.
     _statsTimer?.cancel();
     _statsTimer = Timer.periodic(_statsThrottle, (_) => refreshStats());
+
+    // Phase 1.4 hand-off heartbeat. The iOS native player core checks this
+    // before driving audio: a recent timestamp means Flutter is alive and
+    // owns playback, so the native side bails. Stale or missing means
+    // Flutter is dead and the widget can take over.
+    if (Platform.isIOS) {
+      _writeOwnerHeartbeat();
+      _heartbeatTimer?.cancel();
+      _heartbeatTimer = Timer.periodic(
+        const Duration(seconds: 10),
+        (_) => _writeOwnerHeartbeat(),
+      );
+    }
+  }
+
+  Future<void> _writeOwnerHeartbeat() async {
+    try {
+      await HomeWidget.saveWidgetData<int>(
+        'audio_owner_alive_at',
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (e) {
+      debugPrint('[WidgetDebug] heartbeat write failed: $e');
+    }
   }
 
   void dispose() {
     _progressTimer?.cancel();
     _statsTimer?.cancel();
+    _heartbeatTimer?.cancel();
     _pendingUpdate?.cancel();
     _clickSub?.cancel();
     AudioPlayerService().removeListener(_onPlayerChanged);

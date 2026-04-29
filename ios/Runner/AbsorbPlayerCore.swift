@@ -118,9 +118,27 @@ final class AbsorbPlayerCore: NSObject, AbsorbPlayerCoreProtocol, AVAudioPlayerD
 
   // MARK: - State plumbing
 
+  /// Phase 1.4 hand-off check. If Flutter wrote a recent
+  /// `audio_owner_alive_at` timestamp, it's alive and owns playback. The
+  /// native core bails so we don't double-drive the audio engine. Stale or
+  /// missing timestamp means Flutter is dead and we can take over.
+  private func flutterIsAlive() -> Bool {
+    let defaults = UserDefaults(suiteName: Self.appGroup)
+    guard let aliveAt = defaults?.object(forKey: "audio_owner_alive_at") as? Int else {
+      return false
+    }
+    let nowMs = Int(Date().timeIntervalSince1970 * 1000)
+    let ageMs = nowMs - aliveAt
+    return ageMs >= 0 && ageMs < 30_000
+  }
+
   /// Lazily load the AVAudioPlayer from the app group's stashed playback
   /// state. Caches the loaded player; rebuilds if the active item changed.
   private func ensureLoaded() {
+    if flutterIsAlive() {
+      emit("[NativeCore] ensureLoaded: Flutter is alive, skipping native load")
+      return
+    }
     let defaults = UserDefaults(suiteName: Self.appGroup)
     guard let itemId = defaults?.string(forKey: "np_item_id") else {
       emit("[NativeCore] ensureLoaded: no np_item_id in app group")
