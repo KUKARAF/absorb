@@ -6,7 +6,7 @@ import Foundation
 /// and the host app's AppDelegate registers a concrete singleton via
 /// `AppDependencyManager.shared.add(dependency:)`. This is what tells iOS to
 /// run the intent in the host app's process rather than the widget extension
-/// process — without that, the widget's `perform()` can't reach the audio
+/// process - without that, the widget's `perform()` can't reach the audio
 /// engine that lives in the host app.
 public protocol AbsorbPlayerCoreProtocol: Sendable {
   func play()

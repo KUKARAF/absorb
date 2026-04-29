@@ -54,15 +54,21 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
     }
 
     // Register the native player core as an AppIntent dependency. The widget
-    // intent declares `@Dependency var core: AbsorbPlayerCoreProtocol` — that
+    // intent declares `@Dependency var core: AbsorbPlayerCoreProtocol` - that
     // signals to iOS to launch this host app process to run the intent's
     // perform(), and the dependency manager hands back this concrete instance
     // so the intent can drive audio in-process. Without this, the widget
     // intent runs in the widget extension's sandbox and can't reach our audio
     // engine.
-    let core: AbsorbPlayerCoreProtocol = AbsorbPlayerCore.shared
-    AppDependencyManager.shared.add(dependency: core)
-    AbsorbPlayerCore.logSink?("[NativeCore] Registered as AppIntent dependency")
+    //
+    // AppIntents (and AppDependencyManager) are iOS 16+. Runner ships back
+    // to iOS 15 so we have to guard the call. iOS 15 users won't have the
+    // widget anyway (widget extension's deployment target is iOS 17).
+    if #available(iOS 16.0, *) {
+      let core: AbsorbPlayerCoreProtocol = AbsorbPlayerCore.shared
+      AppDependencyManager.shared.add(dependency: core)
+      AbsorbPlayerCore.logSink?("[NativeCore] Registered as AppIntent dependency")
+    }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

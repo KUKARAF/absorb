@@ -4,7 +4,7 @@ import Foundation
 /// Phase 1 stub. Each call gets logged twice: NSLog (visible in Xcode /
 /// Console.app on a Mac) AND through `logSink` which AppDelegate wires to
 /// the Flutter widget channel's "log" method so it lands in the in-app log
-/// viewer. That second path is what we actually rely on for verification —
+/// viewer. That second path is what we actually rely on for verification,
 /// no Mac needed.
 ///
 /// Once we see `[NativeCore] toggle() called` show up in absorb's in-app

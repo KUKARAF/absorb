@@ -64,7 +64,7 @@ struct PlayPauseIntent: AudioPlaybackIntent {
     static var description = IntentDescription("Toggle audiobook playback.")
 
     /// Declaring this dependency tells iOS to launch the host app's process
-    /// to run perform() — the AppDependencyManager registration lives in
+    /// to run perform() - the AppDependencyManager registration lives in
     /// Runner's AppDelegate. Without this the intent runs in the widget
     /// extension's sandbox where it can't drive audio.
     @Dependency
@@ -72,7 +72,7 @@ struct PlayPauseIntent: AudioPlaybackIntent {
 
     func perform() async throws -> some IntentResult {
         // Routing through core.log lands the line in absorb's in-app log
-        // viewer (via the widget channel's "log" method) — that's how we
+        // viewer (via the widget channel's "log" method), that's how we
         // verify Phase 1 without needing Xcode console access.
         core.log("[NativeCore] PlayPauseIntent.perform fired (host process)")
         // Optimistic UI: flip the stored state so the widget redraws immediately.
