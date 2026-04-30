@@ -795,6 +795,17 @@ class AudioPlayerService extends ChangeNotifier {
   List<String> get activeStreamUrls => _activeStreamUrls;
   Map<String, String> get activeStreamHeaders => _activeStreamHeaders;
   bool _isOfflineMode = false;
+
+  /// Externally-pushed signal that the server is currently unreachable.
+  /// AuthProvider mirrors `serverReachable` here on each ping result so we
+  /// can short-circuit pre-play server calls (e.g. session creation) for
+  /// instant offline playback - no need to wait for a network timeout to
+  /// discover what the auth layer already knows.
+  bool _knownOffline = false;
+  void setKnownOffline(bool offline) {
+    _knownOffline = offline;
+  }
+
   bool _isBackgrounded = false;
   bool get isBackgrounded => _isBackgrounded;
   SharedPreferences? _prefs;
@@ -1663,14 +1674,12 @@ class AudioPlayerService extends ChangeNotifier {
     final manualOffline = prefs.getBool('manual_offline_mode') ?? false;
     debugPrint('[Player] manualOffline=$manualOffline, api=${_api != null}');
 
-    // Try to start a server session for sync (unless manual offline).
-    // Cap the call at 5s so a silently-dropping reverse proxy doesn't
-    // hold up local playback for the full 20s api-level timeout. On a
-    // healthy server the response comes back in under 1s; on truly dead
-    // networks the kernel returns ECONNREFUSED in milliseconds; only
-    // the "host accepts but never replies" case takes the full window
-    // and that's the case we're shortening.
-    if (_api != null && !manualOffline) {
+    // Try to start a server session for sync. Skip entirely if the user
+    // is in manual offline mode OR if AuthProvider has told us the server
+    // is unreachable (skip = instant local playback). Otherwise the call
+    // is capped at 5s so a silently-dropping reverse proxy doesn't hold
+    // up local playback for the full 20s api-level timeout.
+    if (_api != null && !manualOffline && !_knownOffline) {
       try {
         debugPrint('[Player] Starting server session for local playback...');
         final sessionData = await (_currentEpisodeId != null

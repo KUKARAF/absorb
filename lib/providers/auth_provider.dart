@@ -25,7 +25,17 @@ class AuthProvider extends ChangeNotifier {
   Map<String, dynamic>? _userJson;
   Map<String, dynamic>? _serverSettings;
   String? _serverVersion;
-  bool _serverReachable = true;
+  bool __serverReachable = true;
+  bool get _serverReachable => __serverReachable;
+  set _serverReachable(bool value) {
+    if (__serverReachable == value) return;
+    __serverReachable = value;
+    // Mirror the offline state into AudioPlayerService so it can short-
+    // circuit pre-play server calls (e.g. session creation) without
+    // waiting on a network timeout. Lets downloaded books start playing
+    // instantly when we already know we're offline.
+    AudioPlayerService().setKnownOffline(!value);
+  }
   Map<String, String> _customHeaders = {};
 
   // Local server auto-switch
