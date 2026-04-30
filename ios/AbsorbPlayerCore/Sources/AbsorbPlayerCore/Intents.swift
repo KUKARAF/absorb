@@ -48,7 +48,12 @@ public func activateAbsorbAudioSession() {
 // same Swift type. AppDependencyManager.shared.add() in the host app is
 // keyed by Swift type identity, and types declared only in the widget
 // extension target wouldn't match anything the host app registered.
+//
+// Each intent is marked iOS 16+ since AppIntents itself is iOS 16+.
+// Runner deploys back to iOS 15; the widget extension is iOS 17. Runner
+// guards its use of these symbols with `if #available(iOS 16, *)`.
 
+@available(iOS 16.0, *)
 public struct AbsorbSkipBackIntent: AudioPlaybackIntent {
   public static let title: LocalizedStringResource = "Skip Back"
   public static let description = IntentDescription("Skip backward in the current audiobook.")
@@ -70,6 +75,7 @@ public struct AbsorbSkipBackIntent: AudioPlaybackIntent {
   }
 }
 
+@available(iOS 16.0, *)
 public struct AbsorbPlayPauseIntent: AudioPlaybackIntent {
   public static let title: LocalizedStringResource = "Play or Pause"
   public static let description = IntentDescription("Toggle audiobook playback.")
@@ -93,6 +99,7 @@ public struct AbsorbPlayPauseIntent: AudioPlaybackIntent {
   }
 }
 
+@available(iOS 16.0, *)
 public struct AbsorbSkipForwardIntent: AudioPlaybackIntent {
   public static let title: LocalizedStringResource = "Skip Forward"
   public static let description = IntentDescription("Skip forward in the current audiobook.")

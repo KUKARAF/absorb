@@ -142,6 +142,11 @@ static void tapFinalize(MTAudioProcessingTapRef tap) {
     if (ctx) free(ctx);
 }
 
+// Diagnostics callback set by AppDelegate so format info from tapPrepare
+// can land in absorb's in-app log via the Flutter widget channel. NSLog
+// alone only shows in Xcode/Console.app on a Mac.
+static void (^sFormatLogger)(NSString *) = NULL;
+
 static void tapPrepare(MTAudioProcessingTapRef tap,
                        CMItemCount maxFrames,
                        const AudioStreamBasicDescription *processingFormat) {
@@ -150,7 +155,11 @@ static void tapPrepare(MTAudioProcessingTapRef tap,
 
     ctx->sampleRate = (float)processingFormat->mSampleRate;
     ctx->numChannels = (int)processingFormat->mChannelsPerFrame;
-    if (ctx->numChannels > MAX_CHANNELS) ctx->numChannels = MAX_CHANNELS;
+    int truncated = 0;
+    if (ctx->numChannels > MAX_CHANNELS) {
+        truncated = ctx->numChannels;
+        ctx->numChannels = MAX_CHANNELS;
+    }
 
     // Zero delay lines
     memset(ctx->delays, 0, sizeof(ctx->delays));
@@ -158,6 +167,43 @@ static void tapPrepare(MTAudioProcessingTapRef tap,
 
     // Build initial coefficients
     rebuildCoefficients(ctx);
+
+    // Diagnostics: dump the audio format so we can correlate "tap enabled
+    // produces silence" reports to specific format fingerprints (e.g. low
+    // bitrate AAC at 22050Hz mono). Format is the post-decode PCM the tap
+    // actually receives, not the source file's compressed format.
+    int enabled = atomic_load_explicit(&sParams.enabled, memory_order_relaxed);
+    UInt32 fmtID = processingFormat->mFormatID;
+    char fmtIDChars[5] = {
+        (char)((fmtID >> 24) & 0xff),
+        (char)((fmtID >> 16) & 0xff),
+        (char)((fmtID >> 8) & 0xff),
+        (char)(fmtID & 0xff),
+        0
+    };
+    UInt32 flags = processingFormat->mFormatFlags;
+    NSString *line = [NSString stringWithFormat:
+        @"[EQDiag] tapPrepare enabled=%d sampleRate=%.1f channels=%u (truncated_from=%d) "
+        @"formatID='%s' flags=0x%x [%s%s%s%s%s%s] bitsPerChannel=%u "
+        @"bytesPerFrame=%u framesPerPacket=%u maxFrames=%lld",
+        enabled,
+        processingFormat->mSampleRate,
+        (unsigned)processingFormat->mChannelsPerFrame,
+        truncated,
+        fmtIDChars,
+        (unsigned)flags,
+        (flags & 0x1) ? "Float " : "",
+        (flags & 0x2) ? "BigEndian " : "",
+        (flags & 0x4) ? "SignedInt " : "",
+        (flags & 0x8) ? "Packed " : "",
+        (flags & 0x10) ? "AlignedHigh " : "",
+        (flags & 0x20) ? "NonInterleaved" : "Interleaved",
+        (unsigned)processingFormat->mBitsPerChannel,
+        (unsigned)processingFormat->mBytesPerFrame,
+        (unsigned)processingFormat->mFramesPerPacket,
+        (long long)maxFrames];
+    NSLog(@"%@", line);
+    if (sFormatLogger) sFormatLogger(line);
 }
 
 static void tapUnprepare(MTAudioProcessingTapRef tap) {

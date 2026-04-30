@@ -53,6 +53,16 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
       }
     }
 
+    // Same routing for the EQ tap's format diagnostics, so when a user
+    // reports "EQ on, this book has no sound" we can see the post-decode
+    // PCM format the tap actually received (low-bitrate AAC m4b often
+    // shows up here as mono / unusual sample rate).
+    AudioEQProcessor.setFormatLogger { [weak self] line in
+      DispatchQueue.main.async {
+        self?.widgetChannel?.invokeMethod("log", arguments: ["msg": line])
+      }
+    }
+
     // Register the native player core as an AppIntent dependency. The widget
     // intent declares `@Dependency var core: AbsorbPlayerCoreProtocol` - that
     // signals to iOS to launch this host app process to run the intent's

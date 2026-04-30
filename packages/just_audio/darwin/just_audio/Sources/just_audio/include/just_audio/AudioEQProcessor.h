@@ -30,6 +30,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// Enable mono downmix.
 - (void)setMonoEnabled:(BOOL)enabled;
 
+/// Sets a callback that gets each `[EQDiag]` line emitted from
+/// tapPrepare so callers can route format info into their own logger
+/// (e.g. absorb's in-app log via the widget channel). Pass nil to clear.
++ (void)setFormatLogger:(nullable void (^)(NSString *line))logger;
+
 @end
 
 NS_ASSUME_NONNULL_END
