@@ -2435,10 +2435,20 @@ class AudioPlayerService extends ChangeNotifier {
     // Android: Always use content:// URI for Now Playing artwork - some OEMs
     // (e.g. Vivo) don't load HTTP URLs in MediaSession. The CoverContentProvider
     // handles both downloaded and streamed covers.
-    // iOS: Use the HTTP URL directly — content:// is Android-only.
-    final effectiveCoverUrl = Platform.isIOS
-        ? coverUrl
-        : 'content://$_coverAuthority/cover/$itemId';
+    // iOS: prefer the local cover file for downloaded books so the lock
+    // screen shows artwork even when the user is offline. Fall back to the
+    // remote HTTP URL when there's no local cover (streaming).
+    String? effectiveCoverUrl;
+    if (Platform.isIOS) {
+      final localCover = DownloadService().getInfo(itemId).localCoverPath;
+      if (localCover != null && localCover.isNotEmpty) {
+        effectiveCoverUrl = Uri.file(localCover).toString();
+      } else {
+        effectiveCoverUrl = coverUrl;
+      }
+    } else {
+      effectiveCoverUrl = 'content://$_coverAuthority/cover/$itemId';
+    }
     _updateNotificationMediaItem(itemId, title, author, effectiveCoverUrl, totalDuration, chapter: chapter);
   }
 
