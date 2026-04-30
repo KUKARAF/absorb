@@ -1663,13 +1663,20 @@ class AudioPlayerService extends ChangeNotifier {
     final manualOffline = prefs.getBool('manual_offline_mode') ?? false;
     debugPrint('[Player] manualOffline=$manualOffline, api=${_api != null}');
 
-    // Try to start a server session for sync (unless manual offline)
+    // Try to start a server session for sync (unless manual offline).
+    // Cap the call at 5s so a silently-dropping reverse proxy doesn't
+    // hold up local playback for the full 20s api-level timeout. On a
+    // healthy server the response comes back in under 1s; on truly dead
+    // networks the kernel returns ECONNREFUSED in milliseconds; only
+    // the "host accepts but never replies" case takes the full window
+    // and that's the case we're shortening.
     if (_api != null && !manualOffline) {
       try {
         debugPrint('[Player] Starting server session for local playback...');
-        final sessionData = _currentEpisodeId != null
-            ? await _api!.startEpisodePlaybackSession(_currentItemId!, _currentEpisodeId!)
-            : await _api!.startPlaybackSession(itemId);
+        final sessionData = await (_currentEpisodeId != null
+            ? _api!.startEpisodePlaybackSession(_currentItemId!, _currentEpisodeId!)
+            : _api!.startPlaybackSession(itemId)
+        ).timeout(const Duration(seconds: 5), onTimeout: () => null);
         if (sessionData != null) {
           _playbackSessionId = sessionData['id'] as String?;
           debugPrint('[Player] Got server session for local playback: $_playbackSessionId');
