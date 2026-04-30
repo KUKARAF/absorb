@@ -339,6 +339,10 @@ static void tapProcess(MTAudioProcessingTapRef tap,
     return instance;
 }
 
++ (void)setFormatLogger:(void (^)(NSString *))logger {
+    sFormatLogger = [logger copy];
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {
