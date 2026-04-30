@@ -365,7 +365,16 @@ class AndroidAutoService {
       // Use show ID for podcast episode covers so the CoverContentProvider
       // can fall back to /api/items/<showId>/cover on the server.
       final coverKey = isEpisode ? showId! : dl.itemId;
-      final coverUrl = localCoverUri(coverKey);
+      // iOS CarPlay can't load Android content:// URIs - use the local
+      // cover file directly. Android Auto requires content:// (file://
+      // doesn't work for it). Falls back to the content URI on iOS too if
+      // there's no local file path so behavior degrades gracefully.
+      String coverUrl;
+      if (Platform.isIOS && dl.localCoverPath != null && dl.localCoverPath!.isNotEmpty) {
+        coverUrl = Uri.file(dl.localCoverPath!).toString();
+      } else {
+        coverUrl = localCoverUri(coverKey);
+      }
 
       entries.add(AutoBookEntry(
         id: dl.itemId,
