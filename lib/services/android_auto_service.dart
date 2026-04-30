@@ -280,10 +280,17 @@ class AndroidAutoService {
     });
   }
 
+  /// Called once the background server-side refresh completes (success or
+  /// failure) so listeners can re-render their browse trees with the new
+  /// data. CarPlayService sets this in init() to call refreshTemplates();
+  /// AndroidAuto uses notifyChildrenChanged below independently.
+  static void Function()? onServerDataChanged;
+
   Future<void> refresh({bool force = false}) async {
     // Always populate downloads immediately — no server needed.
-    // This ensures Android Auto can show the Downloads tab even if the
-    // server is unreachable (e.g. no remote access, offline-only users).
+    // This ensures Android Auto / CarPlay can show the Downloads tab even
+    // if the server is unreachable (e.g. no remote access, offline-only
+    // users).
     if (!_downloadsReady || force) {
       await _refreshDownloaded();
       _downloadsReady = true;
@@ -297,8 +304,16 @@ class AndroidAutoService {
 
     _isRefreshing = true;
     debugPrint('[AutoBrowse] Refreshing browse tree...');
+    // Kick the server fetch off in the background so callers (CarPlay scene
+    // init, Android Auto media browser) don't block on a 15s `getLibraries`
+    // timeout when the server is unreachable. The downloads pass above is
+    // already populated; that's enough to render a useful browse tree
+    // immediately. When the server data arrives (or fails) we fire the
+    // listener hook so the UI re-renders with the fresh sections.
+    unawaited(_refreshServerInBackground());
+  }
 
-    // Server fetch is best-effort — don't block the browse tree
+  Future<void> _refreshServerInBackground() async {
     try {
       await _refreshDownloaded(); // re-fetch in case downloads changed
       await _refreshFromServer();
@@ -316,13 +331,16 @@ class AndroidAutoService {
       debugPrint('[AutoBrowse] Server refresh failed (downloads still available): $e');
     } finally {
       _isRefreshing = false;
-      // Tell Android Auto's MediaBrowser to re-fetch the root browse tree.
-      // iOS CarPlay uses this service for data but doesn't have a MediaBrowser.
       if (Platform.isAndroid) {
         try {
           // ignore: deprecated_member_use
           await AudioServiceBackground.notifyChildrenChanged(AutoMediaIds.root);
         } catch (_) {}
+      }
+      try {
+        onServerDataChanged?.call();
+      } catch (e) {
+        debugPrint('[AutoBrowse] onServerDataChanged listener threw: $e');
       }
     }
   }

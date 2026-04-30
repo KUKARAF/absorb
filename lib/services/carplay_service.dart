@@ -25,6 +25,16 @@ class CarPlayService {
     _initialized = true;
     _flutterCarplay.addListenerOnConnectionChange(_onConnectionChange);
     debugPrint('[CarPlay] Initialized');
+    // Re-render the root template when the background server refresh
+    // completes. AutoBrowse.refresh() returns immediately after downloads
+    // are populated and continues the server fetch in the background;
+    // this hook is how we know to swap the downloads-only tree for the
+    // full one (or the other way for offline → online recovery).
+    AndroidAutoService.onServerDataChanged = () {
+      if (!_initialized || _rootTemplate == null) return;
+      debugPrint('[CarPlay] onServerDataChanged - rebuilding root template');
+      refreshTemplates();
+    };
     // Eagerly load auto browse data so the first CarPlay connect lands with
     // full content already cached. Without this, the user's first open would
     // either show empty Continue Listening / Library tabs or wait the full
