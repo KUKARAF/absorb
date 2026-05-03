@@ -12,6 +12,7 @@ import '../services/chromecast_service.dart';
 import '../services/download_service.dart';
 import '../services/equalizer_service.dart';
 import '../services/playback_history_service.dart';
+import '../services/scoped_prefs.dart';
 import '../services/sleep_timer_service.dart';
 import 'absorb_slider.dart';
 import 'absorbing_shared.dart';
@@ -1786,85 +1787,20 @@ class CardActionDelegate {
   }
 
   void showHistory(BuildContext ctx, Color accent, TextTheme tt) {
-    final l = AppLocalizations.of(ctx)!;
     showModalBottomSheet(
       context: ctx, isScrollControlled: true, useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (sheetCtx) => DraggableScrollableSheet(
         expand: false, initialChildSize: 0.6, minChildSize: 0.05, snap: true, maxChildSize: 0.9,
-        builder: (_, sc) => Container(
-          decoration: BoxDecoration(
-            color: Theme.of(ctx).bottomSheetTheme.backgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border(top: BorderSide(color: accent.withValues(alpha: 0.2), width: 1)),
-          ),
-          child: Column(children: [
-            Padding(padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(children: [
-                const Spacer(),
-                Text(l.playbackHistory, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                const Spacer(),
-                IconButton(
-                  icon: Icon(Icons.delete_outline_rounded, size: 20, color: Theme.of(ctx).colorScheme.onSurfaceVariant),
-                  onPressed: () async {
-                    await PlaybackHistoryService().clearHistory(itemId);
-                    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
-                  },
-                  tooltip: l.clearHistoryTooltip,
-                ),
-              ]),
-            ),
-            if (isActive)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Text(l.tapEventToJump,
-                  style: tt.bodySmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant.withValues(alpha: 0.6), fontStyle: FontStyle.italic)),
-              )
-            else
-              const SizedBox(height: 8),
-            Expanded(child: FutureBuilder<List<PlaybackEvent>>(
-              future: PlaybackHistoryService().getHistory(itemId),
-              builder: (futureCtx, snap) {
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-                final events = snap.data!;
-                if (events.isEmpty) return Center(child: Text(l.noHistoryYet, style: tt.bodyMedium?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant)));
-
-                final items = <Widget>[];
-                String? lastDate;
-                for (int i = 0; i < events.length; i++) {
-                  final e = events[i];
-                  final dl = dateLabel(e.timestamp);
-                  if (dl != lastDate) {
-                    lastDate = dl;
-                    items.add(Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: Text(dl, style: tt.labelSmall?.copyWith(
-                        color: accent.withValues(alpha: 0.6), fontWeight: FontWeight.w600, letterSpacing: 0.5)),
-                    ));
-                  }
-                  final posLabel = fmtTime(e.positionSeconds);
-                  final timeStr = timeOfDay(e.timestamp);
-                  items.add(ListTile(
-                    dense: true, visualDensity: const VisualDensity(vertical: -2),
-                    leading: Icon(historyIcon(e.type), size: 18, color: accent.withValues(alpha: 0.7)),
-                    title: Text(e.label, style: tt.bodySmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.7))),
-                    subtitle: Text(l.atPosition(posLabel), style: tt.labelSmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
-                    trailing: Text(timeStr, style: tt.labelSmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.3))),
-                    onTap: isActive ? () {
-                      player.seekTo(Duration(seconds: e.positionSeconds.round()));
-                      Navigator.pop(futureCtx);
-                      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(duration: const Duration(seconds: 3), content: Text(l.jumpedToPosition(posLabel))));
-                    } : null,
-                  ));
-                }
-
-                return ListView(controller: sc, children: items);
-              },
-            )),
-          ]),
+        builder: (_, sc) => _PlaybackHistoryBody(
+          itemId: itemId,
+          accent: accent,
+          tt: tt,
+          isActive: isActive,
+          player: player,
+          parentCtx: ctx,
+          sheetCtx: sheetCtx,
+          scrollController: sc,
         ),
       ),
     );
@@ -1902,5 +1838,214 @@ class CardActionDelegate {
       'title': player.currentEpisodeTitle,
       'duration': player.totalDuration,
     };
+  }
+}
+
+const String _kAdvancedHistoryPrefKey = 'playback_history_advanced';
+
+class _PlaybackHistoryBody extends StatefulWidget {
+  final String itemId;
+  final Color accent;
+  final TextTheme tt;
+  final bool isActive;
+  final AudioPlayerService player;
+  final BuildContext parentCtx;
+  final BuildContext sheetCtx;
+  final ScrollController scrollController;
+
+  const _PlaybackHistoryBody({
+    required this.itemId,
+    required this.accent,
+    required this.tt,
+    required this.isActive,
+    required this.player,
+    required this.parentCtx,
+    required this.sheetCtx,
+    required this.scrollController,
+  });
+
+  @override
+  State<_PlaybackHistoryBody> createState() => _PlaybackHistoryBodyState();
+}
+
+class _PlaybackHistoryBodyState extends State<_PlaybackHistoryBody> {
+  bool _advanced = false;
+  Future<List<PlaybackEvent>>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = PlaybackHistoryService().getHistory(widget.itemId);
+    ScopedPrefs.getBool(_kAdvancedHistoryPrefKey).then((v) {
+      if (!mounted) return;
+      setState(() => _advanced = v ?? false);
+    });
+  }
+
+  Future<void> _toggleAdvanced() async {
+    final next = !_advanced;
+    setState(() => _advanced = next);
+    await ScopedPrefs.setBool(_kAdvancedHistoryPrefKey, next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(widget.parentCtx)!;
+    final cs = Theme.of(widget.parentCtx).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(widget.parentCtx).bottomSheetTheme.backgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: widget.accent.withValues(alpha: 0.2), width: 1)),
+      ),
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Container(
+            width: 40, height: 4,
+            decoration: BoxDecoration(
+              color: cs.onSurface.withValues(alpha: 0.24),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            const Spacer(),
+            Text(
+              l.playbackHistory,
+              style: widget.tt.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const Spacer(),
+            IconButton(
+              icon: Icon(Icons.delete_outline_rounded, size: 20, color: cs.onSurfaceVariant),
+              onPressed: () async {
+                await PlaybackHistoryService().clearHistory(widget.itemId);
+                if (widget.sheetCtx.mounted) Navigator.pop(widget.sheetCtx);
+              },
+              tooltip: l.clearHistoryTooltip,
+            ),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Row(children: [
+            if (widget.isActive)
+              Expanded(
+                child: Text(
+                  l.tapEventToJump,
+                  style: widget.tt.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              )
+            else
+              const Spacer(),
+            Text(
+              'Show more',
+              style: widget.tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(width: 8),
+            Transform.scale(
+              scale: 0.8,
+              child: Switch(
+                value: _advanced,
+                onChanged: (_) => _toggleAdvanced(),
+                activeThumbColor: widget.accent,
+              ),
+            ),
+          ]),
+        ),
+        Expanded(
+          child: FutureBuilder<List<PlaybackEvent>>(
+            future: _future,
+            builder: (futureCtx, snap) {
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+              }
+              final all = snap.data!;
+              final events = _advanced
+                  ? all
+                  : all.where((e) => !kAdvancedHistoryEvents.contains(e.type)).toList();
+              if (events.isEmpty) {
+                return Center(
+                  child: Text(
+                    l.noHistoryYet,
+                    style: widget.tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                );
+              }
+
+              final items = <Widget>[];
+              String? lastDate;
+              for (int i = 0; i < events.length; i++) {
+                final e = events[i];
+                final dl = dateLabel(e.timestamp);
+                if (dl != lastDate) {
+                  lastDate = dl;
+                  items.add(Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Text(
+                      dl,
+                      style: widget.tt.labelSmall?.copyWith(
+                        color: widget.accent.withValues(alpha: 0.6),
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ));
+                }
+                final posLabel = fmtTime(e.positionSeconds);
+                final timeStr = timeOfDay(e.timestamp);
+                final isAdvancedEvent = kAdvancedHistoryEvents.contains(e.type);
+                items.add(ListTile(
+                  dense: true,
+                  visualDensity: const VisualDensity(vertical: -2),
+                  leading: Icon(
+                    historyIcon(e.type),
+                    size: 18,
+                    color: widget.accent.withValues(alpha: isAdvancedEvent ? 0.45 : 0.7),
+                  ),
+                  title: Text(
+                    e.label,
+                    style: widget.tt.bodySmall?.copyWith(
+                      color: cs.onSurface.withValues(alpha: isAdvancedEvent ? 0.55 : 0.7),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    l.atPosition(posLabel),
+                    style: widget.tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                  trailing: Text(
+                    timeStr,
+                    style: widget.tt.labelSmall?.copyWith(
+                      color: cs.onSurface.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  onTap: widget.isActive
+                      ? () {
+                          widget.player.seekTo(Duration(seconds: e.positionSeconds.round()));
+                          Navigator.pop(futureCtx);
+                          ScaffoldMessenger.of(widget.parentCtx).showSnackBar(
+                            SnackBar(
+                              duration: const Duration(seconds: 3),
+                              content: Text(l.jumpedToPosition(posLabel)),
+                            ),
+                          );
+                        }
+                      : null,
+                ));
+              }
+
+              return ListView(controller: widget.scrollController, children: items);
+            },
+          ),
+        ),
+      ]),
+    );
   }
 }

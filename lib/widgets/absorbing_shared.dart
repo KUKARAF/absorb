@@ -67,6 +67,10 @@ IconData historyIcon(PlaybackEventType type) {
     case PlaybackEventType.skipForward: return Icons.forward_30_rounded;
     case PlaybackEventType.skipBackward: return Icons.replay_10_rounded;
     case PlaybackEventType.speedChange: return Icons.speed_rounded;
+    case PlaybackEventType.bookFinished: return Icons.flag_rounded;
+    case PlaybackEventType.sessionStart: return Icons.fiber_manual_record_rounded;
+    case PlaybackEventType.sessionEnd: return Icons.stop_circle_outlined;
+    case PlaybackEventType.clickDebounce: return Icons.touch_app_rounded;
   }
 }
 

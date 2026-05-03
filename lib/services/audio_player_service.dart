@@ -404,7 +404,9 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> click([MediaButton button = MediaButton.media]) async {
     debugPrint('[Handler] click(button=$button) count=${_clickCount + 1} playing=${_player.playing}');
-    debugPrint('[ClickDebug] click arrival (button=$button): ${_clickDebugSnapshot()}');
+    final snapshot = _clickDebugSnapshot();
+    debugPrint('[ClickDebug] click arrival (button=$button): $snapshot');
+    _service?._logEvent(PlaybackEventType.clickDebounce, detail: 'button=$button | $snapshot');
 
     if (button != MediaButton.media) {
       // Hardware next/prev button — set cooldown to ignore phantom media click
@@ -1692,6 +1694,7 @@ class AudioPlayerService extends ChangeNotifier {
         if (sessionData != null) {
           _playbackSessionId = sessionData['id'] as String?;
           debugPrint('[Player] Got server session for local playback: $_playbackSessionId');
+          _logEvent(PlaybackEventType.sessionStart, detail: 'local');
 
           // Alpha [PodDur]: which duration fields did the session response carry?
           // If the server ships a usable duration here and we ignore it, we
@@ -1994,6 +1997,7 @@ class AudioPlayerService extends ChangeNotifier {
       _playbackSessionId = sessionData['id'] as String?;
       _lastServerSync = DateTime.now();
       debugPrint('[Player] Background session refreshed: $_playbackSessionId');
+      _logEvent(PlaybackEventType.sessionStart, detail: 'refresh');
 
       // Update cached session with fresh track data in case it changed
       final audioTracks = sessionData['audioTracks'] as List<dynamic>?;
@@ -2047,6 +2051,7 @@ class AudioPlayerService extends ChangeNotifier {
 
     _playbackSessionId = sessionData['id'] as String?;
     _lastServerSync = DateTime.now();
+    _logEvent(PlaybackEventType.sessionStart, detail: 'stream');
     var audioTracks = sessionData['audioTracks'] as List<dynamic>?;
     if (audioTracks == null || audioTracks.isEmpty) {
       _clearState();
@@ -2977,7 +2982,7 @@ class AudioPlayerService extends ChangeNotifier {
     }
 
     debugPrint('[Player] Book complete: $_currentTitle');
-    _logEvent(PlaybackEventType.pause, detail: 'Book finished');
+    _logEvent(PlaybackEventType.bookFinished);
 
     // Stop immediately to prevent ExoPlayer from seeking back to position 0
     // (which triggers position-stream events that look like a restart).
@@ -3032,6 +3037,7 @@ class AudioPlayerService extends ChangeNotifier {
     if (_playbackSessionId != null && _api != null) {
       final api = _api!;
       final sessionId = _playbackSessionId!;
+      _logEvent(PlaybackEventType.sessionEnd, detail: 'book finished');
       unawaited(() async {
         try {
           debugPrint('[Player] Closing session (book finished)');
@@ -3103,6 +3109,9 @@ class AudioPlayerService extends ChangeNotifier {
       // 15-min authoritative refreshes (which Android Doze throttles).
       unawaited(HomeWidgetService().addLocalListeningSeconds(elapsed));
     }
+    if (ok) {
+      _logEvent(PlaybackEventType.syncServer, detail: '+${elapsed}s');
+    }
     if (!ok && !_syncRecoveryInProgress) {
       debugPrint('[Player] Session sync failed - attempting recovery');
       _syncRecoveryInProgress = true;
@@ -3124,6 +3133,7 @@ class AudioPlayerService extends ChangeNotifier {
       if (sessionData != null) {
         _playbackSessionId = sessionData['id'] as String?;
         debugPrint('[Player] Recovered session: $_playbackSessionId');
+        _logEvent(PlaybackEventType.sessionStart, detail: 'recovery');
         // Re-sync the lost time to the new session
         if (_playbackSessionId != null && lostTimeListened > 0) {
           await _api!.syncPlaybackSession(
@@ -3401,6 +3411,7 @@ class AudioPlayerService extends ChangeNotifier {
       // been paused for the whole pause-timeout window - the wall-clock diff
       // would otherwise inflate server listening stats by up to 300s.
       if (_playbackSessionId != null && _api != null) {
+        _logEvent(PlaybackEventType.sessionEnd, detail: 'pause timeout');
         try {
           await _syncToServer(position, timeListenedOverride: 0);
           debugPrint('[Player] Closing session (pause timeout)');
@@ -3583,6 +3594,7 @@ class AudioPlayerService extends ChangeNotifier {
       // so the wall-clock diff doesn't inflate server listening stats.
       if (_playbackSessionId != null && _api != null) {
         final wasPlaying = _player?.playing ?? false;
+        _logEvent(PlaybackEventType.sessionEnd, detail: 'stop');
         await _syncToServer(position,
             timeListenedOverride: wasPlaying ? null : 0);
         try {

@@ -13,7 +13,20 @@ enum PlaybackEventType {
   skipForward,
   skipBackward,
   speedChange,
+  bookFinished,
+  sessionStart,
+  sessionEnd,
+  clickDebounce,
 }
+
+/// Events that only show in the sheet when the user enables advanced mode.
+const Set<PlaybackEventType> kAdvancedHistoryEvents = {
+  PlaybackEventType.syncLocal,
+  PlaybackEventType.syncServer,
+  PlaybackEventType.sessionStart,
+  PlaybackEventType.sessionEnd,
+  PlaybackEventType.clickDebounce,
+};
 
 /// A single playback event entry.
 class PlaybackEvent {
@@ -75,6 +88,17 @@ class PlaybackEvent {
       case PlaybackEventType.speedChange:
         if (detail != null && detail!.isNotEmpty) return 'Speed set to ${detail!}';
         return 'Speed changed';
+      case PlaybackEventType.bookFinished:
+        return 'Book finished';
+      case PlaybackEventType.sessionStart:
+        if (detail != null && detail!.isNotEmpty) return 'Session started ($detail)';
+        return 'Session started';
+      case PlaybackEventType.sessionEnd:
+        if (detail != null && detail!.isNotEmpty) return 'Session ended ($detail)';
+        return 'Session ended';
+      case PlaybackEventType.clickDebounce:
+        if (detail != null && detail!.isNotEmpty) return 'Media button: $detail';
+        return 'Media button';
     }
   }
 
@@ -98,6 +122,14 @@ class PlaybackEvent {
         return '⏮';
       case PlaybackEventType.speedChange:
         return '⚡';
+      case PlaybackEventType.bookFinished:
+        return '🏁';
+      case PlaybackEventType.sessionStart:
+        return '🟢';
+      case PlaybackEventType.sessionEnd:
+        return '🔴';
+      case PlaybackEventType.clickDebounce:
+        return '🖲';
     }
   }
 }
@@ -108,7 +140,7 @@ class PlaybackHistoryService {
   factory PlaybackHistoryService() => _instance;
   PlaybackHistoryService._();
 
-  static const int _maxEventsPerBook = 200;
+  static const int _maxEventsPerBook = 1000;
 
   /// Log an event for a book.
   Future<void> log({
