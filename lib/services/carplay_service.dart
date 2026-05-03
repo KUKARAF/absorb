@@ -19,6 +19,7 @@ class CarPlayService {
   bool _buildingRoot = false;
   DateTime? _lastRootBuilt;
   CPTabBarTemplate? _rootTemplate;
+  Future<void>? _inFlightBuild;
 
   void init() {
     if (!Platform.isIOS || _initialized) return;
@@ -32,6 +33,19 @@ class CarPlayService {
     // full one (or the other way for offline → online recovery).
     AndroidAutoService.onServerDataChanged = () {
       if (!_initialized || _rootTemplate == null) return;
+      // _connectAndRender awaits its own refresh() which fires this callback
+      // mid-flight; without this guard both paths call setRootTemplate within
+      // ~0ms and CarPlay renders the tabs blank until the user backgrounds
+      // and reopens the app.
+      if (_inFlightBuild != null) {
+        debugPrint('[CarPlay] onServerDataChanged - skipped (build in flight)');
+        return;
+      }
+      if (_lastRootBuilt != null &&
+          DateTime.now().difference(_lastRootBuilt!) < const Duration(milliseconds: 500)) {
+        debugPrint('[CarPlay] onServerDataChanged - skipped (built ${DateTime.now().difference(_lastRootBuilt!).inMilliseconds}ms ago)');
+        return;
+      }
       debugPrint('[CarPlay] onServerDataChanged - rebuilding root template');
       refreshTemplates();
     };
@@ -124,6 +138,23 @@ class CarPlayService {
   }
 
   Future<void> _setRootTemplate({String label = ''}) async {
+    // Coalesce concurrent calls. If a build is already in flight, await it
+    // instead of starting a second one - two setRootTemplate invocations
+    // racing within the same microtask leave CarPlay rendering blank tabs.
+    if (_inFlightBuild != null) {
+      debugPrint('[CarPlay] _setRootTemplate ($label) - awaiting in-flight build');
+      return _inFlightBuild;
+    }
+    final fut = _doSetRootTemplate(label: label);
+    _inFlightBuild = fut;
+    try {
+      await fut;
+    } finally {
+      _inFlightBuild = null;
+    }
+  }
+
+  Future<void> _doSetRootTemplate({required String label}) async {
     _buildingRoot = true;
     try {
       final tabs = await _buildTabs();
