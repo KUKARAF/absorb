@@ -4,7 +4,7 @@
 
 A modern audiobookshelf client with a card-based player experience.
 
-> **A note on AI:** Absorb is developed by a human with AI assistance (mostly Claude Code) helping write, refactor, and review code. It's not "vibe coded" or auto-generated, every change is reviewed, tested, and shipped intentionally. I'm sharing this openly so you know what's behind the app.
+> **A note on AI:** Absorb is developed by a human with AI assistance (mostly Claude Code) helping write, refactor, and review code. It's not "vibe coded" or auto-generated, every change is reviewed, tested, and shipped intentionally. That said, I'm all in on AI as a development tool. It massively speeds up the work and lets a solo developer ship features and fixes at a pace that wouldn't be possible otherwise. I'm sharing this openly so you know what's behind the app.
 
 ## Screenshots
 
