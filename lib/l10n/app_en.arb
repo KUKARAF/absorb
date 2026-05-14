@@ -1182,6 +1182,8 @@
   "episodeListPlaysOlderToNewer": "Plays older to newer episodes",
   "episodeListEpisodeCount": "{count, plural, =1{1 episode} other{{count} episodes}}",
   "@episodeListEpisodeCount": { "placeholders": { "count": { "type": "int" } } },
+  "episodeListUnfinishedCount": "{count, plural, =1{1 unfinished} other{{count} unfinished}}",
+  "@episodeListUnfinishedCount": { "placeholders": { "count": { "type": "int" } } },
   "episodeListAutoDownloadChip": "Auto-Download",
   "episodeListSubscribedChip": "Subscribed",
   "episodeListExplicitChip": "Explicit",

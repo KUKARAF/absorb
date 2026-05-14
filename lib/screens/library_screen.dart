@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -19,9 +20,11 @@ import '../widgets/library_series_tab.dart';
 import '../widgets/library_authors_tab.dart';
 import '../widgets/library_narrators_tab.dart';
 import 'admin_podcasts_screen.dart';
+import 'app_shell.dart';
 import 'upcoming_releases_screen.dart';
 import '../widgets/audible_series_sheet.dart' show showAudibleRegionPicker;
 import '../widgets/offline_status_icon.dart';
+import '../widgets/scroll_reveal.dart';
 import '../l10n/app_localizations.dart';
 
 /// Responsive grid column count based on available width.
@@ -66,13 +69,13 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     _searchController.clear();
     _onSearchChanged('');
     _focusNode.unfocus();
-    _showBars();
+    _revealDriver.resetToShown();
   }
 
   /// Give focus to the search bar (used by the app-icon "Search" shortcut).
   void focusSearch() {
     if (!mounted) return;
-    _showBars();
+    _revealDriver.resetToShown();
     FocusScope.of(context).requestFocus(_focusNode);
     // Delay the explicit keyboard-show so focus has time to attach to the
     // text field and any in-flight navigation (popping Downloads/Bookmarks,
@@ -155,56 +158,12 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   double get _coverAspectRatio => _rectangleCovers ? 2 / 3 : 1.0;
 
   // ── Scroll-to-hide bars ──
-  /// Notifies AppShell whether the bottom nav bar should be visible.
-  final ValueNotifier<bool> barsVisibleNotifier = ValueNotifier(true);
-  late final AnimationController _headerAnimController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 400),
-    value: 1.0,
-  );
-  double _lastScrollOffset = 0;
-  double _scrollAccumulator = 0;
-  static const _scrollThreshold = 40.0; // pixels of scroll before hide/show triggers
-
-  void _onScrollDirection(ScrollController controller) {
-    if (_isInSearchMode) return;
-    if (!controller.hasClients) return;
-    final offset = controller.offset;
-    final delta = offset - _lastScrollOffset;
-    _lastScrollOffset = offset;
-
-    // At the top, always show
-    if (offset <= 0) {
-      _scrollAccumulator = 0;
-      _showBars();
-      return;
-    }
-    if (delta.abs() < 0.5) return;
-
-    // Accumulate scroll in current direction; reset on direction change
-    if ((delta > 0) != (_scrollAccumulator > 0)) _scrollAccumulator = 0;
-    _scrollAccumulator += delta;
-
-    if (_scrollAccumulator > _scrollThreshold) {
-      _hideBars();
-    } else if (_scrollAccumulator < -_scrollThreshold) {
-      _showBars();
-    }
-  }
-
-  void _showBars() {
-    if (!barsVisibleNotifier.value) {
-      barsVisibleNotifier.value = true;
-      _headerAnimController.forward();
-    }
-  }
-
-  void _hideBars() {
-    if (barsVisibleNotifier.value) {
-      barsVisibleNotifier.value = false;
-      _headerAnimController.reverse();
-    }
-  }
+  /// Continuous 0..1 reveal: 1 = header + nav fully visible, 0 = both hidden.
+  /// Drives the header SizeTransition, the floating tab bar, and the AppShell
+  /// bottom nav in lockstep.
+  late final ScrollRevealDriver _revealDriver = ScrollRevealDriver(vsync: this);
+  ValueListenable<double> get barsRevealNotifier => _revealDriver.notifier;
+  void resetReveal() => _revealDriver.resetToShown();
 
   /// Called externally (e.g. from AppShell) to focus the search field.
   void requestSearchFocus() {
@@ -216,14 +175,18 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-    _seriesScrollController.addListener(_onSeriesScroll);
-    _authorsScrollController.addListener(_onAuthorsScroll);
-    _narratorsScrollController.addListener(_onNarratorsScroll);
+    // Reveal driver is fed by NotificationListener at the screen level —
+    // works across multiple per-tab scroll controllers in the IndexedStack
+    // without needing to re-attach on every tab switch.
     // Load initial page once the library is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initTabController();
       _tryInitialLoad();
+    });
+    // Tell AppShell we're alive so its bottom-nav listener can attach now
+    // rather than waiting on a postFrame retry that may never re-fire.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AppShell.notifyScreenReady(1);
     });
   }
 
@@ -240,9 +203,8 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     final newTab = _tabController!.index;
     if (newTab == _currentTab) return;
     setState(() => _currentTab = newTab);
-    // Reset scroll tracking and show bars when switching sub-tabs
-    _lastScrollOffset = 0;
-    _showBars();
+    // Reset reveal so the SliverAppBar is fully visible after a tab switch.
+    _revealDriver.resetToShown();
     PlayerSettings.setLibraryTab(newTab);
     // Lazy load data for the tab
     if (newTab == 1 && _seriesItems.isEmpty && !_isLoadingSeriesPage) {
@@ -298,12 +260,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         _allNarratorsCacheLibraryId = null;
         _searchNarratorResults = [];
       });
-      if (_scrollController.hasClients) _scrollController.jumpTo(0);
-      if (_seriesScrollController.hasClients) _seriesScrollController.jumpTo(0);
-      if (_authorsScrollController.hasClients) _authorsScrollController.jumpTo(0);
-      if (_narratorsScrollController.hasClients) _narratorsScrollController.jumpTo(0);
-      _lastScrollOffset = 0;
-      _showBars();
+      _revealDriver.resetToShown();
       // Restore sort/filter for the new library type, then load
       _restoreSortFilter().then((_) {
         if (mounted) _loadPage();
@@ -484,12 +441,11 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     _debounce?.cancel();
     _searchController.dispose();
     _focusNode.dispose();
+    _revealDriver.dispose();
     _scrollController.dispose();
     _seriesScrollController.dispose();
     _authorsScrollController.dispose();
     _narratorsScrollController.dispose();
-    _headerAnimController.dispose();
-    barsVisibleNotifier.dispose();
     _tabController?.removeListener(_onTabChanged);
     _tabController?.dispose();
     PlayerSettings.settingsChanged.removeListener(_onSettingsChanged);
@@ -501,31 +457,9 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     super.dispose();
   }
 
-  // ── Scroll-based pagination + direction tracking ──
-  void _onScroll() {
-    _onScrollDirection(_scrollController);
-    if (_isInSearchMode) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 400) {
-      _loadPage();
-    }
-  }
-
-  void _onSeriesScroll() {
-    _onScrollDirection(_seriesScrollController);
-    if (_seriesScrollController.position.pixels >=
-        _seriesScrollController.position.maxScrollExtent - 400) {
-      _loadSeriesPage();
-    }
-  }
-
-  void _onAuthorsScroll() {
-    _onScrollDirection(_authorsScrollController);
-  }
-
-  void _onNarratorsScroll() {
-    _onScrollDirection(_narratorsScrollController);
-  }
+  // Pagination is now triggered by the NotificationListener inside each tab
+  // widget, which calls back into _loadPage / _loadSeriesPage when the user
+  // approaches the bottom of the visible scroll view.
 
   // ══════════════════════════════════════════════════════════════
   // LIBRARY TAB - Load a page of items
@@ -1032,7 +966,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   void _onSearchChanged(String query) {
     _debounce?.cancel();
     // Always show bars when entering/exiting search
-    _showBars();
+    _revealDriver.resetToShown();
     if (query.trim().isEmpty) {
       setState(() {
         _searchBookResults = [];
@@ -1362,12 +1296,86 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
               ),
             ),
           SafeArea(
-            child: Column(
+            // Per-tab CustomScrollView with its own SliverAppBar(floating, snap)
+            // for the header. No NestedScrollView coordinator in the scroll
+            // path, which makes scrolling noticeably smoother. The reveal
+            // driver is fed by a single NotificationListener at this level so
+            // the bottom nav stays in sync regardless of which tab is active.
+            child: Stack(
               children: [
-                SizeTransition(
-                  sizeFactor: _headerAnimController,
-                  axisAlignment: -1.0,
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                NotificationListener<ScrollNotification>(
+                  onNotification: (n) {
+                    if (n is ScrollUpdateNotification) {
+                      _revealDriver.noteScroll(
+                          n.scrollDelta ?? 0, n.metrics.pixels);
+                    } else if (n is ScrollEndNotification) {
+                      _revealDriver.settle();
+                    }
+                    return false;
+                  },
+                  child: Builder(
+                    builder: (ctx) {
+                      // Paint the same screen-height gradient inside the
+                      // SliverAppBar so the header (a) visually matches the
+                      // body's gradient when sitting at the top, and (b) is
+                      // opaque enough to occlude books when it floats back in
+                      // mid-scroll. The gradient is shifted up by the SafeArea
+                      // top inset so its color at any screen-Y matches the
+                      // body gradient at the same screen-Y (no visible seam at
+                      // the bottom of the header).
+                      final topInset = MediaQuery.of(context).padding.top;
+                      final screenH = MediaQuery.of(context).size.height;
+                      final headerBackground = oledNotifier.value
+                          ? const ColoredBox(color: Colors.black)
+                          : ClipRect(
+                              child: OverflowBox(
+                                maxHeight: screenH,
+                                minHeight: 0,
+                                alignment: Alignment.topCenter,
+                                child: Transform.translate(
+                                  offset: Offset(0, -topInset),
+                                  child: SizedBox(
+                                    height: screenH,
+                                    width: double.infinity,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        color: scaffoldBg,
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          stops: const [0.0, 0.22, 0.72, 1.0],
+                                          colors: [
+                                            cs.primary.withValues(alpha: 0.06),
+                                            cs.surface,
+                                            lowerFade,
+                                            scaffoldBg,
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                      final headerSliver = SliverAppBar(
+                        floating: true,
+                        snap: true,
+                        // primary: false disables Material's automatic status
+                        // bar padding so the header doesn't get inset twice
+                        // (we already wrap the whole NestedScrollView in
+                        // SafeArea above).
+                        primary: false,
+                        toolbarHeight: _isInSearchMode ? 156 : 184,
+                        backgroundColor: scaffoldBg,
+                        surfaceTintColor: Colors.transparent,
+                        elevation: 0,
+                        scrolledUnderElevation: 0,
+                        automaticallyImplyLeading: false,
+                        flexibleSpace: ClipRect(
+                          child: Stack(
+                            children: [
+                              Positioned.fill(child: headerBackground),
+                              Column(mainAxisSize: MainAxisSize.min, children: [
                 AbsorbPageHeader(
                   title: l.libraryTitle,
                   trailing: OfflineStatusIcon(
@@ -1450,65 +1458,74 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                 if (!_isInSearchMode)
                   _buildInfoRow(cs, tt, l),
                 ]),
-                ),
-                Expanded(
-                  child: Stack(
-                    children: [
-                      _isInSearchMode
-                          ? _buildSearchResults(cs, tt, l)
+                            ],
+                          ),
+                        ),
+                      );
+                      return _isInSearchMode
+                          ? _buildSearchResults(cs, tt, l, headerSliver)
                           : hasTabs
-                              ? _buildTabbedContent(cs, tt)
-                              : _buildGrid(),
-                      // Floating tab bar at bottom (book libraries only, hidden during search)
-                      if (hasTabs)
-                        Positioned(
-                          left: 0, right: 0,
-                          bottom: 12,
-                          child: ValueListenableBuilder<bool>(
-                            valueListenable: barsVisibleNotifier,
-                            builder: (_, visible, child) => AnimatedSlide(
-                              duration: const Duration(milliseconds: 250),
-                              offset: visible ? Offset.zero : const Offset(0, 3),
-                              child: AnimatedOpacity(
-                                duration: const Duration(milliseconds: 200),
-                                opacity: visible ? 1.0 : 0.0,
-                                child: child,
-                              ),
-                            ),
-                            child: _buildFloatingTabBar(cs),
-                          ),
-                        ),
-                      // Floating sort button for podcast libraries
-                      if (!hasTabs && !_isInSearchMode)
-                        Positioned(
-                          left: 0, right: 0,
-                          bottom: 12,
-                          child: ValueListenableBuilder<bool>(
-                            valueListenable: barsVisibleNotifier,
-                            builder: (_, visible, child) => AnimatedSlide(
-                              duration: const Duration(milliseconds: 250),
-                              offset: visible ? Offset.zero : const Offset(0, 3),
-                              child: AnimatedOpacity(
-                                duration: const Duration(milliseconds: 200),
-                                opacity: visible ? 1.0 : 0.0,
-                                child: child,
-                              ),
-                            ),
-                            child: Center(child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildFloatingSortButton(cs, tt),
-                                if (context.read<AuthProvider>().isRoot) ...[
-                                  const SizedBox(width: 8),
-                                  _buildFloatingManageButton(cs),
-                                ],
-                              ],
-                            )),
-                          ),
-                        ),
-                    ],
+                              ? _buildTabbedContent(cs, tt, headerSliver)
+                              : _buildGrid(headerSliver);
+                    },
                   ),
                 ),
+                if (hasTabs && !_isInSearchMode)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 12,
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _revealDriver.notifier,
+                      // Translate only; skip the Opacity saveLayer that was
+                      // forcing a per-frame re-raster of the BackdropFilter
+                      // pill. Skip painting entirely once basically hidden.
+                      builder: (_, reveal, child) {
+                        if (reveal < 0.02) return const SizedBox.shrink();
+                        return IgnorePointer(
+                          ignoring: reveal < 0.5,
+                          child: Transform.translate(
+                            offset: Offset(0, (1 - reveal) * 80),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: RepaintBoundary(child: _buildFloatingTabBar(cs)),
+                    ),
+                  ),
+                if (!hasTabs && !_isInSearchMode)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 12,
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _revealDriver.notifier,
+                      builder: (_, reveal, child) {
+                        if (reveal < 0.02) return const SizedBox.shrink();
+                        return IgnorePointer(
+                          ignoring: reveal < 0.5,
+                          child: Transform.translate(
+                            offset: Offset(0, (1 - reveal) * 80),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: RepaintBoundary(
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildFloatingSortButton(cs, tt),
+                              if (context.read<AuthProvider>().isRoot) ...[
+                                const SizedBox(width: 8),
+                                _buildFloatingManageButton(cs),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1706,15 +1723,18 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     );
   }
 
-  Widget _buildTabbedContent(ColorScheme cs, TextTheme tt) {
-    // Use IndexedStack to preserve scroll positions across tabs
+  Widget _buildTabbedContent(ColorScheme cs, TextTheme tt, Widget headerSliver) {
+    // IndexedStack preserves each tab's scroll position when switching tabs.
+    // Each tab is its own CustomScrollView with its own SliverAppBar instance,
+    // so floating-header behavior is per-tab and there's no NestedScrollView
+    // coordinator overhead in the scroll path.
     return IndexedStack(
       index: _currentTab,
       children: [
-        _buildGrid(),
-        _buildSeriesGrid(),
-        _buildAuthorsGrid(),
-        _buildNarratorsGrid(),
+        _buildGrid(headerSliver),
+        _buildSeriesGrid(headerSliver),
+        _buildAuthorsGrid(headerSliver),
+        _buildNarratorsGrid(headerSliver),
       ],
     );
   }
@@ -1756,46 +1776,51 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   // ═══════════════════════════════════════════════════════════════
   // LIBRARY TAB - BROWSE GRID
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildGrid() {
+  Widget _buildGrid(Widget headerSliver) {
     return LibraryBooksTab(
       items: _items,
       isLoadingPage: _isLoadingPage,
       hasMore: _hasMore,
-      scrollController: _scrollController,
       filter: _filter,
       genreFilter: _genreFilter,
       rectangleCovers: _rectangleCovers,
       coverAspectRatio: _coverAspectRatio,
       onRefresh: _refreshAll,
       onClearFilter: () => _changeFilter(LibraryFilter.none),
+      headerSliver: headerSliver,
+      scrollController: _scrollController,
+      onLoadMore: _loadPage,
     );
   }
 
   // ═══════════════════════════════════════════════════════════════
   // SERIES TAB - GRID
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildSeriesGrid() {
+  Widget _buildSeriesGrid(Widget headerSliver) {
     return LibrarySeriesTab(
       seriesItems: _seriesItems,
       isLoadingSeriesPage: _isLoadingSeriesPage,
       hasMoreSeries: _hasMoreSeries,
-      scrollController: _seriesScrollController,
       rectangleCovers: _rectangleCovers,
       coverAspectRatio: _coverAspectRatio,
       onRefresh: _refreshSeries,
+      headerSliver: headerSliver,
+      scrollController: _seriesScrollController,
+      onLoadMore: _loadSeriesPage,
     );
   }
 
   // ═══════════════════════════════════════════════════════════════
   // AUTHORS TAB - GRID
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildAuthorsGrid() {
+  Widget _buildAuthorsGrid(Widget headerSliver) {
     return LibraryAuthorsTab(
       authors: _authors,
       isLoadingAuthors: _isLoadingAuthors,
       authorsLoaded: _authorsLoaded,
-      scrollController: _authorsScrollController,
       onRefresh: _refreshAuthors,
+      headerSliver: headerSliver,
+      scrollController: _authorsScrollController,
     );
   }
 
@@ -1811,46 +1836,68 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     await _loadNarrators();
   }
 
-  Widget _buildNarratorsGrid() {
+  Widget _buildNarratorsGrid(Widget headerSliver) {
     return LibraryNarratorsTab(
       narrators: _narrators,
       isLoading: _isLoadingNarrators,
       loaded: _narratorsLoaded,
-      scrollController: _narratorsScrollController,
       onRefresh: _refreshNarrators,
+      headerSliver: headerSliver,
+      scrollController: _narratorsScrollController,
     );
   }
 
   // ═══════════════════════════════════════════════════════════════
   // SEARCH RESULTS
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildSearchResults(ColorScheme cs, TextTheme tt, AppLocalizations l) {
+  Widget _buildSearchResults(
+      ColorScheme cs, TextTheme tt, AppLocalizations l, Widget headerSliver) {
+    final injector = headerSliver;
     if (_isSearching) {
-      return const Center(child: CircularProgressIndicator());
+      return CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          injector,
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ],
+      );
     }
     if (!_hasSearched) {
-      return const SizedBox.shrink();
+      return CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [injector, const SliverToBoxAdapter(child: SizedBox.shrink())],
+      );
     }
     if (_searchBookResults.isEmpty && _searchSeriesResults.isEmpty && _searchAuthorResults.isEmpty && _searchNarratorResults.isEmpty && _searchEpisodeResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.search_off_rounded, size: 48, color: cs.onSurfaceVariant),
-            const SizedBox(height: 12),
-            Text(l.libraryNoResults,
-                style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
-          ],
-        ),
+      return CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          injector,
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.search_off_rounded, size: 48, color: cs.onSurfaceVariant),
+                  const SizedBox(height: 12),
+                  Text(l.libraryNoResults,
+                      style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+          ),
+        ],
       );
     }
 
     final auth = context.read<AuthProvider>();
     final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-      children: [
+    final children = <Widget>[
         // ─── BOOKS / SHOWS (only title matches) ───
         if (_searchBookResults.isNotEmpty) ...[
           ...() {
@@ -1955,6 +2002,18 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
           ),
           ..._searchNarratorResults.map((name) => NarratorResultTile(name: name)),
         ],
+    ];
+
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        injector,
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate(children),
+          ),
+        ),
       ],
     );
   }

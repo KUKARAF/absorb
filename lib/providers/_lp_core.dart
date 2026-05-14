@@ -448,6 +448,41 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
     return data;
   }
 
+  /// Count of episodes in [show] that the user hasn't finished (includes
+  /// partially-played and never-started episodes). Used by tile badges and
+  /// the show sheet header.
+  ///
+  /// Prefers the server-provided `numEpisodesIncomplete` field (requested via
+  /// `include=numEpisodesIncomplete` on the library/personalized endpoints) so
+  /// scrolling grids don't have to load every episode payload. Falls back to
+  /// iterating `media.episodes` when the full payload is available (e.g.
+  /// inside the show sheet).
+  int getUnfinishedEpisodeCount(Map<String, dynamic>? show) {
+    if (show == null) return 0;
+    final media = show['media'] as Map<String, dynamic>? ?? const {};
+    // Try the server-provided count first.
+    final serverCount = show['numEpisodesIncomplete'] as int? ??
+        media['numEpisodesIncomplete'] as int?;
+    if (serverCount != null) return serverCount;
+
+    // Fallback: count from the loaded episodes array. Match server semantics
+    // — count any episode the user hasn't marked finished.
+    final itemId = show['id'] as String? ?? '';
+    if (itemId.isEmpty) return 0;
+    final episodes = media['episodes'] as List<dynamic>? ?? const [];
+    if (episodes.isEmpty) return 0;
+    var count = 0;
+    for (final e in episodes) {
+      if (e is! Map<String, dynamic>) continue;
+      final epId = e['id'] as String? ?? '';
+      if (epId.isEmpty) continue;
+      final pd = getEpisodeProgressData(itemId, epId);
+      final isFinished = pd?['isFinished'] == true;
+      if (!isFinished) count++;
+    }
+    return count;
+  }
+
   Future<void> refreshLocalProgress() async {
     final sync = ProgressSyncService();
     final itemIds = <String>{..._progressMap.keys};

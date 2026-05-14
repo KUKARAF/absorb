@@ -359,7 +359,11 @@ class ApiService {
   }) async {
     try {
       var url = '$_cleanBaseUrl/api/libraries/$libraryId/items'
-          '?page=$page&limit=$limit&sort=$sort&desc=$desc';
+          '?page=$page&limit=$limit&sort=$sort&desc=$desc'
+          // Ask the server to populate numEpisodesIncomplete on podcast items
+          // so podcast tiles can show an unplayed-count badge without loading
+          // every show's full episode list.
+          '&include=numEpisodesIncomplete';
       if (filter != null) url += '&filter=$filter';
       if (expanded) url += '&minified=0';
       if (collapseSeries) url += '&collapseseries=1';
@@ -634,23 +638,24 @@ class ApiService {
   /// Quick-match an author against the configured provider (Audible).
   /// Server fetches name/asin/description/image, updates the author server-side,
   /// and returns the updated author. Returns null if no match or on error.
-  /// GET /api/authors/:id/match?q=...&region=...
+  /// POST /api/authors/:id/match  body: { q, region }
+  /// Response: { updated: true, author: {...} } on match, { updated: false } on no match.
   Future<Map<String, dynamic>?> matchAuthor(
     String authorId, {
     required String q,
     String region = 'us',
   }) async {
     try {
-      final url = '$_cleanBaseUrl/api/authors/$authorId/match'
-          '?q=${Uri.encodeQueryComponent(q)}'
-          '&region=${Uri.encodeQueryComponent(region)}';
-      final r = await _authGet(Uri.parse(url));
+      final r = await _authPost(
+        Uri.parse('$_cleanBaseUrl/api/authors/$authorId/match'),
+        body: jsonEncode({'q': q, 'region': region}),
+      );
       debugPrint('[API] matchAuthor $authorId -> ${r.statusCode}: ${r.body}');
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
-        // Server returns the updated author directly, or { author: {...} }
+        // Server signals no match with { updated: false } and no author payload.
+        if (data['updated'] == false) return null;
         if (data['author'] is Map) return data['author'] as Map<String, dynamic>;
-        if (data.containsKey('updated')) return data;
         return data;
       }
     } catch (e) { debugPrint('matchAuthor error: $e'); }

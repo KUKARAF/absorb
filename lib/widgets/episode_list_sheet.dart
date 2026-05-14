@@ -616,15 +616,25 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
 
               // Metadata chips
               const SizedBox(height: 12),
-              Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
+              Builder(builder: (_) {
+                final unfinishedCount = _episodes.where((e) {
+                  final epId = (e is Map<String, dynamic>) ? (e['id'] as String? ?? '') : '';
+                  if (epId.isEmpty) return false;
+                  final pd = lib.getEpisodeProgressData(_itemId, epId);
+                  final isFinished = pd?['isFinished'] == true;
+                  return !isFinished;
+                }).length;
+                return Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
                 if (!_isLoading) _chip(Icons.podcasts_rounded, l.episodeListEpisodeCount(_episodes.length)),
+                if (unfinishedCount > 0) _chip(Icons.fiber_new_rounded, l.episodeListUnfinishedCount(unfinishedCount), highlight: true),
                 if (_autoDownloadEnabled) _chip(Icons.downloading_rounded, l.episodeListAutoDownloadChip),
                 if (_subscribed) _chip(Icons.notifications_active_rounded, l.episodeListSubscribedChip, highlight: true),
                 ..._genres.take(3).map((g) => _chip(Icons.tag_rounded, g)),
                 if (_language.isNotEmpty) _chip(Icons.language_rounded, _language.toUpperCase()),
                 if (_explicit) _chip(Icons.explicit_rounded, l.episodeListExplicitChip),
                 if (_type.isNotEmpty && _type != 'episodic') _chip(Icons.list_rounded, _type[0].toUpperCase() + _type.substring(1)),
-              ]),
+              ]);
+              }),
 
               // Episodes section header
               const SizedBox(height: 16),

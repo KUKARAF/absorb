@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../providers/library_provider.dart';
+import 'overlay_toast.dart';
 
 /// Opens a full-screen editor for an author (root admin only).
 /// Two tabs:
@@ -137,15 +139,23 @@ class _EditAuthorContentState extends State<_EditAuthorContent>
         _matchEmpty = true;
       } else {
         _matchResult = result;
+        // Sync the Custom tab fields with the matched values so editing
+        // continues from the new data instead of the old.
+        final matchedName = result['name'] as String?;
+        final matchedAsin = result['asin'] as String?;
+        final matchedDesc = result['description'] as String?;
+        if (matchedName != null) _nameCtrl.text = matchedName;
+        if (matchedAsin != null) _asinCtrl.text = matchedAsin;
+        if (matchedDesc != null) _descCtrl.text = matchedDesc;
       }
     });
 
     if (result != null && result.isNotEmpty) {
       // The match endpoint already updates the author server-side, so notify parent.
       widget.onUpdated();
-      _showSnack(AppLocalizations.of(context)!.authorMatched);
+      _showToast(AppLocalizations.of(context)!.authorMatched, icon: Icons.check_circle_rounded);
     } else {
-      _showSnack(AppLocalizations.of(context)!.authorNoMatchFound);
+      _showToast(AppLocalizations.of(context)!.authorNoMatchFound, icon: Icons.search_off_rounded);
     }
   }
 
@@ -173,7 +183,7 @@ class _EditAuthorContentState extends State<_EditAuthorContent>
 
     if (result['ok'] != true) {
       setState(() => _saving = false);
-      _showSnack(AppLocalizations.of(context)!.authorUpdateFailed);
+      _showToast(AppLocalizations.of(context)!.authorUpdateFailed, icon: Icons.error_outline_rounded);
       return;
     }
 
@@ -193,7 +203,7 @@ class _EditAuthorContentState extends State<_EditAuthorContent>
       final imgOk = await api.updateAuthorImageFromUrl(widget.authorId, imageUrl);
       if (!imgOk && mounted) {
         setState(() => _saving = false);
-        _showSnack(AppLocalizations.of(context)!.authorImageFailed);
+        _showToast(AppLocalizations.of(context)!.authorImageFailed, icon: Icons.error_outline_rounded);
         return;
       }
     }
@@ -203,7 +213,7 @@ class _EditAuthorContentState extends State<_EditAuthorContent>
     if (mounted) {
       setState(() => _saving = false);
       Navigator.of(context).pop();
-      _showSnack(AppLocalizations.of(context)!.authorUpdated);
+      _showToast(AppLocalizations.of(context)!.authorUpdated, icon: Icons.check_circle_rounded);
     }
   }
 
@@ -235,21 +245,14 @@ class _EditAuthorContentState extends State<_EditAuthorContent>
     setState(() => _saving = false);
     if (ok) {
       widget.onUpdated();
-      _showSnack(l.authorImageRemoved);
+      _showToast(l.authorImageRemoved, icon: Icons.check_circle_rounded);
     } else {
-      _showSnack(l.authorImageFailed);
+      _showToast(l.authorImageFailed, icon: Icons.error_outline_rounded);
     }
   }
 
-  void _showSnack(String text) {
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        content: Text(text),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ));
+  void _showToast(String text, {IconData? icon}) {
+    showOverlayToast(context, text, icon: icon);
   }
 
   // ─── Build ──────────────────────────────────────────────────
@@ -369,7 +372,16 @@ class _EditAuthorContentState extends State<_EditAuthorContent>
     final name = result['name'] as String? ?? '';
     final asin = result['asin'] as String? ?? '';
     final desc = (result['description'] as String? ?? '').replaceAll(RegExp(r'<[^>]*>'), '').trim();
-    final imageUrl = result['imageUrl'] as String? ?? result['image'] as String? ?? '';
+    // ABS saves the matched image server-side and returns the author with an
+    // imagePath. Build the URL through the API service (with the auth token)
+    // and cache-bust with updatedAt so we don't show the previous cached image.
+    final api = context.read<AuthProvider>().apiService;
+    final hasImagePath = (result['imagePath'] as String?)?.isNotEmpty == true;
+    final ts = (result['updatedAt'] as num?)?.toInt();
+    final imageUrl = (api != null && hasImagePath)
+        ? api.getAuthorImageUrl(widget.authorId, updatedAt: ts)
+        : '';
+    final headers = context.read<LibraryProvider>().mediaHeaders;
 
     return Card(
       elevation: 0,
@@ -388,6 +400,7 @@ class _EditAuthorContentState extends State<_EditAuthorContent>
                 child: SizedBox(
                   width: 60, height: 60,
                   child: CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover,
+                    httpHeaders: headers,
                     placeholder: (_, __) => Container(color: cs.surfaceContainerHighest),
                     errorWidget: (_, __, ___) => Container(color: cs.surfaceContainerHighest,
                       child: Icon(Icons.person_rounded, size: 28, color: cs.onSurfaceVariant)),

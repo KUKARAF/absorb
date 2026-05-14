@@ -3454,6 +3454,17 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String episodeListUnfinishedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unfinished',
+      one: '1 unfinished',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get episodeListAutoDownloadChip => 'Auto-Download';
 
   @override

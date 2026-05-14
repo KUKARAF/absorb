@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -53,6 +54,16 @@ class AppShell extends StatefulWidget {
     if (inst == null) return false;
     inst._openSearch();
     return true;
+  }
+
+  /// Called by Home (callingTab=0) and Library (callingTab=1) after their
+  /// first frame. Lets the AppShell re-sync the bottom-nav listener to the
+  /// right notifier — handles both "screen state didn't exist on initial
+  /// attach" and "lazy attach attached to the wrong tab during a fade
+  /// transition" (LibraryProvider notify can rebuild AppShell mid-fade and
+  /// schedule a postFrame that fires before _currentIndex transitions).
+  static void notifyScreenReady(int callingTab) {
+    _AppShellState._instance?._reattachIfNeeded(callingTab);
   }
 
   @override
@@ -149,48 +160,59 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
     }
   }
 
-  /// Subscribe to the active screen's barsVisibleNotifier when on Home or
+  /// Subscribe to the active screen's barsRevealNotifier when on Home or
   /// Library tab, and ensure the nav bar is visible on all other tabs.
   void _syncNavBarListener(int index) {
-    debugPrint('[NavBar] _syncNavBarListener(index=$index) ctrl=${_navBarAnimController.value.toStringAsFixed(2)}');
     _detachNavBarListener();
-    ValueNotifier<bool>? notifier;
+    // Snap visible immediately on every tab change so a partial-hide state
+    // from another tab can never bleed into the new tab.
+    _navBarAnimController.value = 1.0;
+    ValueListenable<double>? notifier;
     if (index == 0) {
-      notifier = _homeKey.currentState?.barsVisibleNotifier;
+      notifier = _homeKey.currentState?.barsRevealNotifier;
     } else if (index == 1) {
-      notifier = _libraryKey.currentState?.barsVisibleNotifier;
+      notifier = _libraryKey.currentState?.barsRevealNotifier;
     }
     if (notifier != null) {
       _activeBarNotifier = notifier;
+      // Mirror the screen's continuous 0..1 reveal value directly onto the
+      // controller so the bottom nav slides in lockstep with the header.
       _navBarListener = () {
-        if (notifier!.value) {
-          _navBarAnimController.forward();
-        } else {
-          _navBarAnimController.reverse();
-        }
+        final v = notifier!.value.clamp(0.0, 1.0);
+        // Skip no-op controller writes. AnimationController.value setter
+        // notifies listeners (and triggers SizeTransition + Scaffold layout)
+        // even when the value didn't change, which causes scroll jank when
+        // the bar is already fully open/closed.
+        if ((_navBarAnimController.value - v).abs() < 0.005) return;
+        _navBarAnimController.value = v;
       };
       notifier.addListener(_navBarListener!);
       _navBarListener!();
-      debugPrint('[NavBar] Attached listener to tab=$index notifier.value=${notifier.value} ctrl=${_navBarAnimController.value.toStringAsFixed(2)}');
-    } else {
-      // Not a scroll-hide tab - force nav bar visible immediately.
-      // Use .value to snap instead of animate, avoiding races where
-      // the controller gets stuck mid-animation.
-      _navBarAnimController.value = 1.0;
-      debugPrint('[NavBar] Snap to 1.0 for non-scroll tab=$index');
     }
   }
 
-  ValueNotifier<bool>? _activeBarNotifier;
+  ValueListenable<double>? _activeBarNotifier;
 
   void _detachNavBarListener() {
     if (_navBarListener != null && _activeBarNotifier != null) {
       _activeBarNotifier!.removeListener(_navBarListener!);
-      // Reset the notifier so bars are visible when the user returns to this tab
-      _activeBarNotifier!.value = true;
     }
     _navBarListener = null;
     _activeBarNotifier = null;
+  }
+
+  /// Hook called by Home/Library when their state finishes mounting so we can
+  /// pick up (or correct) the listener attach. Re-syncs unconditionally when
+  /// the calling tab matches the current tab, even if a listener is already
+  /// attached — that listener may have been attached to the wrong tab by the
+  /// lazy-attach race during a fade transition.
+  void _reattachIfNeeded(int callingTab) {
+    if (!mounted) return;
+    // Only act when the screen calling us is actually the active one. If the
+    // user has navigated away in the meantime, leave the existing attachment
+    // to whatever screen they're on.
+    if (_currentIndex != callingTab) return;
+    _syncNavBarListener(_currentIndex);
   }
 
   void _ensurePageBuilt(int index) {
@@ -447,6 +469,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // Belt-and-suspenders: never let the nav bar come back hidden after a
+      // resume. The screens snap their own driver back to shown on next scroll
+      // anyway, but mirror it here in case the user resumes onto a stale tab.
+      _navBarAnimController.value = 1.0;
       context.read<LibraryProvider>().onAppForegrounded();
       SleepTimerService().onAppForegrounded();
       AudioPlayerService.onAppForegrounded();
@@ -464,6 +490,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
       final cast = ChromecastService();
       if (cast.isConnected) cast.disconnect();
     }
+  }
+
+  @override
+  void didChangeMetrics() {
+    // Orientation change, software keyboard, anything that resizes the window:
+    // make sure the bottom nav isn't stuck partway hidden.
+    _navBarAnimController.value = 1.0;
+    _homeKey.currentState?.resetReveal();
+    _libraryKey.currentState?.resetReveal();
   }
 
   DateTime? _lastRefresh;
@@ -544,14 +579,28 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
   }
 
   Widget _buildBottomNav(BuildContext context) {
-    // Lazily attach listener when on Home or Library tab (handles start-on-tab case).
-    // The screen's state may not exist on the first frame, so retry until attached.
-    if ((_currentIndex == 0 || _currentIndex == 1) && _navBarListener == null) {
+    // Determine the *correct* notifier for the active tab so we can detect
+    // both "no listener" and "listener attached to the wrong tab" — the
+    // second happens when LibraryProvider.notify() rebuilds AppShell mid-fade
+    // and the lazy attach captures the pre-fade _currentIndex.
+    final isHomeOrLibrary = _currentIndex == 0 || _currentIndex == 1;
+    ValueListenable<double>? correctNotifier;
+    if (_currentIndex == 0) {
+      correctNotifier = _homeKey.currentState?.barsRevealNotifier;
+    } else if (_currentIndex == 1) {
+      correctNotifier = _libraryKey.currentState?.barsRevealNotifier;
+    }
+    final wrongAttachment = isHomeOrLibrary &&
+        _navBarListener != null &&
+        correctNotifier != null &&
+        !identical(_activeBarNotifier, correctNotifier);
+    final missingAttachment = isHomeOrLibrary && _navBarListener == null;
+
+    if (missingAttachment || wrongAttachment) {
       final scheduledIndex = _currentIndex;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _currentIndex != scheduledIndex) return;
         _syncNavBarListener(_currentIndex);
-        // If the screen state wasn't ready yet, retry on next frame
         if (_navBarListener == null && _currentIndex == scheduledIndex) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && _currentIndex == scheduledIndex) {
@@ -560,7 +609,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver, Ticker
           });
         }
       });
-    } else if (_currentIndex != 0 && _currentIndex != 1 && _navBarListener != null) {
+    } else if (!isHomeOrLibrary && _navBarListener != null) {
       // Stale listener left over from a fade transition — detach and snap the
       // nav bar visible so it doesn't get hidden by the previous tab's notifier.
       WidgetsBinding.instance.addPostFrameCallback((_) {

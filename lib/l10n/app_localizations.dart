@@ -6131,6 +6131,12 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 episode} other{{count} episodes}}'**
   String episodeListEpisodeCount(int count);
 
+  /// No description provided for @episodeListUnfinishedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 unfinished} other{{count} unfinished}}'**
+  String episodeListUnfinishedCount(int count);
+
   /// No description provided for @episodeListAutoDownloadChip.
   ///
   /// In en, this message translates to:
