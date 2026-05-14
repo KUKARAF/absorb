@@ -1807,12 +1807,20 @@ class ApiService {
   }
 
   /// Update a library item's media metadata (admin/root only).
-  /// Uses POST /api/items/:id/match which requires update permission.
-  Future<bool> updateItemMedia(String itemId, Map<String, dynamic> media) async {
+  /// PATCH /api/items/:id/media. Tags live on `media`, not `metadata`, so
+  /// pass them via the [tags] arg to be included at the top level of the
+  /// payload alongside the metadata block.
+  Future<bool> updateItemMedia(
+    String itemId,
+    Map<String, dynamic> media, {
+    List<String>? tags,
+  }) async {
     try {
+      final body = <String, dynamic>{'metadata': media};
+      if (tags != null) body['tags'] = tags;
       final r = await _authPatch(
         Uri.parse('$_cleanBaseUrl/api/items/$itemId/media'),
-        body: jsonEncode({'metadata': media}),
+        body: jsonEncode(body),
       );
       debugPrint('[API] updateItemMedia $itemId -> ${r.statusCode}: ${r.body}');
       return r.statusCode == 200;

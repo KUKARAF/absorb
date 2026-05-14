@@ -29,6 +29,10 @@ class SortFilterSheet extends StatefulWidget {
   final bool isPodcastLibrary;
   final LibraryTab libraryTab;
   final VoidCallback? onUpcomingReleases;
+  /// Series-tab progress filter (computed client-side). Optional so other
+  /// callers don't have to pass it; null = no filter active.
+  final SeriesFilter currentSeriesFilter;
+  final void Function(SeriesFilter)? onSeriesFilterChanged;
 
   const SortFilterSheet({
     super.key,
@@ -43,6 +47,8 @@ class SortFilterSheet extends StatefulWidget {
     required this.isPodcastLibrary,
     this.libraryTab = LibraryTab.library,
     this.onUpcomingReleases,
+    this.currentSeriesFilter = SeriesFilter.none,
+    this.onSeriesFilterChanged,
   });
 
   @override
@@ -55,7 +61,14 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
   bool _tagExpanded = false;
   late bool _collapseSeries;
 
-  bool get _showFilterTab => widget.libraryTab == LibraryTab.library && !widget.isPodcastLibrary;
+  bool get _showFilterTab =>
+      (widget.libraryTab == LibraryTab.library && !widget.isPodcastLibrary) ||
+      (widget.libraryTab == LibraryTab.series &&
+          widget.onSeriesFilterChanged != null);
+
+  bool get _anyFilterActive =>
+      widget.currentFilter != LibraryFilter.none ||
+      widget.currentSeriesFilter != SeriesFilter.none;
 
   @override
   void initState() {
@@ -66,6 +79,11 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
       length: tabCount, vsync: this,
       initialIndex: _showFilterTab ? widget.initialTab.clamp(0, 1) : 0,
     );
+    // Rebuild on tab swipe so the sheet height (which depends on the active
+    // tab for the series tab's filter view) stays correct.
+    _tabCtrl.addListener(() {
+      if (mounted) setState(() {});
+    });
     if (widget.currentFilter == LibraryFilter.genre) _genreExpanded = true;
     if (widget.currentFilter == LibraryFilter.tag) _tagExpanded = true;
   }
@@ -100,7 +118,7 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
                   Icon(Icons.sort_rounded, size: 18), const SizedBox(width: 6), Text(l.sort)])),
                 Tab(child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.filter_list_rounded, size: 18), const SizedBox(width: 6),
-                  Text(widget.currentFilter != LibraryFilter.none ? l.filterActive : l.filter)])),
+                  Text(_anyFilterActive ? l.filterActive : l.filter)])),
               ],
             )
           else
@@ -123,7 +141,11 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
   }
 
   double _calcHeight() {
-    if (widget.libraryTab == LibraryTab.series) return widget.onUpcomingReleases != null ? 330 : 230;
+    if (widget.libraryTab == LibraryTab.series) {
+      // Need extra room when the filter tab is showing on series.
+      if (_showFilterTab && _tabCtrl.index == 1) return 280;
+      return widget.onUpcomingReleases != null ? 330 : 230;
+    }
     if (widget.libraryTab == LibraryTab.authors) return 180;
     if (widget.libraryTab == LibraryTab.narrators) return 130;
     if (_genreExpanded || _tagExpanded) return 420;
@@ -261,6 +283,9 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
   }
 
   Widget _buildFilterTab(ColorScheme cs, AppLocalizations l) {
+    if (widget.libraryTab == LibraryTab.series) {
+      return _buildSeriesFilterTab(cs, l);
+    }
     final filters = <(LibraryFilter, String, IconData)>[
       (LibraryFilter.inProgress, l.inProgress, Icons.play_circle_outline_rounded),
       (LibraryFilter.finished, l.filterFinished, Icons.check_circle_outline_rounded),
@@ -343,6 +368,55 @@ class _SortFilterSheetState extends State<SortFilterSheet> with SingleTickerProv
                     );
                   }).toList()),
           ),
+      ],
+    );
+  }
+
+  /// Series-tab filter UI. ABS doesn't expose progress filters on series
+  /// server-side, so absorb computes these client-side from per-book
+  /// progress (handled in library_screen.dart).
+  Widget _buildSeriesFilterTab(ColorScheme cs, AppLocalizations l) {
+    final filters = <(SeriesFilter, String, IconData)>[
+      (SeriesFilter.inProgress, l.inProgress, Icons.play_circle_outline_rounded),
+      (SeriesFilter.finished, l.filterFinished, Icons.check_circle_outline_rounded),
+      (SeriesFilter.notStarted, l.notStarted, Icons.circle_outlined),
+    ];
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      children: [
+        if (widget.currentSeriesFilter != SeriesFilter.none)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: GestureDetector(
+              onTap: () =>
+                  widget.onSeriesFilterChanged?.call(SeriesFilter.none),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                    color: cs.errorContainer.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(14)),
+                child: Row(children: [
+                  Icon(Icons.clear_rounded, size: 18, color: cs.error),
+                  const SizedBox(width: 10),
+                  Text(l.clearFilter,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: cs.error)),
+                ]),
+              ),
+            ),
+          ),
+        ...filters.map((f) {
+          final (filter, label, icon) = f;
+          return SheetOption(
+            icon: icon,
+            label: label,
+            selected: filter == widget.currentSeriesFilter,
+            selectedColor: cs.tertiary,
+            onTap: () => widget.onSeriesFilterChanged?.call(filter),
+          );
+        }),
       ],
     );
   }

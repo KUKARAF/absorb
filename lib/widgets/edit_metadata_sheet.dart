@@ -12,6 +12,7 @@ void showEditMetadataSheet(
   BuildContext context, {
   required String itemId,
   required Map<String, dynamic> metadata,
+  List<String> tags = const [],
 }) {
   showModalBottomSheet(
     context: context,
@@ -27,6 +28,7 @@ void showEditMetadataSheet(
       builder: (ctx, sc) => _EditMetadataContent(
         itemId: itemId,
         metadata: metadata,
+        tags: tags,
         scrollController: sc,
       ),
     ),
@@ -36,11 +38,13 @@ void showEditMetadataSheet(
 class _EditMetadataContent extends StatefulWidget {
   final String itemId;
   final Map<String, dynamic> metadata;
+  final List<String> tags;
   final ScrollController scrollController;
 
   const _EditMetadataContent({
     required this.itemId,
     required this.metadata,
+    this.tags = const [],
     required this.scrollController,
   });
 
@@ -62,6 +66,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
   late final TextEditingController _publisherCtrl;
   late final TextEditingController _yearCtrl;
   late final TextEditingController _genresCtrl;
+  late final TextEditingController _tagsCtrl;
   late final TextEditingController _asinCtrl;
   late final TextEditingController _isbnCtrl;
   late final TextEditingController _languageCtrl;
@@ -120,6 +125,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
 
     final genres = (m['genres'] as List<dynamic>?)?.cast<String>() ?? [];
     _genresCtrl = TextEditingController(text: genres.join(', '));
+    _tagsCtrl = TextEditingController(text: widget.tags.join(', '));
 
     // Search fields default to current title/author
     _searchTitleCtrl = TextEditingController(text: m['title'] as String? ?? '');
@@ -141,6 +147,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     _publisherCtrl.dispose();
     _yearCtrl.dispose();
     _genresCtrl.dispose();
+    _tagsCtrl.dispose();
     _asinCtrl.dispose();
     _isbnCtrl.dispose();
     _languageCtrl.dispose();
@@ -333,7 +340,12 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     }
     update['series'] = seriesList;
 
-    bool ok = await api.updateItemMedia(widget.itemId, update);
+    final tagsText = _tagsCtrl.text.trim();
+    final tags = tagsText.isNotEmpty
+        ? tagsText.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList()
+        : <String>[];
+
+    bool ok = await api.updateItemMedia(widget.itemId, update, tags: tags);
 
     if (ok && _coverFilePath != null) {
       ok = await api.uploadItemCover(widget.itemId, _coverFilePath!);
@@ -707,6 +719,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
               Expanded(child: _field(l.languageLabel, _languageCtrl, tt)),
             ]),
             _field(l.genresLabel, _genresCtrl, tt, hint: l.commaSeparated),
+            _field(l.tagsLabel, _tagsCtrl, tt, hint: l.commaSeparated),
             Row(children: [
               Expanded(child: _field(l.asinLabel, _asinCtrl, tt)),
               const SizedBox(width: 12),

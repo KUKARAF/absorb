@@ -739,7 +739,13 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                     Navigator.pop(ctx);
                     final media = _item!['media'] as Map<String, dynamic>? ?? {};
                     final meta = media['metadata'] as Map<String, dynamic>? ?? {};
-                    showEditMetadataSheet(context, itemId: widget.itemId, metadata: meta);
+                    final mediaTags =
+                        ((media['tags'] as List<dynamic>?) ?? const [])
+                            .cast<String>();
+                    showEditMetadataSheet(context,
+                        itemId: widget.itemId,
+                        metadata: meta,
+                        tags: mediaTags);
                   }),
               if (auth.isAdmin && serverPath.isNotEmpty) ...[
                 const SizedBox(height: 8),

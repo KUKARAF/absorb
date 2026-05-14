@@ -714,6 +714,7 @@
   "yearLabel": "Year",
   "languageLabel": "Language",
   "genresLabel": "Genres",
+  "tagsLabel": "Tags",
   "commaSeparated": "Comma separated",
   "asinLabel": "ASIN",
   "isbnLabel": "ISBN",

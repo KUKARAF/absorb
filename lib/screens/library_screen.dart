@@ -49,6 +49,12 @@ enum LibrarySort { recentlyAdded, alphabetical, authorName, publishedYear, durat
 // ─── Filter modes ────────────────────────────────────────────
 enum LibraryFilter { none, inProgress, finished, notStarted, downloaded, inASeries, hasEbook, genre, tag }
 
+/// Series-tab progress filter. Computed client-side from per-book progress
+/// because the ABS server's `?filter=` param doesn't support series-level
+/// progress queries (only book-level). When a filter is active the series
+/// tab fetches all pages upfront so the client-side join is correct.
+enum SeriesFilter { none, inProgress, finished, notStarted }
+
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
 
@@ -134,6 +140,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   int _totalSeries = 0;
   LibrarySort _seriesSort = LibrarySort.alphabetical;
   bool _seriesSortAsc = true;
+  SeriesFilter _seriesFilter = SeriesFilter.none;
   final _seriesScrollController = ScrollController();
 
   // ── Podcast-specific sort (persisted separately) ──
@@ -314,6 +321,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
       PlayerSettings.getNarratorSort(),
       PlayerSettings.getNarratorSortAsc(),
       PlayerSettings.getLibraryTagFilter(),
+      PlayerSettings.getLibrarySeriesFilter(),
     ]);
     if (!mounted) return;
     final sortName = results[0] as String;
@@ -330,6 +338,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     final narratorSortName = results[11] as String;
     final narratorSortAsc = results[12] as bool;
     final tagFilter = results[13] as String;
+    final seriesFilterName = results[14] as String;
     final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
     setState(() {
       // Book library sort/filter
@@ -350,6 +359,10 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         orElse: () => LibrarySort.alphabetical,
       );
       _seriesSortAsc = seriesSortAsc;
+      _seriesFilter = SeriesFilter.values.firstWhere(
+        (f) => f.name == seriesFilterName,
+        orElse: () => SeriesFilter.none,
+      );
       _authorSort = LibrarySort.values.firstWhere(
         (s) => s.name == authorSortName,
         orElse: () => LibrarySort.alphabetical,
@@ -678,8 +691,44 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   // ══════════════════════════════════════════════════════════════
   // SERIES TAB - Load a page of series
   // ══════════════════════════════════════════════════════════════
+  /// Whether [series] matches [filter] based on per-book progress aggregated
+  /// from [LibraryProvider]. Used by the series tab's client-side filter
+  /// (the ABS server doesn't support series-level progress filters).
+  bool _seriesMatchesFilter(
+      Map<String, dynamic> series, SeriesFilter filter, LibraryProvider lib) {
+    if (filter == SeriesFilter.none) return true;
+    final books = series['books'] as List<dynamic>? ?? const [];
+    if (books.isEmpty) return false;
+
+    var finishedCount = 0;
+    var startedCount = 0;
+    for (final b in books) {
+      if (b is! Map<String, dynamic>) continue;
+      final id = b['id'] as String?;
+      if (id == null || id.isEmpty) continue;
+      final pd = lib.getProgressData(id);
+      final isFinished = pd?['isFinished'] == true;
+      final progress = lib.getProgress(id);
+      if (isFinished) {
+        finishedCount++;
+        startedCount++;
+      } else if (progress > 0.001) {
+        startedCount++;
+      }
+    }
+
+    return switch (filter) {
+      SeriesFilter.finished => finishedCount == books.length,
+      SeriesFilter.notStarted => startedCount == 0,
+      SeriesFilter.inProgress =>
+        startedCount > 0 && finishedCount < books.length,
+      SeriesFilter.none => true,
+    };
+  }
+
   Future<void> _loadSeriesPage() async {
-    if (_isLoadingSeriesPage || !_hasMoreSeries) return;
+    if (_isLoadingSeriesPage) return;
+    if (_seriesFilter == SeriesFilter.none && !_hasMoreSeries) return;
     setState(() => _isLoadingSeriesPage = true);
 
     final auth = context.read<AuthProvider>();
@@ -700,6 +749,52 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         sort = 'numBooks'; break;
       default:
         sort = 'name'; break;
+    }
+
+    // ── Filtered mode: paginate the same way as the unfiltered path, but
+    // apply the client-side filter to each page and only append matches.
+    // hasMore is driven by the unfiltered server total so pagination stops
+    // when we've actually exhausted the source. Auto-refire when matches
+    // are sparse so the user doesn't see an empty list on libraries where
+    // the filter only hits a few series per page.
+    if (_seriesFilter != SeriesFilter.none) {
+      const filteredPageSize = 100;
+      final result = await api.getLibrarySeries(
+        lib.selectedLibraryId!,
+        page: _seriesPage,
+        limit: filteredPageSize,
+        sort: sort,
+        desc: _seriesSortAsc ? 0 : 1,
+      );
+      if (!mounted) return;
+      if (result == null) {
+        setState(() => _isLoadingSeriesPage = false);
+        return;
+      }
+      final results = (result['results'] as List<dynamic>?) ?? [];
+      final unfilteredTotal = (result['total'] as int?) ?? 0;
+      final matching = results
+          .whereType<Map<String, dynamic>>()
+          .where((s) => _seriesMatchesFilter(s, _seriesFilter, lib))
+          .toList();
+      setState(() {
+        _seriesItems.addAll(matching);
+        _seriesPage++;
+        // hasMore = there's still source data left, regardless of how many
+        // pages matched.
+        _hasMoreSeries = (_seriesPage * filteredPageSize) < unfilteredTotal &&
+            results.isNotEmpty;
+        // The visible count is what the user sees; track it for the InfoRow.
+        _totalSeries = _seriesItems.length;
+        _isLoadingSeriesPage = false;
+      });
+      // Filter sparsity guard: if the user just activated this filter and
+      // we don't have enough visible results to fill the screen, keep
+      // pulling pages until we either have ~20 matches or run out.
+      if (_hasMoreSeries && _seriesItems.length < 20) {
+        Future.microtask(_loadSeriesPage);
+      }
+      return;
     }
 
     // For large libraries (250+ series), serve cached data on first load
@@ -982,6 +1077,23 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     _changeFilter(LibraryFilter.genre, genre: genre);
   }
 
+  /// Change the Series tab's client-side progress filter and reload.
+  void _changeSeriesFilter(SeriesFilter newFilter) {
+    final effective =
+        newFilter == _seriesFilter ? SeriesFilter.none : newFilter;
+    if (effective == _seriesFilter) return;
+    setState(() {
+      _seriesFilter = effective;
+      _seriesItems.clear();
+      _seriesPage = 0;
+      _hasMoreSeries = true;
+      _isLoadingSeriesPage = false;
+    });
+    PlayerSettings.setLibrarySeriesFilter(_seriesFilter.name);
+    if (_seriesScrollController.hasClients) _seriesScrollController.jumpTo(0);
+    _loadSeriesPage();
+  }
+
   // ── Change filter and reload ──
   void _changeFilter(LibraryFilter newFilter, {String? genre, String? tag}) {
     final sameAsCurrent = newFilter == _filter &&
@@ -1196,6 +1308,13 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
     );
   }
 
+  String _seriesFilterLabelOf(AppLocalizations l) => switch (_seriesFilter) {
+    SeriesFilter.inProgress => l.inProgress,
+    SeriesFilter.finished => l.filterFinished,
+    SeriesFilter.notStarted => l.notStarted,
+    SeriesFilter.none => '',
+  };
+
   String _filterLabelOf(AppLocalizations l) => switch (_filter) {
     LibraryFilter.inProgress => l.inProgress,
     LibraryFilter.finished => l.filterFinished,
@@ -1303,6 +1422,13 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
           Navigator.pop(ctx);
           _openUpcomingReleases();
         } : null,
+        currentSeriesFilter: _seriesFilter,
+        onSeriesFilterChanged: tab == LibraryTab.series
+            ? (sf) {
+                Navigator.pop(ctx);
+                _changeSeriesFilter(sf);
+              }
+            : null,
       ),
     );
   }
@@ -1505,7 +1631,10 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                         primary: false,
                         toolbarHeight: _isInSearchMode
                             ? 156
-                            : (_filter != LibraryFilter.none ? 196 : 184),
+                            : ((_filter != LibraryFilter.none ||
+                                    _seriesFilter != SeriesFilter.none)
+                                ? 196
+                                : 184),
                         backgroundColor: scaffoldBg,
                         surfaceTintColor: Colors.transparent,
                         elevation: 0,
@@ -1783,6 +1912,29 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
                     Icon(Icons.filter_list_rounded, size: 14, color: cs.tertiary),
                     const SizedBox(width: 4),
                     Text(_filterLabelOf(l), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.tertiary),
+                        overflow: TextOverflow.ellipsis, maxLines: 1),
+                    const SizedBox(width: 4),
+                    Icon(Icons.close_rounded, size: 14, color: cs.tertiary),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          if (_currentTab == 1 && _seriesFilter != SeriesFilter.none) ...[
+            GestureDetector(
+              onTap: () => _changeSeriesFilter(SeriesFilter.none),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: cs.tertiary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.filter_list_rounded, size: 14, color: cs.tertiary),
+                    const SizedBox(width: 4),
+                    Text(_seriesFilterLabelOf(l), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.tertiary),
                         overflow: TextOverflow.ellipsis, maxLines: 1),
                     const SizedBox(width: 4),
                     Icon(Icons.close_rounded, size: 14, color: cs.tertiary),

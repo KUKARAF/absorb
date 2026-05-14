@@ -2005,6 +2005,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get genresLabel => '分类';
 
   @override
+  String get tagsLabel => 'Tags';
+
+  @override
   String get commaSeparated => '逗号分隔';
 
   @override

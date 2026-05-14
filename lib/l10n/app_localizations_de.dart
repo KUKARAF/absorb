@@ -2102,6 +2102,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get genresLabel => 'Genres';
 
   @override
+  String get tagsLabel => 'Tags';
+
+  @override
   String get commaSeparated => 'Komma-getrennt';
 
   @override

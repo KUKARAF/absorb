@@ -2078,6 +2078,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get genresLabel => 'Genres';
 
   @override
+  String get tagsLabel => 'Tags';
+
+  @override
   String get commaSeparated => 'Comma separated';
 
   @override

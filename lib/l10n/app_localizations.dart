@@ -3826,6 +3826,12 @@ abstract class AppLocalizations {
   /// **'Genres'**
   String get genresLabel;
 
+  /// No description provided for @tagsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get tagsLabel;
+
   /// No description provided for @commaSeparated.
   ///
   /// In en, this message translates to:
