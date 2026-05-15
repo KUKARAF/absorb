@@ -3292,6 +3292,96 @@ abstract class AppLocalizations {
   /// **'Edit Server Details'**
   String get editServerDetails;
 
+  /// No description provided for @encodeTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Encode'**
+  String get encodeTab;
+
+  /// No description provided for @codec.
+  ///
+  /// In en, this message translates to:
+  /// **'Codec'**
+  String get codec;
+
+  /// No description provided for @bitrate.
+  ///
+  /// In en, this message translates to:
+  /// **'Bitrate'**
+  String get bitrate;
+
+  /// No description provided for @channels.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels'**
+  String get channels;
+
+  /// No description provided for @mono.
+  ///
+  /// In en, this message translates to:
+  /// **'Mono'**
+  String get mono;
+
+  /// No description provided for @stereo.
+  ///
+  /// In en, this message translates to:
+  /// **'Stereo'**
+  String get stereo;
+
+  /// No description provided for @startM4bEncode.
+  ///
+  /// In en, this message translates to:
+  /// **'Start M4B Encode'**
+  String get startM4bEncode;
+
+  /// No description provided for @encodeStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'M4B encode started'**
+  String get encodeStarted;
+
+  /// No description provided for @encodeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to start encode'**
+  String get encodeFailed;
+
+  /// No description provided for @encodeFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'M4B encode finished'**
+  String get encodeFinished;
+
+  /// No description provided for @currentlyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Currently:'**
+  String get currentlyLabel;
+
+  /// No description provided for @encodeOutputPathNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Finished M4B will be put into your audiobook folder at: {path}/'**
+  String encodeOutputPathNote(String path);
+
+  /// No description provided for @encodeBackupNote.
+  ///
+  /// In en, this message translates to:
+  /// **'A backup of your original audio files will be stored in: /metadata/cache/items/{itemId}/. Make sure to periodically purge items cache.'**
+  String encodeBackupNote(String itemId);
+
+  /// No description provided for @encodeTimeNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Encoding can take up to 30 minutes.'**
+  String get encodeTimeNote;
+
+  /// No description provided for @encodeRescanNote.
+  ///
+  /// In en, this message translates to:
+  /// **'If you have the watcher disabled you will need to re-scan this audiobook afterwards.'**
+  String get encodeRescanNote;
+
   /// No description provided for @aboutSection.
   ///
   /// In en, this message translates to:

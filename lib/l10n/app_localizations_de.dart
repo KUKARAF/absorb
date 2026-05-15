@@ -1800,6 +1800,56 @@ class AppLocalizationsDe extends AppLocalizations {
   String get editServerDetails => 'Server-Details bearbeiten';
 
   @override
+  String get encodeTab => 'Encode';
+
+  @override
+  String get codec => 'Codec';
+
+  @override
+  String get bitrate => 'Bitrate';
+
+  @override
+  String get channels => 'Channels';
+
+  @override
+  String get mono => 'Mono';
+
+  @override
+  String get stereo => 'Stereo';
+
+  @override
+  String get startM4bEncode => 'Start M4B Encode';
+
+  @override
+  String get encodeStarted => 'M4B encode started';
+
+  @override
+  String get encodeFailed => 'Failed to start encode';
+
+  @override
+  String get encodeFinished => 'M4B encode finished';
+
+  @override
+  String get currentlyLabel => 'Currently:';
+
+  @override
+  String encodeOutputPathNote(String path) {
+    return 'Finished M4B will be put into your audiobook folder at: $path/';
+  }
+
+  @override
+  String encodeBackupNote(String itemId) {
+    return 'A backup of your original audio files will be stored in: /metadata/cache/items/$itemId/. Make sure to periodically purge items cache.';
+  }
+
+  @override
+  String get encodeTimeNote => 'Encoding can take up to 30 minutes.';
+
+  @override
+  String get encodeRescanNote =>
+      'If you have the watcher disabled you will need to re-scan this audiobook afterwards.';
+
+  @override
   String get aboutSection => 'Info';
 
   @override

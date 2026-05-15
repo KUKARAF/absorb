@@ -2047,6 +2047,29 @@ class ApiService {
     return null;
   }
 
+  /// Start an M4B encode task on the server.
+  /// POST /api/tools/item/:id/encode-m4b?codec=&bitrate=&channels=
+  Future<bool> startM4bEncode(
+    String itemId, {
+    required String codec,
+    required String bitrate,
+    required int channels,
+  }) async {
+    try {
+      final uri = Uri.parse('$_cleanBaseUrl/api/tools/item/$itemId/encode-m4b')
+          .replace(queryParameters: {
+        'codec': codec,
+        'bitrate': bitrate,
+        'channels': '$channels',
+      });
+      final r = await _authPost(uri);
+      return r.statusCode == 200;
+    } catch (e) {
+      debugPrint('startM4bEncode error: $e');
+    }
+    return false;
+  }
+
   /// Update podcast media settings (auto-download, etc.)
   /// PATCH /api/items/:id/media  body: mediaUpdates at the media level
   Future<bool> updatePodcastMedia(String itemId, Map<String, dynamic> mediaUpdates) async {

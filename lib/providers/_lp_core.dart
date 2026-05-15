@@ -912,6 +912,16 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
     _goOffline();
   }
 
+  void _onEncodeFinished(Map<String, dynamic> data) {
+    final messenger = scaffoldMessengerKey.currentState;
+    if (messenger == null) return;
+    final ctx = messenger.context;
+    final l = AppLocalizations.of(ctx);
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(l?.encodeFinished ?? 'M4B encode finished')));
+  }
+
   void _goOffline() {
     if (_networkOffline) return;
     debugPrint('[Library] Network error — going offline');
