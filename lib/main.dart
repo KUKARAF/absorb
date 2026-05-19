@@ -235,9 +235,16 @@ class AbsorbApp extends StatelessWidget {
           brightness: Brightness.light,
         );
 
+            // Hoisting the builder to a const variable keeps both newer
+            // and older Flutter SDKs happy: newer ones don't warn about
+            // unnecessary `const`, older ones (e.g. Codemagic's build
+            // image) don't fail with "Not a constant expression" on the
+            // inline `CupertinoPageTransitionsBuilder()` calls inside the
+            // outer const map.
+            const cupertinoBuilder = CupertinoPageTransitionsBuilder();
             const pageTransition = PageTransitionsTheme(builders: {
-                    TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-                    TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+                    TargetPlatform.android: cupertinoBuilder,
+                    TargetPlatform.iOS: cupertinoBuilder,
                   });
 
             return MaterialApp(
