@@ -128,6 +128,14 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
   LibraryFilter _filter = LibraryFilter.none;
   String? _genreFilter;
   String? _tagFilter;
+
+  /// Set to true the first time the user (or a chip tap via
+  /// AppShell.openLibraryWith*FilterGlobal) explicitly changes the filter.
+  /// `_restoreSortFilter` checks this before overwriting filter state from
+  /// SharedPreferences — fixes the cold-start race where a tag/genre chip
+  /// tap on a freshly opened app got clobbered by the prefs restore that
+  /// runs in postFrame right after the library widget mounts.
+  bool _filterOverriddenByUser = false;
   List<String> _availableGenres = [];
   List<String> _availableTags = [];
   bool _hideEbookOnly = false;
@@ -293,6 +301,10 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
         _allNarratorsCache = null;
         _allNarratorsCacheLibraryId = null;
         _searchNarratorResults = [];
+        // New library, so any prior chip-driven override no longer
+        // applies — let `_restoreSortFilter` set the new library's
+        // saved filter freely.
+        _filterOverriddenByUser = false;
       });
       _revealDriver.resetToShown();
       // Restore sort/filter for the new library type, then load
@@ -371,12 +383,18 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
       );
       _sortAsc = sortAsc;
       if (_sort == LibrarySort.random) _randomSeed = Random().nextInt(100000);
-      _filter = LibraryFilter.values.firstWhere(
-        (f) => f.name == filterName,
-        orElse: () => LibraryFilter.none,
-      );
-      _genreFilter = genreFilter.isNotEmpty ? genreFilter : null;
-      _tagFilter = tagFilter.isNotEmpty ? tagFilter : null;
+      // Don't restore filter from prefs if the user (typically via a
+      // chip tap from an open detail sheet) already set one during this
+      // session — that race would otherwise undo their selection on cold
+      // start when the library widget is mounting for the first time.
+      if (!_filterOverriddenByUser) {
+        _filter = LibraryFilter.values.firstWhere(
+          (f) => f.name == filterName,
+          orElse: () => LibraryFilter.none,
+        );
+        _genreFilter = genreFilter.isNotEmpty ? genreFilter : null;
+        _tagFilter = tagFilter.isNotEmpty ? tagFilter : null;
+      }
       _seriesSort = LibrarySort.values.firstWhere(
         (s) => s.name == seriesSortName,
         orElse: () => LibrarySort.alphabetical,
@@ -1138,6 +1156,7 @@ class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMi
       _page = 0;
       _hasMore = true;
       _isLoadingPage = false;
+      _filterOverriddenByUser = true;
     });
     if (!isPodcast) {
       PlayerSettings.setLibraryFilter(_filter.name);

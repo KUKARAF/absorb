@@ -73,7 +73,21 @@ class AppShell extends StatefulWidget {
       void Function(LibraryScreenState) apply) {
     final inst = _AppShellState._instance;
     if (inst == null) return false;
+    // If the full-screen expanded player is on top of the shell, pop it
+    // first. Otherwise switching to the Library tab leaves the player
+    // covering the filtered library underneath. Caller (e.g. the book
+    // detail sheet) has already popped its own modal route at this point.
+    if (inst._expandedIsOpen && inst.mounted) {
+      Navigator.of(inst.context, rootNavigator: true).maybePop();
+    }
     inst._navigateTo(1);
+    // The retry budget has to survive the fade transition (~200ms by
+    // default, see `_fadeController` and `_navigateTo`) plus the library
+    // widget's own mount + first build. On cold start that easily takes
+    // 300-500ms before `_libraryKey.currentState` becomes non-null. ~3s
+    // worth of frames is generous enough to cover slow devices and stingy
+    // enough to give up if something is genuinely broken.
+    const maxAttempts = 180; // ~3s at 60fps
     var attempts = 0;
     void tryApply() {
       if (!inst.mounted) return;
@@ -82,7 +96,7 @@ class AppShell extends StatefulWidget {
         apply(state);
         return;
       }
-      if (++attempts < 10) {
+      if (++attempts < maxAttempts) {
         WidgetsBinding.instance.addPostFrameCallback((_) => tryApply());
       }
     }
