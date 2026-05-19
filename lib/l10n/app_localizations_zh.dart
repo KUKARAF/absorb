@@ -1677,6 +1677,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get rmabConfigTokenHint => 'rmab_...';
 
   @override
+  String get rmabConfigLegacyUrlLabel => 'Web UI login URL (optional)';
+
+  @override
+  String get rmabConfigLegacyUrlHint => 'https://rmab.example.com/?token=...';
+
+  @override
+  String get rmabConfigLegacyUrlHelp =>
+      'Paste your auto-login URL so \'Open in browser view\' lands you signed in. Leave blank to use a regular login.';
+
+  @override
   String get rmabConfigConnect => 'Connect';
 
   @override

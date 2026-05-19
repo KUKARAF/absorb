@@ -70,8 +70,10 @@ class _RmabConfigSheet extends StatefulWidget {
 class _RmabConfigSheetState extends State<_RmabConfigSheet> {
   final _urlController = TextEditingController();
   final _tokenController = TextEditingController();
+  final _legacyUrlController = TextEditingController();
   final _urlFocus = FocusNode();
   final _tokenFocus = FocusNode();
+  final _legacyUrlFocus = FocusNode();
 
   bool _loadingPrefs = true;
   bool _connecting = false;
@@ -111,6 +113,7 @@ class _RmabConfigSheetState extends State<_RmabConfigSheet> {
     setState(() {
       _urlController.text = prefilledBase;
       _tokenController.text = token ?? '';
+      _legacyUrlController.text = legacy ?? '';
       _legacyUrl = legacy;
       _wasConfigured =
           (base ?? '').isNotEmpty && (token ?? '').isNotEmpty;
@@ -122,8 +125,10 @@ class _RmabConfigSheetState extends State<_RmabConfigSheet> {
   void dispose() {
     _urlController.dispose();
     _tokenController.dispose();
+    _legacyUrlController.dispose();
     _urlFocus.dispose();
     _tokenFocus.dispose();
+    _legacyUrlFocus.dispose();
     super.dispose();
   }
 
@@ -172,22 +177,43 @@ class _RmabConfigSheetState extends State<_RmabConfigSheet> {
 
       await ScopedPrefs.setString(kRmabBaseUrlKey, cleanBase);
       await ScopedPrefs.setString(kRmabApiTokenKey, token);
-      // If no legacy URL exists, plant the bare base URL so "Open in browser
-      // view" has something to load (the user will see RMAB's login page).
-      // Don't overwrite an existing legacy URL — power users may rely on the
-      // embedded `?token=` for one-tap SSO into the web UI.
-      final existingLegacy = await ScopedPrefs.getString(kRmabLegacyUrlKey);
-      if (existingLegacy == null || existingLegacy.isEmpty) {
-        await ScopedPrefs.setString(kRmabLegacyUrlKey, cleanBase);
+      // Legacy URL handling depends on context:
+      //   Admin: respect whatever they typed in the legacy URL field.
+      //     Non-empty → save it. Empty → clear it. Gives admins explicit
+      //     control over the auto-login URL used by "Open in browser view".
+      //   Non-admin: legacy URL field isn't exposed. Keep any existing
+      //     legacy URL (don't clobber a power-user setup); plant the base
+      //     URL if none exists, so the WebView fallback has something to
+      //     open (user will just see RMAB's login page).
+      if (widget.isAdminContext) {
+        final entered = _legacyUrlController.text.trim();
+        if (entered.isNotEmpty) {
+          await ScopedPrefs.setString(kRmabLegacyUrlKey, entered);
+        } else {
+          await ScopedPrefs.remove(kRmabLegacyUrlKey);
+        }
+      } else {
+        final existingLegacy =
+            await ScopedPrefs.getString(kRmabLegacyUrlKey);
+        if (existingLegacy == null || existingLegacy.isEmpty) {
+          await ScopedPrefs.setString(kRmabLegacyUrlKey, cleanBase);
+        }
       }
 
       if (!mounted) return;
       debugPrint('[RMAB] connect ok (username=${me.username} role=${me.role})');
+      // Refresh the in-memory legacy URL so the "Open in browser view"
+      // button below uses the freshly-saved value without requiring a
+      // sheet reopen.
+      final refreshedLegacy =
+          await ScopedPrefs.getString(kRmabLegacyUrlKey);
+      if (!mounted) return;
       setState(() {
         _connecting = false;
         _connectedAsName = me.username;
         _wasConfigured = true;
         _credsVersion++;
+        _legacyUrl = refreshedLegacy;
       });
     } on RmabException catch (e) {
       if (!mounted) return;
@@ -479,8 +505,37 @@ class _SetupForm extends StatelessWidget {
               onPressed: state._connecting ? null : state._toggleObscureToken,
             ),
           ),
-          onSubmitted: (_) => state._connect(),
+          onSubmitted: (_) {
+            if (state.widget.isAdminContext) {
+              state._legacyUrlFocus.requestFocus();
+            } else {
+              state._connect();
+            }
+          },
         ),
+        // Admin-only: web UI login URL with embedded login token, so
+        // "Open in browser view" opens already signed in.
+        if (state.widget.isAdminContext) ...[
+          const SizedBox(height: 12),
+          TextField(
+            controller: state._legacyUrlController,
+            focusNode: state._legacyUrlFocus,
+            enabled: !state._connecting,
+            autocorrect: false,
+            keyboardType: TextInputType.url,
+            decoration: InputDecoration(
+              labelText: l.rmabConfigLegacyUrlLabel,
+              hintText: l.rmabConfigLegacyUrlHint,
+              border: const OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => state._connect(),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            l.rmabConfigLegacyUrlHelp,
+            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
         if (state._errorText != null) ...[
           const SizedBox(height: 12),
           Row(children: [

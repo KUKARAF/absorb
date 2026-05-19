@@ -3214,6 +3214,24 @@ abstract class AppLocalizations {
   /// **'rmab_...'**
   String get rmabConfigTokenHint;
 
+  /// No description provided for @rmabConfigLegacyUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Web UI login URL (optional)'**
+  String get rmabConfigLegacyUrlLabel;
+
+  /// No description provided for @rmabConfigLegacyUrlHint.
+  ///
+  /// In en, this message translates to:
+  /// **'https://rmab.example.com/?token=...'**
+  String get rmabConfigLegacyUrlHint;
+
+  /// No description provided for @rmabConfigLegacyUrlHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste your auto-login URL so \'Open in browser view\' lands you signed in. Leave blank to use a regular login.'**
+  String get rmabConfigLegacyUrlHelp;
+
   /// No description provided for @rmabConfigConnect.
   ///
   /// In en, this message translates to:
