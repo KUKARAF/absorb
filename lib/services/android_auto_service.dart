@@ -220,6 +220,13 @@ class AndroidAutoService {
   DateTime? _lastRefresh;
   bool _isRefreshing = false;
 
+  // Per-parent MediaItem list cache. Returning the same instances on
+  // re-requests is what lets AA preserve scroll position when the user goes
+  // into an item and presses back. Also dedupes the back-to-back getChildren
+  // calls AA fires when it re-renders.
+  final Map<String, List<MediaItem>> _childrenCache = {};
+  final Map<String, Future<List<MediaItem>>> _childrenInFlight = {};
+
   /// Clear all cached browse-tree data and force a fresh server fetch
   /// on the next access.  Call when the user switches accounts or logs out.
   void clearCache() {
@@ -230,7 +237,26 @@ class AndroidAutoService {
     _lastRefresh = null;
     _downloadsReady = false;
     _isRefreshing = false;
+    _childrenCache.clear();
+    _childrenInFlight.clear();
     debugPrint('[AutoBrowse] Cache cleared (user switch/logout)');
+  }
+
+  // Top-level parents whose contents change with server refresh. Drilldown
+  // children (series/author books, podcast episodes) stay cached until the
+  // user explicitly switches accounts so scroll position survives.
+  static const _refreshSensitiveParents = {
+    AutoMediaIds.root,
+    AutoMediaIds.continueListening,
+    AutoMediaIds.recentlyAdded,
+    AutoMediaIds.library,
+    AutoMediaIds.downloads,
+  };
+
+  void _invalidateRefreshSensitiveChildren() {
+    _childrenCache.removeWhere((k, _) =>
+        _refreshSensitiveParents.contains(k) ||
+        k.startsWith(AutoMediaIds.libPrefix));
   }
 
   // ── API helpers ──
@@ -331,6 +357,7 @@ class AndroidAutoService {
       debugPrint('[AutoBrowse] Server refresh failed (downloads still available): $e');
     } finally {
       _isRefreshing = false;
+      _invalidateRefreshSensitiveChildren();
       if (Platform.isAndroid) {
         try {
           // ignore: deprecated_member_use
@@ -367,6 +394,10 @@ class AndroidAutoService {
     final prev = _itemUpdatedAt[itemId];
     if (prev == updatedAt) return;
     _itemUpdatedAt[itemId] = updatedAt;
+    // The cached MediaItem lists embed the old cover URI, so any list could
+    // be stale. Clear them; AA will reload on the next browse and pick up the
+    // new ts-suffixed URI.
+    _instance._childrenCache.clear();
     try {
       onServerDataChanged?.call();
     } catch (e) {
@@ -759,7 +790,27 @@ class AndroidAutoService {
   }
 
   /// Main entry point for browse tree. May make API calls for drilldowns.
-  Future<List<MediaItem>> getChildrenOf(String parentMediaId) async {
+  Future<List<MediaItem>> getChildrenOf(String parentMediaId) {
+    final cached = _childrenCache[parentMediaId];
+    if (cached != null) return Future.value(cached);
+
+    final inFlight = _childrenInFlight[parentMediaId];
+    if (inFlight != null) return inFlight;
+
+    final future = () async {
+      try {
+        final children = await _computeChildren(parentMediaId);
+        _childrenCache[parentMediaId] = children;
+        return children;
+      } finally {
+        _childrenInFlight.remove(parentMediaId);
+      }
+    }();
+    _childrenInFlight[parentMediaId] = future;
+    return future;
+  }
+
+  Future<List<MediaItem>> _computeChildren(String parentMediaId) async {
     // Ensure downloads are always populated before returning root.
     // This is instant (no network) so Android Auto never waits on a server.
     if (!_downloadsReady) {
@@ -768,7 +819,7 @@ class AndroidAutoService {
     }
 
     // Kick off a full server refresh in the background if we haven't done one.
-    // Don't await — return what we have now (downloads at minimum).
+    // Don't await, return what we have now (downloads at minimum).
     if (_lastRefresh == null && !_isRefreshing) {
       _backgroundRefresh();
     }
