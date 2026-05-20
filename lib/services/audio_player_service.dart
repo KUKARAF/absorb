@@ -158,6 +158,11 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
         MediaAction.seekForward,
         MediaAction.seekBackward,
         MediaAction.skipToQueueItem,
+        // BT next/prev track buttons (steering wheel, AirPods) hit
+        // skipToNext/skipToPrevious, not fastForward/rewind. Enabling these
+        // mirrors the BT skip to the user's configured X-second jump.
+        MediaAction.skipToNext,
+        MediaAction.skipToPrevious,
       },
       androidCompactActionIndices: compactIndices,
       processingState: const {
@@ -362,6 +367,15 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       await _player.seek(pos);
     }
   }
+
+  // BT track-skip (steering wheel, AirPods) routes to skipToNext/Previous on
+  // iOS MPRemoteCommandCenter. Mirror ABS / Prologue: apply the user's X-second
+  // skip rather than navigating chapters.
+  @override
+  Future<void> skipToNext() => fastForward();
+
+  @override
+  Future<void> skipToPrevious() => rewind();
 
   // Custom click handler with proper multi-press detection
   Timer? _clickTimer;
