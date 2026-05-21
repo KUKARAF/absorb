@@ -57,6 +57,7 @@ class SyncLogic {
     required bool hasOfflineListening,
   }) {
     if (serverTimestamp <= localTimestamp) return false;
+    if (localTime == serverTime) return false;
     if (localTime - serverTime > localAheadSafetySeconds) return false;
     return serverTime >= localTime || !hasOfflineListening;
   }
