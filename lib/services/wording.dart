@@ -45,6 +45,21 @@ class Wording {
   String get startScreenAbsorb => classic ? 'Now Playing' : _l.startScreenAbsorb;
   String get sectionAbsorbingCards => classic ? 'Player Cards' : _l.sectionAbsorbingCards;
 
+  // ── Unified Absorbing page setting ──
+  String get mergeLibraries =>
+      classic ? 'Unified Now Playing page' : _l.mergeLibraries;
+  String get mergeLibrariesInfoTitle =>
+      classic ? 'Unified Now Playing Page' : _l.mergeLibrariesInfoTitle;
+  String get mergeLibrariesInfoContent => classic
+      ? 'When enabled, the Now Playing screen shows all your in-progress books and podcasts from every library in a single view. When disabled, only items from the library you currently have selected are shown.'
+      : _l.mergeLibrariesInfoContent;
+  String get mergeLibrariesOnSubtitle => classic
+      ? 'Now Playing page shows items from all libraries'
+      : _l.mergeLibrariesOnSubtitle;
+  String get mergeLibrariesOffSubtitle => classic
+      ? 'Now Playing page shows current library only'
+      : _l.mergeLibrariesOffSubtitle;
+
   // ── Empty / placeholder ──
   String get absorbingNothingAbsorbingYet =>
       classic ? 'Nothing playing yet' : _l.absorbingNothingAbsorbingYet;

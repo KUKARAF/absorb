@@ -809,21 +809,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       } : null,
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
-                    SwitchListTile(
-                      title: Row(children: [
-                        Flexible(child: Text(l.mergeLibraries)),
-                        _infoIcon(l.mergeLibrariesInfoTitle, l.mergeLibrariesInfoContent),
-                      ]),
-                      subtitle: Text(
-                        _mergeAbsorbingLibraries
-                            ? l.mergeLibrariesOnSubtitle
-                            : l.mergeLibrariesOffSubtitle,
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                      value: _mergeAbsorbingLibraries,
-                      onChanged: _loaded ? (v) {
-                        setState(() => _mergeAbsorbingLibraries = v);
-                        PlayerSettings.setMergeAbsorbingLibraries(v);
-                      } : null,
+                    ValueListenableBuilder<bool>(
+                      valueListenable: classicWordingNotifier,
+                      builder: (context, _, __) {
+                        final w = Wording.of(context);
+                        return SwitchListTile(
+                          title: Row(children: [
+                            Flexible(child: Text(w.mergeLibraries)),
+                            _infoIcon(w.mergeLibrariesInfoTitle, w.mergeLibrariesInfoContent),
+                          ]),
+                          subtitle: Text(
+                            _mergeAbsorbingLibraries
+                                ? w.mergeLibrariesOnSubtitle
+                                : w.mergeLibrariesOffSubtitle,
+                            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                          value: _mergeAbsorbingLibraries,
+                          onChanged: _loaded ? (v) {
+                            setState(() => _mergeAbsorbingLibraries = v);
+                            PlayerSettings.setMergeAbsorbingLibraries(v);
+                          } : null,
+                        );
+                      },
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     Padding(
