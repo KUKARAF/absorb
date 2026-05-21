@@ -154,16 +154,14 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
     return PlaybackState(
       controls: controls,
-      systemActions: const {
+      // iOS-only: declaring on Android adds prev/next buttons to the notification.
+      systemActions: {
         MediaAction.seek,
         MediaAction.seekForward,
         MediaAction.seekBackward,
         MediaAction.skipToQueueItem,
-        // BT next/prev track buttons (steering wheel, AirPods) hit
-        // skipToNext/skipToPrevious, not fastForward/rewind. Enabling these
-        // mirrors the BT skip to the user's configured X-second jump.
-        MediaAction.skipToNext,
-        MediaAction.skipToPrevious,
+        if (Platform.isIOS) MediaAction.skipToNext,
+        if (Platform.isIOS) MediaAction.skipToPrevious,
       },
       androidCompactActionIndices: compactIndices,
       processingState: const {
@@ -369,9 +367,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
-  // BT track-skip (steering wheel, AirPods) routes to skipToNext/Previous on
-  // iOS MPRemoteCommandCenter. Mirror ABS / Prologue: apply the user's X-second
-  // skip rather than navigating chapters.
+  // iOS BT (AirPods, steering wheel) routes track-skip through these.
   @override
   Future<void> skipToNext() => fastForward();
 
