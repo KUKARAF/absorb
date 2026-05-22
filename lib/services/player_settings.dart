@@ -148,7 +148,7 @@ class PlayerSettings {
   static Future<void> setMaxConcurrentDownloads(int value) => _set('maxConcurrentDownloads', value);
 
   // ── Queue mode (replaces autoPlayNextBook + autoPlayNextPodcast) ──
-  // Values: 'off', 'manual', 'auto_next'
+  // Values: 'off', 'manual', 'auto_next', 'playlist'
   static Future<String> getQueueMode() => _get('queueMode', 'off');
   static Future<void> setQueueMode(String value) => _set('queueMode', value);
 
@@ -156,13 +156,45 @@ class PlayerSettings {
     final value = await ScopedPrefs.getString('bookQueueMode');
     return value ?? await getQueueMode();
   }
-  static Future<void> setBookQueueMode(String value) => _set('bookQueueMode', value);
+  static Future<void> setBookQueueMode(String value) => _set('bookQueueMode', value, notify: true);
 
   static Future<String> getPodcastQueueMode() async {
     final value = await ScopedPrefs.getString('podcastQueueMode');
     return value ?? await getQueueMode();
   }
-  static Future<void> setPodcastQueueMode(String value) => _set('podcastQueueMode', value);
+  static Future<void> setPodcastQueueMode(String value) => _set('podcastQueueMode', value, notify: true);
+
+  /// Active playlist ID for playlist queue mode. Null when no playlist is selected.
+  static Future<String?> getQueuePlaylistId() async {
+    final s = await ScopedPrefs.getString('queuePlaylistId');
+    return (s == null || s.isEmpty) ? null : s;
+  }
+  static Future<void> setQueuePlaylistId(String? id) async {
+    if (id == null || id.isEmpty) {
+      await ScopedPrefs.remove('queuePlaylistId');
+    } else {
+      await ScopedPrefs.setString('queuePlaylistId', id);
+    }
+    _notify();
+  }
+
+  /// Enter playlist queue mode atomically: both book and podcast modes flip to
+  /// 'playlist' and the active playlist is set. Playlists can mix book and
+  /// podcast items, so the two modes always agree when in playlist mode.
+  static Future<void> setQueueModePlaylist(String playlistId) async {
+    await ScopedPrefs.setString('bookQueueMode', 'playlist');
+    await ScopedPrefs.setString('podcastQueueMode', 'playlist');
+    await ScopedPrefs.setString('queuePlaylistId', playlistId);
+    _notify();
+  }
+
+  /// Exit playlist queue mode: both modes back to 'off' and active playlist cleared.
+  static Future<void> clearQueueModePlaylist() async {
+    await ScopedPrefs.setString('bookQueueMode', 'off');
+    await ScopedPrefs.setString('podcastQueueMode', 'off');
+    await ScopedPrefs.remove('queuePlaylistId');
+    _notify();
+  }
 
   /// One-time migration from the old boolean auto-play settings to queueMode.
   static Future<void> migrateQueueMode() async {

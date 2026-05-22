@@ -1744,6 +1744,66 @@ abstract class AppLocalizations {
   /// **'Auto'**
   String get queueModeAuto;
 
+  /// No description provided for @queueModePlaylist.
+  ///
+  /// In en, this message translates to:
+  /// **'Playlist'**
+  String get queueModePlaylist;
+
+  /// No description provided for @queueModeInfoPlaylist.
+  ///
+  /// In en, this message translates to:
+  /// **'Playlist Queue'**
+  String get queueModeInfoPlaylist;
+
+  /// No description provided for @queueModeInfoPlaylistDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Plays items in order from a chosen playlist, skipping anything already finished. Stops at the end of the list.'**
+  String get queueModeInfoPlaylistDesc;
+
+  /// No description provided for @queuePlaylistPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a playlist'**
+  String get queuePlaylistPickerTitle;
+
+  /// No description provided for @queuePlaylistNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No playlist selected'**
+  String get queuePlaylistNone;
+
+  /// No description provided for @queuePlaylistActiveLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Playlist: {name}'**
+  String queuePlaylistActiveLabel(String name);
+
+  /// No description provided for @queueModePlaylistHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Start a playlist queue by opening a playlist on the home page.'**
+  String get queueModePlaylistHint;
+
+  /// No description provided for @exit.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit'**
+  String get exit;
+
+  /// No description provided for @playlistPlayAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Play playlist'**
+  String get playlistPlayAction;
+
+  /// No description provided for @playlistAllFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'All finished'**
+  String get playlistAllFinished;
+
   /// No description provided for @queueModeBooks.
   ///
   /// In en, this message translates to:

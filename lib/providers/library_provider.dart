@@ -33,6 +33,10 @@ class LibraryProvider extends ChangeNotifier
     // where updateAuth may not run until much later).
     AudioPlayerService.setOnBookFinishedCallback(markFinishedLocally);
     AudioPlayerService.setOnPlayStartedCallback((key) {
+      // If a non-playlist item is being played while playlist mode is active,
+      // exit playlist mode. Lets users escape the queue by just tapping any
+      // other book/episode (matches "Auto-switch mode to off" UX choice).
+      _checkPlaylistModeOnPlay(key);
       Future.delayed(const Duration(seconds: 30), () {
         final stillPlaying = AudioPlayerService().isPlaying;
         if (!stillPlaying) return;
@@ -379,5 +383,28 @@ class LibraryProvider extends ChangeNotifier
       return getEpisodeProgressData(showId, epId)?['isFinished'] == true;
     }
     return getProgressData(key)?['isFinished'] == true;
+  }
+
+  /// If queue mode is 'playlist' and [progressKey] is not in the active
+  /// playlist, clear playlist mode (modes back to 'off'). Fire-and-forget.
+  Future<void> _checkPlaylistModeOnPlay(String progressKey) async {
+    try {
+      final mode = await PlayerSettings.getBookQueueMode();
+      if (mode != 'playlist') return;
+      final libraryItemId =
+          progressKey.length > 36 ? progressKey.substring(0, 36) : progressKey;
+      final episodeId =
+          progressKey.length > 36 ? progressKey.substring(37) : null;
+      final inPlaylist = await isInActiveQueuePlaylist(
+        libraryItemId,
+        episodeId: episodeId,
+      );
+      if (!inPlaylist) {
+        debugPrint('[Playlist] Off-queue play; clearing playlist queue mode');
+        await PlayerSettings.clearQueueModePlaylist();
+      }
+    } catch (e) {
+      debugPrint('[Playlist] _checkPlaylistModeOnPlay error: $e');
+    }
   }
 }

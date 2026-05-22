@@ -27,6 +27,7 @@ import '../services/download_service.dart';
 import '../services/progress_sync_service.dart';
 import '../services/metadata_override_service.dart';
 import '../services/scoped_prefs.dart';
+import '../main.dart' show rootNavigatorKey;
 import '../screens/app_shell.dart';
 import 'author_books_sheet.dart';
 import 'narrator_books_sheet.dart';
@@ -1242,22 +1243,21 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     final api = auth.apiService;
     if (api == null) return;
 
-    // Start playback
-    final error = await player.playItem(api: api, itemId: widget.itemId, title: title, author: author, coverUrl: coverUrl, totalDuration: duration, chapters: chapters);
-    if (error != null && context.mounted) showErrorSnackBar(context, error);
+    final lib = context.mounted ? context.read<LibraryProvider>() : null;
 
-    // Refresh library so the absorbing screen picks up the new book
-    if (context.mounted) {
-      final lib = context.read<LibraryProvider>();
-      lib.refreshLocalProgress();
-      lib.refresh();
-    }
-
-    // Close all sheets and navigate
+    // Pop sheets and switch tab BEFORE starting playback. Otherwise the
+    // auto-expand triggered by playItem pushes the expanded player on top
+    // of the sheet, and the popUntil below kills the expanded player too.
     rootNav.popUntil((route) => route.isFirst);
-    Future.delayed(const Duration(milliseconds: 100), () {
-      AppShell.goToAbsorbingGlobal();
-    });
+    AppShell.goToAbsorbingGlobal();
+
+    final error = await player.playItem(api: api, itemId: widget.itemId, title: title, author: author, coverUrl: coverUrl, totalDuration: duration, chapters: chapters);
+    if (error != null) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null) showErrorSnackBar(ctx, error);
+    }
+    lib?.refreshLocalProgress();
+    lib?.refresh();
   }
 
   Future<void> _markFinished(BuildContext context, AuthProvider auth, double duration) async {

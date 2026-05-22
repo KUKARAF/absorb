@@ -33,6 +33,7 @@ import '../widgets/tips_sheet.dart';
 import '../widgets/feature_hint.dart';
 import '../widgets/welcome_sheet.dart';
 import '../widgets/rmab_config_sheet.dart';
+import '../widgets/queue_playlist_picker_sheet.dart';
 import '../l10n/app_localizations.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -67,9 +68,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _shakeSensitivity = 'medium';
   String _bookQueueMode = 'off';
   String _podcastQueueMode = 'off';
+  String? _queuePlaylistId;
   // Returns the more restrictive of the two modes so the merged control
-  // never shows 'Auto' if one type is still 'off' or 'manual'.
+  // never shows 'Auto' if one type is still 'off' or 'manual'. Playlist
+  // mode is set atomically on both, so if either is 'playlist' the merged
+  // value is 'playlist'.
   String get _mergedQueueMode {
+    if (_bookQueueMode == 'playlist' || _podcastQueueMode == 'playlist') {
+      return 'playlist';
+    }
     const order = ['off', 'manual', 'auto_next'];
     final bi = order.indexOf(_bookQueueMode);
     final pi = order.indexOf(_podcastQueueMode);
@@ -151,12 +158,134 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _onExternalSettingsChange() async {
     final bookMode = await PlayerSettings.getBookQueueMode();
     final podMode = await PlayerSettings.getPodcastQueueMode();
+    final qpId = await PlayerSettings.getQueuePlaylistId();
     if (mounted) {
       setState(() {
         _bookQueueMode = bookMode;
         _podcastQueueMode = podMode;
+        _queuePlaylistId = qpId;
       });
     }
+  }
+
+  Future<String?> _pickQueuePlaylist() async {
+    if (!mounted) return null;
+    return await QueuePlaylistPickerSheet.show(context);
+  }
+
+  Future<void> _enterPlaylistMode() async {
+    String? id = _queuePlaylistId;
+    if (id == null) {
+      id = await _pickQueuePlaylist();
+      if (id == null || !mounted) return;
+    }
+    await PlayerSettings.setQueueModePlaylist(id);
+    if (!mounted) return;
+    setState(() {
+      _bookQueueMode = 'playlist';
+      _podcastQueueMode = 'playlist';
+      _queuePlaylistId = id;
+    });
+  }
+
+  Future<void> _setBookQueueMode(String mode) async {
+    if (mode == 'playlist') return _enterPlaylistMode();
+    final wasPlaylist =
+        _bookQueueMode == 'playlist' || _podcastQueueMode == 'playlist';
+    await PlayerSettings.setBookQueueMode(mode);
+    if (wasPlaylist) {
+      await PlayerSettings.setPodcastQueueMode(mode);
+      await PlayerSettings.setQueuePlaylistId(null);
+    }
+    if (!mounted) return;
+    setState(() {
+      _bookQueueMode = mode;
+      if (wasPlaylist) {
+        _podcastQueueMode = mode;
+        _queuePlaylistId = null;
+      }
+    });
+    PlayerSettings.notifySettingsChanged();
+  }
+
+  Future<void> _setPodcastQueueMode(String mode) async {
+    if (mode == 'playlist') return _enterPlaylistMode();
+    final wasPlaylist =
+        _bookQueueMode == 'playlist' || _podcastQueueMode == 'playlist';
+    await PlayerSettings.setPodcastQueueMode(mode);
+    if (wasPlaylist) {
+      await PlayerSettings.setBookQueueMode(mode);
+      await PlayerSettings.setQueuePlaylistId(null);
+    }
+    if (!mounted) return;
+    setState(() {
+      _podcastQueueMode = mode;
+      if (wasPlaylist) {
+        _bookQueueMode = mode;
+        _queuePlaylistId = null;
+      }
+    });
+    PlayerSettings.notifySettingsChanged();
+  }
+
+  Widget _buildActivePlaylistRow(
+    ColorScheme cs,
+    TextTheme tt,
+    LibraryProvider lib,
+    AppLocalizations l,
+  ) {
+    String name = l.queuePlaylistNone;
+    if (_queuePlaylistId != null) {
+      final match = lib.playlists.cast<Map<String, dynamic>>().where(
+        (p) => p['id'] == _queuePlaylistId,
+      ).firstOrNull;
+      final n = match?['name'] as String?;
+      if (n != null && n.isNotEmpty) name = n;
+    }
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.25), width: 0.5),
+      ),
+      child: Row(children: [
+        Icon(Icons.playlist_play_rounded, size: 16, color: cs.primary),
+        const SizedBox(width: 8),
+        Expanded(child: Text(
+          name,
+          style: tt.bodySmall?.copyWith(color: cs.onPrimaryContainer, fontWeight: FontWeight.w600),
+          maxLines: 1, overflow: TextOverflow.ellipsis,
+        )),
+        IconButton(
+          icon: const Icon(Icons.close_rounded, size: 16),
+          color: cs.onPrimaryContainer.withValues(alpha: 0.7),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          visualDensity: VisualDensity.compact,
+          tooltip: l.exit,
+          onPressed: () => PlayerSettings.clearQueueModePlaylist(),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _setMergedQueueMode(String mode) async {
+    if (mode == 'playlist') return _enterPlaylistMode();
+    final wasPlaylist =
+        _bookQueueMode == 'playlist' || _podcastQueueMode == 'playlist';
+    await PlayerSettings.setBookQueueMode(mode);
+    await PlayerSettings.setPodcastQueueMode(mode);
+    if (wasPlaylist) {
+      await PlayerSettings.setQueuePlaylistId(null);
+    }
+    if (!mounted) return;
+    setState(() {
+      _bookQueueMode = mode;
+      _podcastQueueMode = mode;
+      if (wasPlaylist) _queuePlaylistId = null;
+    });
+    PlayerSettings.notifySettingsChanged();
   }
 
   Future<void> _loadSettings() async {
@@ -209,6 +338,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PlayerSettings.getShakeSensitivity(),                                   // 48
       PlayerSettings.getLanguage(),                                           // 49
       PlayerSettings.getClassicWording(),                                     // 50
+      PlayerSettings.getQueuePlaylistId(),                                    // 51
     ]);
     final s = results[0] as AutoRewindSettings;
     final speed = results[1] as double;
@@ -258,6 +388,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final shakeSens = results[45] as String;
     final language = results[46] as String;
     final classicWording = results[47] as bool;
+    final qpId = results[48] as String?;
     final rmabBaseUrl = await ScopedPrefs.getString(kRmabBaseUrlKey);
     final rmabApiToken = await ScopedPrefs.getString(kRmabApiTokenKey);
     if (mounted) setState(() {
@@ -280,6 +411,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _shakeAddMinutes = shakeMins;
       _bookQueueMode = bookQueueMode;
       _podcastQueueMode = podcastQueueMode;
+      _queuePlaylistId = qpId;
       _queueAutoDownload = queueAutoDl;
       _mergeAbsorbingLibraries = mergeLibs;
       _maxConcurrentDownloads = maxConc;
@@ -858,6 +990,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     Text(l.queueModeInfoSeries, style: const TextStyle(fontWeight: FontWeight.w600)),
                                     const SizedBox(height: 4),
                                     Text(l.queueModeInfoSeriesDesc),
+                                    const SizedBox(height: 12),
+                                    Text(l.queueModeInfoPlaylist, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                    const SizedBox(height: 4),
+                                    Text(l.queueModeInfoPlaylistDesc),
                                   ],
                                 ),
                                 actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.gotIt))],
@@ -874,21 +1010,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 8),
                           SizedBox(width: double.infinity, child: SegmentedButton<String>(
                             showSelectedIcon: false,
+                            emptySelectionAllowed: true,
                             segments: [
                               ButtonSegment(value: 'off', icon: const Icon(Icons.stop_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeOff))),
                               ButtonSegment(value: 'manual', icon: const Icon(Icons.queue_music_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeManual))),
                               ButtonSegment(value: 'auto_next', icon: const Icon(Icons.skip_next_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeAuto))),
                             ],
-                            selected: {_mergedQueueMode},
-                            onSelectionChanged: _loaded ? (s) {
-                              setState(() {
-                                _bookQueueMode = s.first;
-                                _podcastQueueMode = s.first;
-                              });
-                              PlayerSettings.setBookQueueMode(s.first);
-                              PlayerSettings.setPodcastQueueMode(s.first);
-                              PlayerSettings.notifySettingsChanged();
-                            } : null,
+                            selected: _mergedQueueMode == 'playlist' ? const <String>{} : {_mergedQueueMode},
+                            onSelectionChanged: _loaded
+                                ? (s) { if (s.isNotEmpty) _setMergedQueueMode(s.first); }
+                                : null,
                             style: const ButtonStyle(visualDensity: VisualDensity.compact),
                           )),
                         ] else ...[
@@ -897,17 +1028,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 4),
                           SizedBox(width: double.infinity, child: SegmentedButton<String>(
                             showSelectedIcon: false,
+                            emptySelectionAllowed: true,
                             segments: [
                               ButtonSegment(value: 'off', icon: const Icon(Icons.stop_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeOff))),
                               ButtonSegment(value: 'manual', icon: const Icon(Icons.queue_music_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeManual))),
                               ButtonSegment(value: 'auto_next', icon: const Icon(Icons.skip_next_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeSeriesLabel))),
                             ],
-                            selected: {_bookQueueMode},
-                            onSelectionChanged: _loaded ? (s) {
-                              setState(() => _bookQueueMode = s.first);
-                              PlayerSettings.setBookQueueMode(s.first);
-                              PlayerSettings.notifySettingsChanged();
-                            } : null,
+                            selected: _bookQueueMode == 'playlist' ? const <String>{} : {_bookQueueMode},
+                            onSelectionChanged: _loaded
+                                ? (s) { if (s.isNotEmpty) _setBookQueueMode(s.first); }
+                                : null,
                             style: const ButtonStyle(visualDensity: VisualDensity.compact),
                           )),
                           if (lib.libraries.any((lib) => lib['mediaType'] == 'podcast')) ...[
@@ -916,20 +1046,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             const SizedBox(height: 4),
                             SizedBox(width: double.infinity, child: SegmentedButton<String>(
                               showSelectedIcon: false,
+                              emptySelectionAllowed: true,
                               segments: [
                                 ButtonSegment(value: 'off', icon: const Icon(Icons.stop_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeOff))),
                                 ButtonSegment(value: 'manual', icon: const Icon(Icons.queue_music_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeManual))),
                                 ButtonSegment(value: 'auto_next', icon: const Icon(Icons.skip_next_rounded, size: 18), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeShowLabel))),
                               ],
-                              selected: {_podcastQueueMode},
-                              onSelectionChanged: _loaded ? (s) {
-                                setState(() => _podcastQueueMode = s.first);
-                                PlayerSettings.setPodcastQueueMode(s.first);
-                                PlayerSettings.notifySettingsChanged();
-                              } : null,
+                              selected: _podcastQueueMode == 'playlist' ? const <String>{} : {_podcastQueueMode},
+                              onSelectionChanged: _loaded
+                                  ? (s) { if (s.isNotEmpty) _setPodcastQueueMode(s.first); }
+                                  : null,
                               style: const ButtonStyle(visualDensity: VisualDensity.compact),
                             )),
                           ],
+                        ],
+                        if (_mergedQueueMode == 'playlist') ...[
+                          const SizedBox(height: 8),
+                          _buildActivePlaylistRow(cs, tt, lib, l),
                         ],
                         if (_bookQueueMode == 'manual' || _podcastQueueMode == 'manual') ...[
                           const SizedBox(height: 4),

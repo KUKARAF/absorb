@@ -900,6 +900,40 @@ class AppLocalizationsEn extends AppLocalizations {
   String get queueModeAuto => 'Auto';
 
   @override
+  String get queueModePlaylist => 'Playlist';
+
+  @override
+  String get queueModeInfoPlaylist => 'Playlist Queue';
+
+  @override
+  String get queueModeInfoPlaylistDesc =>
+      'Plays items in order from a chosen playlist, skipping anything already finished. Stops at the end of the list.';
+
+  @override
+  String get queuePlaylistPickerTitle => 'Choose a playlist';
+
+  @override
+  String get queuePlaylistNone => 'No playlist selected';
+
+  @override
+  String queuePlaylistActiveLabel(String name) {
+    return 'Playlist: $name';
+  }
+
+  @override
+  String get queueModePlaylistHint =>
+      'Start a playlist queue by opening a playlist on the home page.';
+
+  @override
+  String get exit => 'Exit';
+
+  @override
+  String get playlistPlayAction => 'Play playlist';
+
+  @override
+  String get playlistAllFinished => 'All finished';
+
+  @override
   String get queueModeBooks => 'Books';
 
   @override

@@ -10,6 +10,7 @@ import '../services/scoped_prefs.dart';
 import '../widgets/absorb_page_header.dart';
 import '../main.dart' show oledNotifier;
 import '../widgets/absorbing_card.dart';
+import '../widgets/feature_hint.dart';
 import '../widgets/offline_status_icon.dart';
 import '../l10n/app_localizations.dart';
 import '../services/wording.dart';
@@ -54,6 +55,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
 
   final _cast = ChromecastService();
   String _queueMode = 'off';
+  String? _queuePlaylistId;
 
   @override
   void initState() {
@@ -62,6 +64,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
     _lastSeenIsPlaying = _player.isPlaying;
     _player.addListener(_rebuild);
     _cast.addListener(_rebuild);
+    PlayerSettings.settingsChanged.addListener(_loadQueueMode);
     _restoreLastFinished();
     _loadMergeLibraries();
     _loadQueueMode();
@@ -79,30 +82,48 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
     if (mounted && v != _mergeLibraries) setState(() => _mergeLibraries = v);
   }
 
+  String _activePlaylistChipLabel(LibraryProvider lib, AppLocalizations l) {
+    final id = _queuePlaylistId;
+    if (id == null) return l.queueModePlaylist;
+    final match = lib.playlists.cast<Map<String, dynamic>>().where(
+      (p) => p['id'] == id,
+    ).firstOrNull;
+    final n = match?['name'] as String?;
+    if (n == null || n.isEmpty) return l.queueModePlaylist;
+    return n.length > 24 ? '${n.substring(0, 23)}…' : n;
+  }
+
   Future<void> _loadQueueMode() async {
     final lib = context.read<LibraryProvider>();
     String mode;
-    if (_mergeLibraries) {
+    final bm = await PlayerSettings.getBookQueueMode();
+    final pm = await PlayerSettings.getPodcastQueueMode();
+    if (bm == 'playlist' || pm == 'playlist') {
+      mode = 'playlist';
+    } else if (_mergeLibraries) {
       // When merged, use the more restrictive of the two modes
       // (matches Settings screen's _mergedQueueMode logic)
-      final bm = await PlayerSettings.getBookQueueMode();
-      final pm = await PlayerSettings.getPodcastQueueMode();
       const order = ['off', 'manual', 'auto_next'];
       final bi = order.indexOf(bm);
       final pi = order.indexOf(pm);
       mode = order[(bi < pi ? bi : pi).clamp(0, 2)];
     } else {
-      mode = lib.isPodcastLibrary
-          ? await PlayerSettings.getPodcastQueueMode()
-          : await PlayerSettings.getBookQueueMode();
+      mode = lib.isPodcastLibrary ? pm : bm;
     }
-    if (mounted && mode != _queueMode) setState(() => _queueMode = mode);
+    final qpId = await PlayerSettings.getQueuePlaylistId();
+    if (mounted) {
+      setState(() {
+        _queueMode = mode;
+        _queuePlaylistId = qpId;
+      });
+    }
   }
 
   @override
   void dispose() {
     _player.removeListener(_rebuild);
     _cast.removeListener(_rebuild);
+    PlayerSettings.settingsChanged.removeListener(_loadQueueMode);
     _pageController.dispose();
     super.dispose();
   }
@@ -642,9 +663,11 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
                       if (_queueMode != 'off') ...[
                         const SizedBox(width: 4),
                         Text(
-                          _queueMode == 'auto_next'
-                              ? (_mergeLibraries ? l.queueModeAuto : lib.isPodcastLibrary ? l.queueModeShowLabel : l.queueModeSeriesLabel)
-                              : l.queueModeManual,
+                          _queueMode == 'playlist'
+                              ? _activePlaylistChipLabel(lib, l)
+                              : _queueMode == 'auto_next'
+                                  ? (_mergeLibraries ? l.queueModeAuto : lib.isPodcastLibrary ? l.queueModeShowLabel : l.queueModeSeriesLabel)
+                                  : l.queueModeManual,
                           style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: cs.primary),
                         ),
                       ],
@@ -834,11 +857,14 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
           isMerged: _mergeLibraries,
           isPodcast: lib.isPodcastLibrary,
           onQueueModeChanged: (mode) async {
-            setState(() => _queueMode = mode);
-            if (_mergeLibraries) {
-              // Merged view: keep both types in sync
+            final wasPlaylist = _queueMode == 'playlist';
+            if (_mergeLibraries || wasPlaylist) {
+              // Merged view OR leaving playlist mode: keep both types in sync
               await PlayerSettings.setBookQueueMode(mode);
               await PlayerSettings.setPodcastQueueMode(mode);
+              if (wasPlaylist) {
+                await PlayerSettings.setQueuePlaylistId(null);
+              }
             } else {
               final isPod = lib.isPodcastLibrary;
               if (isPod) {
@@ -951,6 +977,30 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
       for (final b in widget.books) widget.absorbingKeyFn(b): b,
     };
     _queueMode = widget.queueMode;
+    PlayerSettings.settingsChanged.addListener(_refreshMode);
+  }
+
+  @override
+  void dispose() {
+    PlayerSettings.settingsChanged.removeListener(_refreshMode);
+    super.dispose();
+  }
+
+  Future<void> _refreshMode() async {
+    final bm = await PlayerSettings.getBookQueueMode();
+    final pm = await PlayerSettings.getPodcastQueueMode();
+    String mode;
+    if (bm == 'playlist' || pm == 'playlist') {
+      mode = 'playlist';
+    } else if (widget.isMerged) {
+      const order = ['off', 'manual', 'auto_next'];
+      final bi = order.indexOf(bm);
+      final pi = order.indexOf(pm);
+      mode = order[(bi < pi ? bi : pi).clamp(0, 2)];
+    } else {
+      mode = widget.isPodcast ? pm : bm;
+    }
+    if (mounted && mode != _queueMode) setState(() => _queueMode = mode);
   }
 
   @override
@@ -990,26 +1040,76 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
             ),
           ]),
         ),
+        if (_queueMode == 'playlist')
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: cs.primary.withValues(alpha: 0.25), width: 0.5),
+              ),
+              child: Row(children: [
+                Icon(Icons.playlist_play_rounded, size: 16, color: cs.primary),
+                const SizedBox(width: 8),
+                Expanded(child: FutureBuilder<String?>(
+                  future: PlayerSettings.getQueuePlaylistId(),
+                  builder: (context, snap) {
+                    String name = l.queuePlaylistNone;
+                    final id = snap.data;
+                    if (id != null) {
+                      final match = widget.lib.playlists.cast<Map<String, dynamic>>().where(
+                        (p) => p['id'] == id,
+                      ).firstOrNull;
+                      final n = match?['name'] as String?;
+                      if (n != null && n.isNotEmpty) name = n;
+                    }
+                    return Text(
+                      name,
+                      style: tt.bodySmall?.copyWith(color: cs.onPrimaryContainer, fontWeight: FontWeight.w600),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    );
+                  },
+                )),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                  color: cs.onPrimaryContainer.withValues(alpha: 0.7),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: l.exit,
+                  onPressed: () => PlayerSettings.clearQueueModePlaylist(),
+                ),
+              ]),
+            ),
+          ),
         // Queue mode toggle
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: SegmentedButton<String>(
+            emptySelectionAllowed: true,
             segments: [
               ButtonSegment(value: 'off', icon: const Icon(Icons.stop_rounded, size: 16), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeOff, maxLines: 1))),
               ButtonSegment(value: 'manual', icon: const Icon(Icons.queue_music_rounded, size: 16), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeManual, maxLines: 1))),
               ButtonSegment(value: 'auto_next', icon: const Icon(Icons.skip_next_rounded, size: 16),
                 label: FittedBox(fit: BoxFit.scaleDown, child: Text(widget.isMerged ? l.queueModeAuto : widget.isPodcast ? l.queueModeShowLabel : l.queueModeSeriesLabel, maxLines: 1))),
             ],
-            selected: {_queueMode},
+            selected: _queueMode == 'playlist' ? const <String>{} : {_queueMode},
             onSelectionChanged: (v) {
-              setState(() => _queueMode = v.first);
-              widget.onQueueModeChanged(v.first);
+              if (v.isNotEmpty) widget.onQueueModeChanged(v.first);
             },
             style: ButtonStyle(
               visualDensity: VisualDensity.compact,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
           ),
+        ),
+        FeatureHint(
+          prefKey: 'hint_playlist_queue_mode',
+          message: l.queueModePlaylistHint,
+          icon: Icons.playlist_play_rounded,
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         ),
         Expanded(
           child: ReorderableListView.builder(

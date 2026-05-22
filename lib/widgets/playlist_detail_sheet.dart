@@ -144,14 +144,13 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
         _selectMode = false;
         _selectedKeys.clear();
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(finished
+      showOverlayToast(
+        context,
+        finished
             ? l.playlistDetailItemsMarkedFinished(count)
-            : l.playlistDetailItemsMarkedUnfinished(count)),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ));
+            : l.playlistDetailItemsMarkedUnfinished(count),
+        icon: finished ? Icons.check_circle_rounded : Icons.undo_rounded,
+      );
     }
   }
 
@@ -182,12 +181,11 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
         _selectMode = false;
         _selectedKeys.clear();
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(l.playlistDetailItemsRemoved(count)),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ));
+      showOverlayToast(
+        context,
+        l.playlistDetailItemsRemoved(count),
+        icon: Icons.playlist_remove_rounded,
+      );
     }
   }
 
@@ -366,6 +364,8 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
       const SizedBox(height: 12),
       Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.3),
         indent: 20, endIndent: 20),
+      if (!_reordering && !_selectMode)
+        _buildPlayButton(cs, lib, items, l),
       // Content
       Expanded(
         child: _reordering
@@ -413,6 +413,40 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                 ]),
         ),
     ]);
+  }
+
+  Widget _buildPlayButton(
+    ColorScheme cs,
+    LibraryProvider lib,
+    List<dynamic> items,
+    AppLocalizations l,
+  ) {
+    final firstIdx = lib.firstUnfinishedPlaylistIndex(items);
+    final allFinished = items.isNotEmpty && firstIdx < 0;
+    final enabled = items.isNotEmpty && firstIdx >= 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: enabled
+              ? () async {
+                  HapticFeedback.selectionClick();
+                  // Pop the sheet first; otherwise auto-expand pushes the
+                  // expanded player on top of us and our pop closes it.
+                  final playlistId = widget.playlistId;
+                  Navigator.pop(context);
+                  await PlayerSettings.setQueueModePlaylist(playlistId);
+                  await lib.playPlaylistFromStart(playlistId);
+                }
+              : null,
+          icon: Icon(allFinished
+              ? Icons.check_circle_outline_rounded
+              : Icons.play_arrow_rounded),
+          label: Text(allFinished ? l.playlistAllFinished : l.playlistPlayAction),
+        ),
+      ),
+    );
   }
 
   Widget _buildReorderList(ColorScheme cs, TextTheme tt, LibraryProvider lib, AppLocalizations l) {
