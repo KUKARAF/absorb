@@ -10,6 +10,7 @@ import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/download_service.dart';
+import '../screens/app_shell.dart';
 import 'book_detail_sheet.dart';
 import 'episode_list_sheet.dart';
 import 'stackable_sheet.dart';
@@ -436,6 +437,7 @@ class _PlaylistDetailSheetState extends State<PlaylistDetailSheet> {
                   // expanded player on top of us and our pop closes it.
                   final playlistId = widget.playlistId;
                   Navigator.pop(context);
+                  AppShell.goToAbsorbingGlobal();
                   await PlayerSettings.setQueueModePlaylist(playlistId);
                   await lib.playPlaylistFromStart(playlistId);
                 }

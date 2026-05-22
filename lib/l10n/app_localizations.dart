@@ -1792,6 +1792,36 @@ abstract class AppLocalizations {
   /// **'Exit'**
   String get exit;
 
+  /// No description provided for @upNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Up next: {label}'**
+  String upNext(String label);
+
+  /// No description provided for @nothingUpNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing up next'**
+  String get nothingUpNext;
+
+  /// No description provided for @showUpNextLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Up next on the absorbing page'**
+  String get showUpNextLabel;
+
+  /// No description provided for @openSeries.
+  ///
+  /// In en, this message translates to:
+  /// **'Open series'**
+  String get openSeries;
+
+  /// No description provided for @openPlaylist.
+  ///
+  /// In en, this message translates to:
+  /// **'Open playlist'**
+  String get openPlaylist;
+
   /// No description provided for @playlistPlayAction.
   ///
   /// In en, this message translates to:

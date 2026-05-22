@@ -158,6 +158,10 @@ class PlayerSettings {
   }
   static Future<void> setBookQueueMode(String value) => _set('bookQueueMode', value, notify: true);
 
+  static Future<bool> getShowUpNextLabel() => _get('showUpNextLabel', true);
+  static Future<void> setShowUpNextLabel(bool value) =>
+      _set('showUpNextLabel', value, notify: true);
+
   static Future<String> getPodcastQueueMode() async {
     final value = await ScopedPrefs.getString('podcastQueueMode');
     return value ?? await getQueueMode();

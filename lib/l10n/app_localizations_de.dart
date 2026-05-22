@@ -936,6 +936,23 @@ class AppLocalizationsDe extends AppLocalizations {
   String get exit => 'Exit';
 
   @override
+  String upNext(String label) {
+    return 'Up next: $label';
+  }
+
+  @override
+  String get nothingUpNext => 'Nothing up next';
+
+  @override
+  String get showUpNextLabel => 'Show Up next on the absorbing page';
+
+  @override
+  String get openSeries => 'Open series';
+
+  @override
+  String get openPlaylist => 'Open playlist';
+
+  @override
   String get playlistPlayAction => 'Play playlist';
 
   @override

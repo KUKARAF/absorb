@@ -2,16 +2,20 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
 import '../services/audio_player_service.dart';
 import '../services/chromecast_service.dart';
 import '../services/download_service.dart';
 import '../services/scoped_prefs.dart';
 import '../widgets/absorb_page_header.dart';
-import '../main.dart' show oledNotifier;
+import '../main.dart' show oledNotifier, rootNavigatorKey;
 import '../widgets/absorbing_card.dart';
 import '../widgets/feature_hint.dart';
 import '../widgets/offline_status_icon.dart';
+import '../widgets/overlay_toast.dart';
+import '../widgets/series_books_sheet.dart';
+import '../widgets/playlist_detail_sheet.dart';
 import '../l10n/app_localizations.dart';
 import '../services/wording.dart';
 
@@ -111,12 +115,33 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
       mode = lib.isPodcastLibrary ? pm : bm;
     }
     final qpId = await PlayerSettings.getQueuePlaylistId();
+    final showUpNext = await PlayerSettings.getShowUpNextLabel();
     if (mounted) {
       setState(() {
         _queueMode = mode;
         _queuePlaylistId = qpId;
+        _showUpNextLabel = showUpNext;
       });
+      _refreshUpNext();
     }
+  }
+
+  bool _showUpNextLabel = true;
+  String? _upNextLabel;
+  String? _upNextComputedFor;
+  Future<void> _refreshUpNext() async {
+    final lib = context.read<LibraryProvider>();
+    final currentId = _player.currentEpisodeId != null
+        ? '${_player.currentItemId}-${_player.currentEpisodeId}'
+        : _player.currentItemId;
+    final firstKey = lib.absorbingBookIds.isNotEmpty ? lib.absorbingBookIds.first : '';
+    final stamp = '$_queueMode|$_queuePlaylistId|$currentId|$firstKey';
+    if (stamp == _upNextComputedFor) return;
+    _upNextComputedFor = stamp;
+    final label = await lib.peekUpNext(currentItemId: currentId);
+    if (!mounted) return;
+    if (stamp != _upNextComputedFor) return;
+    if (label != _upNextLabel) setState(() => _upNextLabel = label);
   }
 
   @override
@@ -156,6 +181,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
     // Detect item or episode change (same show, different episode counts as a change)
     final itemChanged = _player.currentItemId != _lastPlayingId;
     final episodeChanged = _player.currentEpisodeId != _lastPlayingEpisodeId;
+    if (itemChanged || episodeChanged) _refreshUpNext();
     if (itemChanged || episodeChanged) {
       final wasPlayingId = _lastPlayingId;
       final wasEpisodeId = _lastPlayingEpisodeId;
@@ -500,6 +526,7 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
   Widget build(BuildContext context) {
     _loadMergeLibraries(); // refresh in case setting changed
     _loadQueueMode(); // refresh for current library type
+    _refreshUpNext(); // stamp short-circuits when nothing changed
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final l = AppLocalizations.of(context)!;
@@ -723,6 +750,29 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
             // Phone landscape uses the compact single-row header; everything
             // else (portrait, tablets in any orientation) keeps the full header.
             if (isPhoneLandscape) landscapeHeader else portraitHeader,
+            if (_showUpNextLabel && _queueMode != 'off' && books.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 2),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Builder(builder: (context) {
+                    final isDark = Theme.of(context).brightness == Brightness.dark;
+                    final greenColor = isDark ? Colors.greenAccent[400] : Colors.green.shade700;
+                    final redColor = isDark ? Colors.redAccent[200] : Colors.red.shade700;
+                    final hasNext = _upNextLabel != null;
+                    return Text(
+                      hasNext ? l.upNext(_upNextLabel!) : l.nothingUpNext,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: hasNext ? greenColor : redColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    );
+                  }),
+                ),
+              ),
             // ── Page Dots (compact header inlines them in phone landscape) ──
             if (!isPhoneLandscape && pageDots != null)
               Padding(
@@ -856,15 +906,26 @@ class _AbsorbingScreenState extends State<AbsorbingScreen> {
           queueMode: _queueMode,
           isMerged: _mergeLibraries,
           isPodcast: lib.isPodcastLibrary,
+          currentItemId: _player.currentEpisodeId != null
+              ? '${_player.currentItemId}-${_player.currentEpisodeId}'
+              : _player.currentItemId,
           onQueueModeChanged: (mode) async {
-            final wasPlaylist = _queueMode == 'playlist';
-            if (_mergeLibraries || wasPlaylist) {
-              // Merged view OR leaving playlist mode: keep both types in sync
+            if (mode == 'playlist') {
+              final pid = await PlayerSettings.getQueuePlaylistId();
+              if (pid == null) {
+                if (context.mounted) {
+                  final hint = AppLocalizations.of(context)!.queueModePlaylistHint;
+                  showOverlayToast(context, hint,
+                      icon: Icons.playlist_play_rounded);
+                }
+                return;
+              }
+              await PlayerSettings.setQueueModePlaylist(pid);
+              return;
+            }
+            if (_mergeLibraries || _queueMode == 'playlist') {
               await PlayerSettings.setBookQueueMode(mode);
               await PlayerSettings.setPodcastQueueMode(mode);
-              if (wasPlaylist) {
-                await PlayerSettings.setQueuePlaylistId(null);
-              }
             } else {
               final isPod = lib.isPodcastLibrary;
               if (isPod) {
@@ -948,6 +1009,7 @@ class _ReorderAbsorbingSheet extends StatefulWidget {
   final bool isMerged;
   final bool isPodcast;
   final ValueChanged<String> onQueueModeChanged;
+  final String? currentItemId;
 
   const _ReorderAbsorbingSheet({
     required this.keys,
@@ -958,6 +1020,7 @@ class _ReorderAbsorbingSheet extends StatefulWidget {
     required this.isMerged,
     required this.isPodcast,
     required this.onQueueModeChanged,
+    required this.currentItemId,
   });
 
   @override
@@ -978,6 +1041,86 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
     };
     _queueMode = widget.queueMode;
     PlayerSettings.settingsChanged.addListener(_refreshMode);
+    PlayerSettings.getShowUpNextLabel().then((v) {
+      if (mounted) setState(() => _showUpNext = v);
+    });
+    _loadModeContent();
+  }
+
+  bool _showUpNext = true;
+
+  // Stage 3: mode-aware rendering. For auto_next we show the active series'
+  // books; for playlist we show the active playlist's items. Cached here so
+  // the list paints without a flash while the API call completes.
+  List<Map<String, dynamic>>? _seriesBooks;
+  String? _seriesId;
+  String? _seriesName;
+  List<Map<String, dynamic>>? _playlistItems;
+  String? _playlistId;
+  String? _playlistName;
+
+  Future<void> _loadModeContent() async {
+    if (_queueMode == 'auto_next' && !widget.isPodcast) {
+      await _loadSeriesBooks();
+    } else if (_queueMode == 'playlist') {
+      await _loadPlaylistContent();
+    }
+  }
+
+  Future<void> _loadSeriesBooks() async {
+    final currentId = widget.currentItemId;
+    if (currentId == null) return;
+    final cache = widget.lib.absorbingItemCache;
+    Map<String, dynamic>? data = cache[currentId];
+    final auth = widget.lib;
+    // Fall back to the server if we don't have full series metadata cached.
+    if (data == null || widget.lib.extractSeries(data).$1 == null) {
+      final fetched = await auth.fetchLibraryItem(currentId);
+      if (fetched != null) data = fetched;
+    }
+    if (data == null) return;
+    final (sid, _) = widget.lib.extractSeries(data);
+    if (sid == null) return;
+    final libraryId = data['libraryId'] as String? ?? widget.lib.selectedLibraryId;
+    if (libraryId == null) return;
+    final books = await auth.fetchBooksBySeries(libraryId, sid);
+    if (!mounted) return;
+    // Pull the series name from the current book's metadata.
+    final media = data['media'] as Map<String, dynamic>? ?? const {};
+    final metadata = media['metadata'] as Map<String, dynamic>? ?? const {};
+    final seriesRaw = metadata['series'];
+    String? seriesName;
+    if (seriesRaw is List) {
+      for (final s in seriesRaw) {
+        if (s is Map && s['id'] == sid) {
+          seriesName = s['name'] as String?;
+          break;
+        }
+      }
+    } else if (seriesRaw is Map) {
+      seriesName = seriesRaw['name'] as String?;
+    }
+    setState(() {
+      _seriesBooks = books;
+      _seriesId = sid;
+      _seriesName = seriesName;
+    });
+  }
+
+  Future<void> _loadPlaylistContent() async {
+    final pid = await PlayerSettings.getQueuePlaylistId();
+    if (pid == null) return;
+    final pl = await widget.lib.fetchPlaylistById(pid);
+    if (!mounted) return;
+    if (pl == null) return;
+    final items = ((pl['items'] as List<dynamic>?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    setState(() {
+      _playlistItems = items;
+      _playlistId = pid;
+      _playlistName = pl['name'] as String?;
+    });
   }
 
   @override
@@ -1000,7 +1143,10 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
     } else {
       mode = widget.isPodcast ? pm : bm;
     }
-    if (mounted && mode != _queueMode) setState(() => _queueMode = mode);
+    if (mounted && mode != _queueMode) {
+      setState(() => _queueMode = mode);
+      _loadModeContent();
+    }
   }
 
   @override
@@ -1040,62 +1186,18 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
             ),
           ]),
         ),
-        if (_queueMode == 'playlist')
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
-              decoration: BoxDecoration(
-                color: cs.primaryContainer.withValues(alpha: 0.45),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: cs.primary.withValues(alpha: 0.25), width: 0.5),
-              ),
-              child: Row(children: [
-                Icon(Icons.playlist_play_rounded, size: 16, color: cs.primary),
-                const SizedBox(width: 8),
-                Expanded(child: FutureBuilder<String?>(
-                  future: PlayerSettings.getQueuePlaylistId(),
-                  builder: (context, snap) {
-                    String name = l.queuePlaylistNone;
-                    final id = snap.data;
-                    if (id != null) {
-                      final match = widget.lib.playlists.cast<Map<String, dynamic>>().where(
-                        (p) => p['id'] == id,
-                      ).firstOrNull;
-                      final n = match?['name'] as String?;
-                      if (n != null && n.isNotEmpty) name = n;
-                    }
-                    return Text(
-                      name,
-                      style: tt.bodySmall?.copyWith(color: cs.onPrimaryContainer, fontWeight: FontWeight.w600),
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                    );
-                  },
-                )),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 16),
-                  color: cs.onPrimaryContainer.withValues(alpha: 0.7),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: l.exit,
-                  onPressed: () => PlayerSettings.clearQueueModePlaylist(),
-                ),
-              ]),
-            ),
-          ),
         // Queue mode toggle
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: SegmentedButton<String>(
-            emptySelectionAllowed: true,
             segments: [
               ButtonSegment(value: 'off', icon: const Icon(Icons.stop_rounded, size: 16), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeOff, maxLines: 1))),
               ButtonSegment(value: 'manual', icon: const Icon(Icons.queue_music_rounded, size: 16), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModeManual, maxLines: 1))),
               ButtonSegment(value: 'auto_next', icon: const Icon(Icons.skip_next_rounded, size: 16),
                 label: FittedBox(fit: BoxFit.scaleDown, child: Text(widget.isMerged ? l.queueModeAuto : widget.isPodcast ? l.queueModeShowLabel : l.queueModeSeriesLabel, maxLines: 1))),
+              ButtonSegment(value: 'playlist', icon: const Icon(Icons.playlist_play_rounded, size: 16), label: FittedBox(fit: BoxFit.scaleDown, child: Text(l.queueModePlaylist, maxLines: 1))),
             ],
-            selected: _queueMode == 'playlist' ? const <String>{} : {_queueMode},
+            selected: {_queueMode},
             onSelectionChanged: (v) {
               if (v.isNotEmpty) widget.onQueueModeChanged(v.first);
             },
@@ -1105,14 +1207,315 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
             ),
           ),
         ),
+        if (_queueMode != 'off')
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Row(children: [
+              Expanded(child: Text(l.showUpNextLabel,
+                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))),
+              Switch(
+                value: _showUpNext,
+                onChanged: (v) {
+                  setState(() => _showUpNext = v);
+                  PlayerSettings.setShowUpNextLabel(v);
+                },
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ]),
+          ),
         FeatureHint(
           prefKey: 'hint_playlist_queue_mode',
           message: l.queueModePlaylistHint,
           icon: Icons.playlist_play_rounded,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         ),
+        if (_queueMode == 'auto_next' && !widget.isPodcast && _seriesId != null)
+          _modeHeaderButton(
+            cs, tt,
+            label: l.openSeries,
+            subtitle: _seriesName,
+            icon: Icons.collections_bookmark_rounded,
+            onTap: () {
+              final auth = context.read<AuthProvider>();
+              final outer = rootNavigatorKey.currentContext ?? context;
+              Navigator.pop(context);
+              showSeriesBooksSheet(
+                outer,
+                seriesName: _seriesName ?? '',
+                seriesId: _seriesId,
+                books: const [],
+                serverUrl: auth.serverUrl,
+                token: auth.token,
+                libraryId: widget.lib.selectedLibraryId,
+              );
+            },
+          ),
+        if (_queueMode == 'playlist' && _playlistId != null)
+          _modeHeaderButton(
+            cs, tt,
+            label: l.openPlaylist,
+            subtitle: _playlistName,
+            icon: Icons.playlist_play_rounded,
+            onTap: () {
+              final outer = rootNavigatorKey.currentContext ?? context;
+              Navigator.pop(context);
+              PlaylistDetailSheet.show(outer, _playlistId!);
+            },
+          ),
         Expanded(
-          child: ReorderableListView.builder(
+          child: _buildQueueList(cs, tt, l, bottomInset),
+        ),
+      ]),
+    );
+  }
+
+  Widget _modeHeaderButton(
+    ColorScheme cs,
+    TextTheme tt, {
+    required String label,
+    String? subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(children: [
+            Icon(icon, size: 18, color: cs.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(label,
+                      style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                  if (subtitle != null && subtitle.isNotEmpty)
+                    Text(subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurfaceVariant),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQueueList(ColorScheme cs, TextTheme tt, AppLocalizations l, double bottomInset) {
+    if (_queueMode == 'auto_next' && !widget.isPodcast) {
+      return _buildSeriesList(cs, tt, l, bottomInset);
+    }
+    if (_queueMode == 'playlist') {
+      return _buildPlaylistList(cs, tt, l, bottomInset);
+    }
+    return _buildManualList(cs, tt, l, bottomInset);
+  }
+
+  Widget _buildSeriesList(ColorScheme cs, TextTheme tt, AppLocalizations l, double bottomInset) {
+    final books = _seriesBooks;
+    if (books == null) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (books.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(l.absorbingNothingAbsorbingYet,
+              style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+        ),
+      );
+    }
+    // Sort by series sequence (numeric leading).
+    books.sort((a, b) {
+      double seqOf(Map<String, dynamic> book) {
+        final (_, seq) = widget.lib.extractSeries(book);
+        return seq ?? double.maxFinite;
+      }
+      return seqOf(a).compareTo(seqOf(b));
+    });
+    return ListView.builder(
+      padding: EdgeInsets.only(bottom: bottomInset + 16),
+      itemCount: books.length,
+      itemBuilder: (context, i) {
+        final book = books[i];
+        final id = book['id'] as String? ?? '';
+        return _readOnlyQueueItem(cs, tt, l, key: id, book: book, index: i);
+      },
+    );
+  }
+
+  Widget _buildPlaylistList(ColorScheme cs, TextTheme tt, AppLocalizations l, double bottomInset) {
+    final items = _playlistItems;
+    if (items == null) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(l.playlistAllFinished,
+              style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: EdgeInsets.only(bottom: bottomInset + 16),
+      itemCount: items.length,
+      itemBuilder: (context, i) {
+        final item = items[i];
+        final libraryItemId = item['libraryItemId'] as String? ?? '';
+        final episodeId = item['episodeId'] as String?;
+        final key = episodeId != null ? '$libraryItemId-$episodeId' : libraryItemId;
+        final book = item['libraryItem'] as Map<String, dynamic>? ?? const {};
+        return _readOnlyQueueItem(
+          cs, tt, l,
+          key: key,
+          book: book,
+          index: i,
+          episodeOverride: item['episode'] as Map<String, dynamic>?,
+        );
+      },
+    );
+  }
+
+  Widget _readOnlyQueueItem(
+    ColorScheme cs,
+    TextTheme tt,
+    AppLocalizations l, {
+    required String key,
+    required Map<String, dynamic> book,
+    required int index,
+    Map<String, dynamic>? episodeOverride,
+  }) {
+    final media = book['media'] as Map<String, dynamic>? ?? const {};
+    final metadata = media['metadata'] as Map<String, dynamic>? ?? const {};
+    final title = metadata['title'] as String? ?? l.unknown;
+    final author = metadata['authorName'] as String? ?? '';
+    final epTitle = episodeOverride?['title'] as String?;
+    final isFinished = widget.lib.isItemFinishedByKey(key);
+    final isPlaying = widget.currentItemId == key;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          // Tapping a series book or playlist item plays it. For playlist
+          // items the user expects this to be the same as opening the item
+          // from the playlist sheet; closing the manage queue sheet first.
+          Navigator.pop(context);
+          final api = context.read<AuthProvider>().apiService;
+          if (api == null) return;
+          if (key.length > 36) {
+            // podcast compound key
+            final showId = key.substring(0, 36);
+            final epId = key.substring(37);
+            AudioPlayerService().playItem(
+              api: api,
+              itemId: showId,
+              title: epTitle ?? title,
+              author: title,
+              coverUrl: widget.lib.getCoverUrl(showId),
+              totalDuration: (episodeOverride?['duration'] as num?)?.toDouble() ?? 0,
+              chapters: const [],
+              episodeId: epId,
+              episodeTitle: epTitle,
+            );
+          } else {
+            AudioPlayerService().playItem(
+              api: api,
+              itemId: key,
+              title: title,
+              author: author,
+              coverUrl: widget.lib.getCoverUrl(key),
+              totalDuration: (media['duration'] as num?)?.toDouble() ?? 0,
+              chapters: media['chapters'] as List<dynamic>? ?? const [],
+            );
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: isPlaying
+                ? cs.primaryContainer.withValues(alpha: 0.25)
+                : (isFinished ? cs.onSurface.withValues(alpha: 0.03) : Colors.transparent),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(children: [
+            SizedBox(
+              width: 24,
+              child: Text('${index + 1}',
+                  style: tt.labelMedium?.copyWith(
+                    color: isFinished ? cs.onSurface.withValues(alpha: 0.3) : cs.primary,
+                    fontWeight: FontWeight.w700,
+                  )),
+            ),
+            if (isFinished)
+              Icon(Icons.check_circle_rounded,
+                  size: 16, color: Colors.green.withValues(alpha: 0.5))
+            else
+              () {
+                final progress = widget.lib.getProgress(key);
+                return progress > 0
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          value: progress,
+                          strokeWidth: 2.5,
+                          backgroundColor: cs.surfaceContainerHighest,
+                          color: cs.primary,
+                        ),
+                      )
+                    : Icon(Icons.circle_outlined,
+                        size: 16, color: cs.onSurface.withValues(alpha: 0.2));
+              }(),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(epTitle ?? title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: tt.bodyMedium?.copyWith(
+                        color: isFinished
+                            ? cs.onSurface.withValues(alpha: 0.4)
+                            : null,
+                      )),
+                  if (epTitle != null)
+                    Text(title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant))
+                  else if (author.isNotEmpty)
+                    Text(author,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildManualList(ColorScheme cs, TextTheme tt, AppLocalizations l, double bottomInset) {
+    return ReorderableListView.builder(
             buildDefaultDragHandles: false,
             onReorderStart: (_) => HapticFeedback.mediumImpact(),
             padding: EdgeInsets.only(bottom: bottomInset + 16),
@@ -1226,10 +1629,7 @@ class _ReorderAbsorbingSheetState extends State<_ReorderAbsorbingSheet> {
                 ),
               );
             },
-          ),
-        ),
-      ]),
-    );
+          );
   }
 }
 

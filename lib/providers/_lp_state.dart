@@ -320,16 +320,11 @@ mixin _StateMixin on ChangeNotifier {
 
     if (_api != null && !isOffline) {
       final ts = _itemUpdatedAt[apiItemId];
-      final url = _api!.getCoverUrl(apiItemId, width: width, updatedAt: ts);
-      debugPrint('[Cover] network $apiItemId ts=$ts -> $url');
-      return url;
+      return _api!.getCoverUrl(apiItemId, width: width, updatedAt: ts);
     }
 
     final dl = DownloadService().getInfo(itemId);
     if (dl.localCoverPath != null) {
-      final f = File(dl.localCoverPath!);
-      final mtime = f.existsSync() ? f.lastModifiedSync().millisecondsSinceEpoch : -1;
-      debugPrint('[Cover] local $itemId path=${dl.localCoverPath} mtime=$mtime');
       return dl.localCoverPath;
     }
 
