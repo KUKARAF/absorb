@@ -1395,6 +1395,8 @@ class AudioPlayerService extends ChangeNotifier {
             // Re-check: another event (like becoming-noisy) might have fired
             // during the delay.
             if (_noisyPause) return;
+            // Don't double-resume: Assistant may already have called play().
+            if (service._player?.playing == true) return;
             // If we were on BT when interrupted, check if BT is still connected.
             // Some car head units never send AUDIO_BECOMING_NOISY on disconnect,
             // so _noisyPause alone is not enough.
