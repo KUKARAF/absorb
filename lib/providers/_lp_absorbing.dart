@@ -606,6 +606,10 @@ mixin _AbsorbingMixin on ChangeNotifier, _StateMixin, _CoreMixin {
 
     final finishedCached = _absorbingItemCache[finishedKey];
     final finishedLibId = finishedCached?['libraryId'] as String?;
+    // GH #241: queue mode is per-media-type (podcastQueueMode vs bookQueueMode),
+    // so a podcast finishing must only advance to another podcast — never a book
+    // (whose own queue mode might be "off").
+    final finishedIsPodcast = finishedKey.length > 36;
 
     final finishedIdx = _absorbingBookIds.indexOf(finishedKey);
     final startIdx = finishedIdx >= 0 ? finishedIdx + 1 : 0;
@@ -613,6 +617,9 @@ mixin _AbsorbingMixin on ChangeNotifier, _StateMixin, _CoreMixin {
     for (int i = startIdx; i < _absorbingBookIds.length; i++) {
       final key = _absorbingBookIds[i];
       if ((this as LibraryProvider).isItemFinishedByKey(key)) continue;
+
+      final candidateIsPodcast = key.length > 36;
+      if (candidateIsPodcast != finishedIsPodcast) continue;
 
       final cached = _absorbingItemCache[key];
       if (cached == null) continue;
@@ -1181,6 +1188,8 @@ mixin _AbsorbingMixin on ChangeNotifier, _StateMixin, _CoreMixin {
       for (var i = start; i < _absorbingBookIds.length; i++) {
         final key = _absorbingBookIds[i];
         if (self.isItemFinishedByKey(key)) continue;
+        // Match _manualQueueAdvance: only same-type items are eligible.
+        if ((key.length > 36) != isPodCurrent) continue;
         final cached = _absorbingItemCache[key];
         if (cached == null) continue;
         return _entryTitle(cached);
