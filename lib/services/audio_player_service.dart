@@ -3218,8 +3218,6 @@ class AudioPlayerService extends ChangeNotifier {
     debugPrint('[Player] Book complete: $_currentTitle');
     _logEvent(PlaybackEventType.bookFinished);
 
-    // Stop immediately to prevent ExoPlayer from seeking back to position 0
-    // (which triggers position-stream events that look like a restart).
     // Cancel subscriptions first so we don't process stale events.
     _syncSub?.cancel();
     _syncSub = null;
@@ -3227,7 +3225,16 @@ class AudioPlayerService extends ChangeNotifier {
     _completionSub = null;
     _bgSaveTimer?.cancel();
     _bgSaveTimer = null;
-    await _player?.stop();
+    // Android: stop() prevents ExoPlayer's phantom seek-to-0 on completion,
+    // which would fire position-stream events that look like a restart.
+    // iOS: stop() tears down the AVPlayer audio engine; re-warming it in
+    // background is disallowed, so the next auto-advanced item gets stuck
+    // in state=buffering forever. pause() preserves the engine — GH #244.
+    if (Platform.isAndroid) {
+      await _player?.stop();
+    } else {
+      await _player?.pause();
+    }
 
     // Mark as finished on the server (fire-and-forget to avoid blocking
     // auto-advance — the local save below is the source of truth).
