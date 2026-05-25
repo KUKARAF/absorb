@@ -559,6 +559,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await s.save();
   }
 
+  Future<void> _saveLocalServerUrl(AuthProvider auth, AppLocalizations l) async {
+    final url = _localServerController.text.trim();
+    if (url.isEmpty) return;
+    _localServerUrl = url;
+    await auth.setLocalServerConfig(enabled: _localServerEnabled, url: _localServerUrl);
+    if (!mounted) return;
+    FocusScope.of(context).unfocus();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(l.localServerUrlSetSnackbar),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
+    await auth.checkLocalServer();
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -2172,33 +2188,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     if (_localServerEnabled) ...[
                       const Divider(height: 1, indent: 16, endIndent: 16),
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                         child: TextField(
                           controller: _localServerController,
                           decoration: InputDecoration(
                             labelText: l.localServerUrlLabel,
                             hintText: l.localServerUrlHint,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.check_rounded),
-                              tooltip: l.setTooltip,
-                              onPressed: () async {
-                                final url = _localServerController.text.trim();
-                                if (url.isEmpty) return;
-                                _localServerUrl = url;
-                                await auth.setLocalServerConfig(enabled: _localServerEnabled, url: _localServerUrl);
-                                FocusScope.of(context).unfocus();
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                  content: Text(l.localServerUrlSetSnackbar),
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ));
-                                // Try connecting right away
-                                await auth.checkLocalServer();
-                                if (mounted) setState(() {});
-                              },
-                            ),
+                          ),
+                          onSubmitted: (_) => _saveLocalServerUrl(auth, l),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.check_rounded, size: 18),
+                            label: Text(l.setTooltip),
+                            onPressed: () => _saveLocalServerUrl(auth, l),
                           ),
                         ),
                       ),
