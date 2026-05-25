@@ -1088,6 +1088,7 @@ class AudioPlayerService extends ChangeNotifier {
             pieces.addAll([
               'ios.cat=${info["category"]}',
               'ios.mode=${info["mode"]}',
+              'ios.policy=${info["routeSharingPolicy"]}',
               'ios.outVol=${info["outputVolume"]}',
               'ios.otherAudio=${info["isOtherAudioPlaying"]}',
               'ios.silenceHint=${info["secondaryAudioShouldBeSilencedHint"]}',
@@ -1351,11 +1352,6 @@ class AudioPlayerService extends ChangeNotifier {
       // app as the Now Playing app and shows lock screen / Control Center controls.
       avAudioSessionCategory: AVAudioSessionCategory.playback,
       avAudioSessionMode: AVAudioSessionMode.spokenAudio,
-      // longFormAudio policy marks Absorb as a "primary long-form audio" app.
-      // Without it iOS revokes background audio privileges the moment audio
-      // output briefly stops (e.g. between books in auto-advance), so the next
-      // track plays silently and lock screen controls vanish. AudioBooth uses
-      // the same policy. GH #244.
       avAudioSessionRouteSharingPolicy:
           AVAudioSessionRouteSharingPolicy.longFormAudio,
       avAudioSessionCategoryOptions: Platform.isIOS
@@ -1989,6 +1985,13 @@ class AudioPlayerService extends ChangeNotifier {
         source = ConcatenatingAudioSource(children: sources);
       }
 
+      await _configureAudioSession();
+      try {
+        final activated = await (await AudioSession.instance).setActive(true);
+        debugPrint('[Player] Pre-source setActive(true)=$activated (local)');
+      } catch (e) {
+        debugPrint('[Player] Pre-source setActive failed (local): $e');
+      }
       await _player!.setAudioSource(source);
 
       // If the saved position is at (or past) the end, restart from the beginning
@@ -2105,6 +2108,13 @@ class AudioPlayerService extends ChangeNotifier {
         source = ConcatenatingAudioSource(children: sources);
       }
 
+      await _configureAudioSession();
+      try {
+        final activated = await (await AudioSession.instance).setActive(true);
+        debugPrint('[Player] Pre-source setActive(true)=$activated (cached-session)');
+      } catch (e) {
+        debugPrint('[Player] Pre-source setActive failed (cached-session): $e');
+      }
       await _player!.setAudioSource(source);
 
       if (totalDuration > 0 && startTime >= totalDuration - 1.0) startTime = 0;
@@ -2358,6 +2368,13 @@ class AudioPlayerService extends ChangeNotifier {
         source = ConcatenatingAudioSource(children: sources);
       }
 
+      await _configureAudioSession();
+      try {
+        final activated = await (await AudioSession.instance).setActive(true);
+        debugPrint('[Player] Pre-source setActive(true)=$activated (stream)');
+      } catch (e) {
+        debugPrint('[Player] Pre-source setActive failed (stream): $e');
+      }
       await _player!.setAudioSource(source);
 
       // If the saved position is at (or past) the end, restart from the beginning

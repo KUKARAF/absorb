@@ -243,6 +243,7 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
           "category": session.category.rawValue,
           "mode": session.mode.rawValue,
           "categoryOptions": session.categoryOptions.rawValue,
+          "routeSharingPolicy": session.routeSharingPolicy.rawValue,
           "outputVolume": session.outputVolume,
           "isOtherAudioPlaying": session.isOtherAudioPlaying,
           "secondaryAudioShouldBeSilencedHint": session.secondaryAudioShouldBeSilencedHint,
