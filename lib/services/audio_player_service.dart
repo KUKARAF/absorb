@@ -38,6 +38,15 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
         bufferForPlaybackAfterRebufferDuration: Duration(seconds: 5),
         targetBufferBytes: 5 * 1024 * 1024, // 5 MB buffer
       ),
+      // iOS: disable AVPlayer's "wait for sustained playback guarantee" mode.
+      // Default true makes AVPlayer set _player.rate = speed and only actually
+      // start playing once iOS thinks stalls are unlikely. In foreground this
+      // resolves instantly; in background after a fresh asset load, iOS never
+      // grants that guarantee, so the new track stays state=buffering at
+      // pos=0.0 forever even with hundreds of seconds buffered (GH #244).
+      darwinLoadControl: DarwinLoadControl(
+        automaticallyWaitsToMinimizeStalling: false,
+      ),
     ),
   );
   AudioPlayerService? _service; // back-reference for auto-rewind
@@ -3218,6 +3227,8 @@ class AudioPlayerService extends ChangeNotifier {
     debugPrint('[Player] Book complete: $_currentTitle');
     _logEvent(PlaybackEventType.bookFinished);
 
+    // Stop immediately to prevent ExoPlayer from seeking back to position 0
+    // (which triggers position-stream events that look like a restart).
     // Cancel subscriptions first so we don't process stale events.
     _syncSub?.cancel();
     _syncSub = null;
@@ -3225,16 +3236,7 @@ class AudioPlayerService extends ChangeNotifier {
     _completionSub = null;
     _bgSaveTimer?.cancel();
     _bgSaveTimer = null;
-    // Android: stop() prevents ExoPlayer's phantom seek-to-0 on completion,
-    // which would fire position-stream events that look like a restart.
-    // iOS: stop() tears down the AVPlayer audio engine; re-warming it in
-    // background is disallowed, so the next auto-advanced item gets stuck
-    // in state=buffering forever. pause() preserves the engine — GH #244.
-    if (Platform.isAndroid) {
-      await _player?.stop();
-    } else {
-      await _player?.pause();
-    }
+    await _player?.stop();
 
     // Mark as finished on the server (fire-and-forget to avoid blocking
     // auto-advance — the local save below is the source of truth).
