@@ -3060,7 +3060,12 @@ class AudioPlayerService extends ChangeNotifier {
     // position-reset can confuse the position-based detection.
     _completionSub = _player?.processingStateStream.listen((state) {
       if (state == ProcessingState.completed && _currentItemId != null) {
-        _onPlaybackComplete();
+        if (_preloadedNextBook != null) {
+          debugPrint('[PreBuffer] processingState=completed with pre-buffer loaded — firing auto-queue advance');
+          _onAutoQueueAdvanced();
+        } else {
+          _onPlaybackComplete();
+        }
       }
       // Notify UI when buffering/loading state changes so spinners update.
       // Skip when backgrounded - no visible UI to rebuild; flushed on foreground.
@@ -3088,6 +3093,11 @@ class AudioPlayerService extends ChangeNotifier {
         final wasNearEnd = _lastKnownPositionSec >= _totalDuration - 5.0;
         final nowNearStart = posSec < 2.0;
         if (wasNearEnd && nowNearStart) {
+          if (_preloadedNextBook != null) {
+            debugPrint('[PreBuffer] Position jump near-end → 0 with pre-buffer loaded — firing auto-queue advance');
+            _onAutoQueueAdvanced();
+            return;
+          }
           debugPrint('[Player] Position jumped from ${_lastKnownPositionSec.toStringAsFixed(1)}s to ${posSec.toStringAsFixed(1)}s — treating as completion');
           _onPlaybackComplete();
           return;
