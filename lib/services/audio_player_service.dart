@@ -1051,6 +1051,26 @@ class AudioPlayerService extends ChangeNotifier {
 
   static const _eqChannelForDiag = MethodChannel('com.absorb.equalizer');
 
+  Future<void> _primeNowPlaying({
+    required String title,
+    required String artist,
+    required double duration,
+    required double elapsed,
+  }) async {
+    if (!Platform.isIOS) return;
+    try {
+      await _eqChannelForDiag.invokeMethod('primeNowPlaying', {
+        'title': title,
+        'artist': artist,
+        'duration': duration,
+        'elapsed': elapsed,
+      });
+      debugPrint('[Player] primeNowPlaying title="$title" elapsed=${elapsed.toStringAsFixed(1)}');
+    } catch (e) {
+      debugPrint('[Player] primeNowPlaying failed: $e');
+    }
+  }
+
   /// Diagnostic snapshot for the "tap play, no sound" issue. Logs both
   /// just_audio player state AND iOS AVAudioSession route/volume info so
   /// we can tell apart "player thinks it's playing but no audio reaches
@@ -2008,28 +2028,20 @@ class AudioPlayerService extends ChangeNotifier {
       _subscribeTrackIndex();
       final initChapter = _initChapterInfo(startTime);
       _pushMediaItem(itemId, title, author, coverUrl, totalDuration, chapter: initChapter);
-      // Use _currentItemId for speed lookup — itemId here is the progressKey
-      // (compound "$showId-$episodeId" for podcasts) but speed is saved under
-      // the raw show/book ID via _currentItemId in setSpeed().
+      await _primeNowPlaying(title: title, artist: author, duration: totalDuration, elapsed: startTime);
       final speedKey = _currentItemId ?? itemId;
       final bookSpeed = await PlayerSettings.getBookSpeed(speedKey);
       final speed = bookSpeed ?? await PlayerSettings.getDefaultSpeed();
       await _player!.setSpeed(speed);
       await EqualizerService().switchItem(speedKey);
       debugPrint('[Player] Starting local playback at ${speed}x');
-      // Re-activate audio session before play so the first playback event
-      // reaches the audio_service iOS plugin with an active session.
-      // Without this, iOS ignores the MPNowPlayingInfoCenter update and
-      // lock screen / Control Center / AirPod controls never appear.
+      _handler?.refreshPlaybackState();
+      await Future.delayed(const Duration(milliseconds: 200));
       try { (await AudioSession.instance).setActive(true); } catch (_) {}
       _player!.play();
       _scheduleAudioDiagnostics('local');
       notifyListeners();
       _setupSync();
-      // Ensure iOS lock screen / Control Center controls appear by pushing
-      // a fresh playback state after a short delay. The initial event from
-      // playbackEventStream can arrive before AVPlayer is fully "playing",
-      // causing the audio_service iOS plugin to skip command center activation.
       Future.delayed(const Duration(milliseconds: 500), () {
         _handler?.refreshPlaybackState();
       });
@@ -2130,11 +2142,14 @@ class AudioPlayerService extends ChangeNotifier {
       _subscribeTrackIndex();
       final initChapter = _initChapterInfo(startTime);
       _pushMediaItem(itemId, title, author, coverUrl, totalDuration, chapter: initChapter);
+      await _primeNowPlaying(title: title, artist: author, duration: totalDuration, elapsed: startTime);
       final bookSpeed = await PlayerSettings.getBookSpeed(itemId);
       final speed = bookSpeed ?? await PlayerSettings.getDefaultSpeed();
       await _player!.setSpeed(speed);
       await EqualizerService().switchItem(itemId);
       debugPrint('[Player] Starting cached session playback at ${speed}x');
+      _handler?.refreshPlaybackState();
+      await Future.delayed(const Duration(milliseconds: 200));
       try { (await AudioSession.instance).setActive(true); } catch (_) {}
       _player!.play();
       _scheduleAudioDiagnostics('cached-session');
@@ -2391,18 +2406,19 @@ class AudioPlayerService extends ChangeNotifier {
       _subscribeTrackIndex();
       final initChapter = _initChapterInfo(startTime);
       _pushMediaItem(itemId, title, author, coverUrl, totalDuration, chapter: initChapter);
+      await _primeNowPlaying(title: title, artist: author, duration: totalDuration, elapsed: startTime);
       final bookSpeed = await PlayerSettings.getBookSpeed(itemId);
       final speed = bookSpeed ?? await PlayerSettings.getDefaultSpeed();
       await _player!.setSpeed(speed);
       await EqualizerService().switchItem(itemId);
       debugPrint('[Player] Starting stream playback at ${speed}x');
-      // Re-activate audio session before play (see local playback comment above)
+      _handler?.refreshPlaybackState();
+      await Future.delayed(const Duration(milliseconds: 200));
       try { (await AudioSession.instance).setActive(true); } catch (_) {}
       _player!.play();
       _scheduleAudioDiagnostics('stream');
       notifyListeners();
       _setupSync();
-      // Ensure iOS lock screen / Control Center controls appear (see local playback comment)
       Future.delayed(const Duration(milliseconds: 500), () {
         _handler?.refreshPlaybackState();
       });

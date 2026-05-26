@@ -348,9 +348,24 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
         ]
         result(info)
 
+      case "primeNowPlaying":
+        let title = args?["title"] as? String ?? ""
+        let artist = args?["artist"] as? String ?? ""
+        let duration = args?["duration"] as? Double ?? 0
+        let elapsed = args?["elapsed"] as? Double ?? 0
+        var info: [String: Any] = [
+          MPMediaItemPropertyTitle: title,
+          MPMediaItemPropertyArtist: artist,
+          MPNowPlayingInfoPropertyPlaybackRate: 1.0,
+          MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
+        ]
+        if duration > 0 {
+          info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        result(true)
+
       case "init":
-        // iOS has no system EQ, so we advertise a fixed 5-band layout that
-        // matches what AudioEQProcessor's biquad filters handle.
         result([
           "bands": 5,
           "frequencies": [60, 230, 910, 3600, 14000],
