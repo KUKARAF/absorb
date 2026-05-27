@@ -4,14 +4,11 @@ import Foundation
 import MediaPlayer
 import UIKit
 
-/// Handles the cross-book audio transition when queue mode advances on iOS.
-///
-/// AVQueuePlayer auto-advance can leave the player rate at >0 with currentTime
-/// advancing but no audio reaching the output route when the screen is locked.
-/// This class forces the engine to restart on its own AVQueuePlayer (the one
-/// just_audio created) by pausing and re-applying the rate, and updates the
-/// lock screen Now Playing info from native code in the same moment so iOS
-/// keeps showing controls during the swap.
+/// Drives the cross-book audio transition in queue mode. Builds a fresh
+/// AVPlayerItem for the next book and swaps it into the AVQueuePlayer that
+/// just_audio owns via replaceCurrentItem + explicit play + rate. Updates
+/// MPNowPlayingInfoCenter from Swift so the lock screen never blanks out
+/// during the swap.
 final class IOSQueueAdvancer: NSObject {
   static let shared = IOSQueueAdvancer()
 
@@ -22,10 +19,14 @@ final class IOSQueueAdvancer: NSObject {
   private weak var _justAudioPlayer: AVQueuePlayer?
   private var _justAudioPlayerId: String?
 
-  private var _nextTitle: String = ""
-  private var _nextArtist: String = ""
-  private var _nextDurationS: Double = 0
-  private var _nextCoverPath: String?
+  private var _preparedItem: AVPlayerItem?
+  private var _preparedTitle: String = ""
+  private var _preparedArtist: String = ""
+  private var _preparedDurationS: Double = 0
+  private var _preparedCoverPath: String?
+  private var _preparedStartS: Double = 0
+
+  private var _flutterChannel: FlutterMethodChannel?
 
   private override init() {
     super.init()
@@ -66,6 +67,7 @@ final class IOSQueueAdvancer: NSObject {
     channel.setMethodCallHandler { [weak self] call, result in
       self?.handle(call, result: result)
     }
+    _flutterChannel = channel
     emit("[QueueAdvancer] channel registered")
   }
 
@@ -73,68 +75,156 @@ final class IOSQueueAdvancer: NSObject {
     let args = call.arguments as? [String: Any]
     switch call.method {
     case "prepareNext":
+      let url = (args?["url"] as? String) ?? ""
+      let isLocal = (args?["isLocal"] as? Bool) ?? false
+      let headers = (args?["headers"] as? [String: String]) ?? [:]
       let title = (args?["title"] as? String) ?? ""
       let artist = (args?["artist"] as? String) ?? ""
       let duration = (args?["durationS"] as? Double) ?? 0
       let coverPath = args?["coverPath"] as? String
-      queue.async { [weak self] in
-        self?._nextTitle = title
-        self?._nextArtist = artist
-        self?._nextDurationS = duration
-        self?._nextCoverPath = coverPath
-        self?.emit("[QueueAdvancer] prepared metadata for \(title)")
-      }
-      result(true)
+      let startS = (args?["startS"] as? Double) ?? 0
+      prepareNext(
+        urlStr: url,
+        isLocal: isLocal,
+        headers: headers,
+        title: title,
+        artist: artist,
+        durationS: duration,
+        coverPath: coverPath,
+        startS: startS,
+        completion: { ok in result(ok) }
+      )
 
     case "commitAdvance":
       let speed = (args?["speed"] as? Double) ?? 1.0
       commitAdvance(speed: speed, completion: { ok in result(ok) })
 
     case "clear":
-      queue.async { [weak self] in
-        self?._nextTitle = ""
-        self?._nextArtist = ""
-        self?._nextDurationS = 0
-        self?._nextCoverPath = nil
-      }
+      queue.async { [weak self] in self?.dropPrepared() }
       result(true)
 
     case "isReady":
       result(_justAudioPlayer != nil)
+
+    case "isPrepared":
+      result(_preparedItem != nil)
 
     default:
       result(FlutterMethodNotImplemented)
     }
   }
 
+  private func prepareNext(
+    urlStr: String,
+    isLocal: Bool,
+    headers: [String: String],
+    title: String,
+    artist: String,
+    durationS: Double,
+    coverPath: String?,
+    startS: Double,
+    completion: @escaping (Bool) -> Void
+  ) {
+    queue.async { [weak self] in
+      guard let self = self else { completion(false); return }
+      guard !urlStr.isEmpty else {
+        self.emit("[QueueAdvancer] prepareNext: empty url")
+        completion(false)
+        return
+      }
+      let url: URL?
+      if isLocal {
+        let path = urlStr.hasPrefix("file://") ? String(urlStr.dropFirst(7)) : urlStr
+        url = URL(fileURLWithPath: path)
+      } else {
+        url = URL(string: urlStr)
+      }
+      guard let assetUrl = url else {
+        self.emit("[QueueAdvancer] prepareNext: bad url \(urlStr)")
+        completion(false)
+        return
+      }
+
+      var options: [String: Any] = [:]
+      if !headers.isEmpty {
+        options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+      }
+      let asset = AVURLAsset(url: assetUrl, options: options)
+      asset.loadValuesAsynchronously(forKeys: ["tracks", "duration"]) { [weak self] in
+        guard let self = self else { return }
+        self.queue.async {
+          var trackErr: NSError?
+          let status = asset.statusOfValue(forKey: "tracks", error: &trackErr)
+          if status != .loaded {
+            self.emit("[QueueAdvancer] prepareNext: asset tracks not loaded status=\(status.rawValue) err=\(trackErr?.localizedDescription ?? "nil")")
+            completion(false)
+            return
+          }
+          let item = AVPlayerItem(asset: asset)
+          item.audioTimePitchAlgorithm = .timeDomain
+          self._preparedItem = item
+          self._preparedTitle = title
+          self._preparedArtist = artist
+          self._preparedDurationS = durationS
+          self._preparedCoverPath = coverPath
+          self._preparedStartS = startS
+          self.emit("[QueueAdvancer] prepared \(title) (\(assetUrl.lastPathComponent)) start=\(startS)")
+          completion(true)
+        }
+      }
+    }
+  }
+
   private func commitAdvance(speed: Double, completion: @escaping (Bool) -> Void) {
     queue.async { [weak self] in
       guard let self = self else { completion(false); return }
-      self.activateSession()
-      self.publishNowPlaying(rate: speed)
       guard let player = self._justAudioPlayer else {
         self.emit("[QueueAdvancer] commitAdvance: no just_audio player ref")
         completion(false)
         return
       }
+      guard let item = self._preparedItem else {
+        self.emit("[QueueAdvancer] commitAdvance: nothing prepared")
+        completion(false)
+        return
+      }
+
+      self.activateSession()
+      self.publishNowPlaying(rate: speed)
+
       let target = Float(speed > 0 ? speed : 1.0)
+      let startS = self._preparedStartS
       DispatchQueue.main.async {
-        // Force the engine to re-emit audio: pause, then play and re-apply
-        // the rate explicitly. This is what manual pause+play does for users.
-        player.pause()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
+        // Clear other queued items so a stale auto-advance can't race us.
+        for queued in player.items() where queued !== item {
+          player.remove(queued)
+        }
+        player.replaceCurrentItem(with: item)
+        if startS > 0 {
+          item.seek(to: CMTime(seconds: startS, preferredTimescale: 1000), completionHandler: { _ in
+            player.play()
+            player.rate = target
+          })
+        } else {
           player.play()
           player.rate = target
-          self.queue.async {
-            self.emit("[QueueAdvancer] commitAdvance done rate=\(player.rate) for \(self._nextTitle)")
-            // Re-publish Now Playing once the engine settles so the lock
-            // screen shows the correct playing state and elapsed time.
-            self.publishNowPlaying(rate: Double(target))
-            completion(true)
-          }
+        }
+        self.queue.async {
+          self.emit("[QueueAdvancer] commitAdvance done rate=\(player.rate) item=\(self._preparedTitle)")
+          self._preparedItem = nil
+          completion(true)
         }
       }
     }
+  }
+
+  private func dropPrepared() {
+    _preparedItem = nil
+    _preparedTitle = ""
+    _preparedArtist = ""
+    _preparedDurationS = 0
+    _preparedCoverPath = nil
+    _preparedStartS = 0
   }
 
   private func activateSession() {
@@ -150,16 +240,17 @@ final class IOSQueueAdvancer: NSObject {
   }
 
   private func publishNowPlaying(rate: Double) {
-    let title = _nextTitle
-    let artist = _nextArtist
-    let duration = _nextDurationS
-    let coverPath = _nextCoverPath
+    let title = _preparedTitle
+    let artist = _preparedArtist
+    let duration = _preparedDurationS
+    let coverPath = _preparedCoverPath
+    let elapsed = _preparedStartS
     guard !title.isEmpty else { return }
     var info: [String: Any] = [
       MPMediaItemPropertyTitle: title,
       MPMediaItemPropertyArtist: artist,
       MPNowPlayingInfoPropertyPlaybackRate: rate,
-      MPNowPlayingInfoPropertyElapsedPlaybackTime: 0.0,
+      MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
       MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
     ]
     if duration > 0 {

@@ -1198,18 +1198,44 @@ mixin _AbsorbingMixin on ChangeNotifier, _StateMixin, _CoreMixin {
         if (candidateLibId != null && candidateLibId != currentLibId) continue;
       }
 
+      final itemIdRaw = candidateIsPodcast ? key.substring(0, 36) : key;
+      final episodeIdRaw = candidateIsPodcast ? key.substring(37) : null;
+
+      // Try downloaded first; fall back to cached session for streaming so
+      // the pre-buffer + native handover path works for non-downloaded books.
       final localPaths = DownloadService().getLocalPaths(key);
+      List<Map<String, dynamic>>? audioTracks;
+      Map<String, String>? audioHeaders;
       if (localPaths == null || localPaths.isEmpty) {
-        debugPrint('[PreBuffer] Next item $key not downloaded, skip');
-        return null;
-      }
-      if (localPaths.length != 1) {
+        final api = self._api;
+        if (api == null) {
+          debugPrint('[PreBuffer] Next item $key no api context, skip');
+          return null;
+        }
+        final cachedSession = await SessionCache.load(
+          itemId: itemIdRaw,
+          episodeId: episodeIdRaw,
+        );
+        final tracks = cachedSession?['audioTracks'] as List<dynamic>?;
+        if (tracks == null || tracks.isEmpty) {
+          debugPrint('[PreBuffer] Next item $key not downloaded and no cached session, skip');
+          return null;
+        }
+        if (tracks.length != 1) {
+          debugPrint('[PreBuffer] Next item $key streaming multi-track, skip (MVP)');
+          return null;
+        }
+        audioTracks = tracks.map<Map<String, dynamic>>((t) {
+          final track = t as Map<String, dynamic>;
+          final contentUrl = track['contentUrl'] as String? ?? '';
+          return {'url': api.buildTrackUrl(contentUrl)};
+        }).toList();
+        audioHeaders = api.mediaHeaders;
+      } else if (localPaths.length != 1) {
         debugPrint('[PreBuffer] Next item $key is multi-track, skip (MVP)');
         return null;
       }
 
-      final itemIdRaw = candidateIsPodcast ? key.substring(0, 36) : key;
-      final episodeIdRaw = candidateIsPodcast ? key.substring(37) : null;
       final media = cached['media'] as Map<String, dynamic>? ?? {};
       final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
       final title = candidateIsPodcast
@@ -1235,7 +1261,9 @@ mixin _AbsorbingMixin on ChangeNotifier, _StateMixin, _CoreMixin {
         'coverUrl': getCoverUrl(itemIdRaw),
         'duration': duration,
         'chapters': chapters,
-        'localPaths': localPaths,
+        if (localPaths != null && localPaths.isNotEmpty) 'localPaths': localPaths,
+        if (audioTracks != null) 'audioTracks': audioTracks,
+        if (audioHeaders != null) 'audioHeaders': audioHeaders,
       };
     }
     return null;

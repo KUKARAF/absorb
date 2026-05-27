@@ -344,10 +344,17 @@
     // TODO: Provide a similar case as _seekPos for _initialPos.
     if (CMTIME_IS_VALID(_seekPos)) {
         return (int)(1000 * CMTimeGetSeconds(_seekPos));
-    } else if (_indexedAudioSources && _indexedAudioSources.count > 0) {
+    } else if (_index >= 0 && _indexedAudioSources && _index < _indexedAudioSources.count) {
         int ms = (int)(1000 * CMTimeGetSeconds(_indexedAudioSources[_index].position));
         if (ms < 0) ms = 0;
         return ms;
+    } else if (_player && _player.currentItem) {
+        CMTime ct = _player.currentItem.currentTime;
+        if (CMTIME_IS_VALID(ct)) {
+            int ms = (int)(1000 * CMTimeGetSeconds(ct));
+            return ms < 0 ? 0 : ms;
+        }
+        return 0;
     } else {
         return 0;
     }
@@ -356,7 +363,7 @@
 - (int)getBufferedPosition {
     if (_processingState == none || _processingState == loading) {
         return 0;
-    } else if (_indexedAudioSources && _indexedAudioSources.count > 0) {
+    } else if (_index >= 0 && _indexedAudioSources && _index < _indexedAudioSources.count) {
         int ms = (int)(1000 * CMTimeGetSeconds(_indexedAudioSources[_index].bufferedPosition));
         if (ms < 0) ms = 0;
         return ms;
@@ -368,9 +375,16 @@
 - (int)getDuration {
     if (_processingState == none || _processingState == loading) {
         return -1;
-    } else if (_indexedAudioSources && _indexedAudioSources.count > 0) {
+    } else if (_index >= 0 && _indexedAudioSources && _index < _indexedAudioSources.count) {
         int v = (int)(1000 * CMTimeGetSeconds(_indexedAudioSources[_index].duration));
         return v;
+    } else if (_player && _player.currentItem) {
+        CMTime d = _player.currentItem.duration;
+        if (CMTIME_IS_VALID(d)) {
+            int ms = (int)(1000 * CMTimeGetSeconds(d));
+            return ms < 0 ? 0 : ms;
+        }
+        return 0;
     } else {
         return 0;
     }
@@ -746,6 +760,11 @@
     //NSLog(@"onComplete");
 
     IndexedPlayerItem *endedPlayerItem = (IndexedPlayerItem *)notification.object;
+    if (![endedPlayerItem isKindOfClass:[IndexedPlayerItem class]] || _index < 0) {
+        // Foreign currentItem (host app drove the transition). Don't touch
+        // our own queue state.
+        return;
+    }
     IndexedAudioSource *endedSource = endedPlayerItem.audioSource;
 
     if (_loopMode == loopOne) {
@@ -895,8 +914,16 @@
     } else if ([keyPath isEqualToString:@"currentItem"] && _player.currentItem) {
         IndexedPlayerItem *playerItem = (IndexedPlayerItem *)change[NSKeyValueChangeNewKey];
         //IndexedPlayerItem *oldPlayerItem = (IndexedPlayerItem *)change[NSKeyValueChangeOldKey];
+        if (![playerItem isKindOfClass:[IndexedPlayerItem class]]) {
+            // Host-app code replaced currentItem with a vanilla AVPlayerItem.
+            // Mark our internal index invalid and stop tracking until the host
+            // calls load again.
+            _index = -1;
+            [self broadcastPlaybackEvent];
+            return;
+        }
         if (playerItem.status == AVPlayerItemStatusFailed) {
-            if ([_orderInv[_index] intValue] + 1 < [_order count]) {
+            if (_index >= 0 && [_orderInv[_index] intValue] + 1 < [_order count]) {
                 // account for automatic move to next item
                 _index = [_order[[_orderInv[_index] intValue] + 1] intValue];
                 //NSLog(@"advance to next on error: index = %d", _index);
@@ -908,6 +935,11 @@
             return;
         } else {
             int expectedIndex = [self indexForItem:playerItem];
+            if (expectedIndex < 0) {
+                _index = -1;
+                [self broadcastPlaybackEvent];
+                return;
+            }
             if (_index != expectedIndex) {
                 // AVQueuePlayer will sometimes skip over error items without
                 // notifying this observer.
@@ -1155,6 +1187,7 @@
     // - when the shuffle order changes. (TODO)
     // - when the shuffle mode changes.
     if (!_player) return;
+    if (_index < 0) return;
     if (_audioSource && (_loopMode != loopOff || ([_order count] > 0 && [_orderInv[_index] intValue] + 1 < [_order count]))) {
         _player.actionAtItemEnd = AVPlayerActionAtItemEndAdvance;
     } else {

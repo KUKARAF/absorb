@@ -59,6 +59,25 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
   void bindService(AudioPlayerService service) => _service = service;
 
+  // [AbsorbDiag] Channel for phantom-resume diagnostics (GH #243). Reads
+  // statics from the vendored audio_service Java side via MainActivity.kt.
+  // Strip the call sites + the channel once #243 is closed.
+  static const _absorbDiagChannel = MethodChannel('com.absorb.audio_diag');
+
+  static Future<void> _logAbsorbDiag(String tag) async {
+    if (!Platform.isAndroid) return;
+    try {
+      final snap = await _absorbDiagChannel.invokeMapMethod<String, dynamic>('snapshot');
+      if (snap == null) return;
+      debugPrint('[AbsorbDiag] $tag: '
+          'keyCode=${snap['lastKeyCode']} keyAgeMs=${snap['lastKeyAgeMs']} '
+          'lastPlayCaller=${snap['lastPlayCaller']} playAgeMs=${snap['lastPlayCallerAgeMs']} '
+          'lastPauseCaller=${snap['lastPauseCaller']} pauseAgeMs=${snap['lastPauseCallerAgeMs']}');
+    } catch (e) {
+      debugPrint('[AbsorbDiag] $tag: snapshot failed: $e');
+    }
+  }
+
   /// Force-push current PlaybackState so the notification picks up
   /// new chapter-relative position immediately (e.g. on chapter change).
   void refreshPlaybackState() {
@@ -231,6 +250,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> play() async {
     debugPrint('[Handler] play() called - routing to service (state=${_player.processingState.name})');
+    await _logAbsorbDiag('play');
     final entryBt = await AudioPlayerService._isBluetoothAudioConnected();
     if (entryBt) AudioPlayerService._lastPlayedOnBtAt = DateTime.now();
     debugPrint('[ClickDebug] play() entry: ${_clickDebugSnapshot(btNow: entryBt)}');
@@ -258,6 +278,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> pause() async {
     debugPrint('[Handler] pause() called - routing to service');
+    await _logAbsorbDiag('pause');
     final pauseEntryBt = await AudioPlayerService._isBluetoothAudioConnected();
     debugPrint('[ClickDebug] pause() entry: ${_clickDebugSnapshot(btNow: pauseEntryBt)}');
     _lastHandlerPauseAt = DateTime.now();
@@ -463,6 +484,7 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> click([MediaButton button = MediaButton.media]) async {
     debugPrint('[Handler] click(button=$button) count=${_clickCount + 1} playing=${_player.playing}');
+    await _logAbsorbDiag('click');
     // Pre-fetch BT-route state so the snapshot can fill in the AA-disconnect
     // heuristic and the suppression branch below has a value to test against.
     final btNow = await AudioPlayerService._isBluetoothAudioConnected();
@@ -1167,7 +1189,9 @@ class AudioPlayerService extends ChangeNotifier {
       debugPrint('[PreBuffer] Pre-loaded next item: ${next['title']} ($nextItemId)');
 
       if (Platform.isIOS) {
-        unawaited(_primeNativeQueueAdvancer(next));
+        // Also prime the native handover so the background path can take over
+        // without going through just_audio's heavy reload.
+        unawaited(_primeNativeQueueAdvancer(next, localPaths, audioTracks, audioHeaders));
       }
     } catch (e, st) {
       debugPrint('[PreBuffer] Failed: $e\n$st');
@@ -1176,23 +1200,56 @@ class AudioPlayerService extends ChangeNotifier {
     // play session. Reset happens in _resetPreBufferState on the next playItem.
   }
 
-  Future<void> _primeNativeQueueAdvancer(Map<String, dynamic> next) async {
+  Future<bool> _primeNativeQueueAdvancer(
+      Map<String, dynamic> next,
+      List<String>? localPaths,
+      List<dynamic>? audioTracks,
+      Map<String, String>? audioHeaders) async {
     try {
+      String? url;
+      bool isLocal = false;
+      if (localPaths != null && localPaths.isNotEmpty) {
+        url = localPaths.first;
+        isLocal = true;
+      } else if (audioTracks != null && audioTracks.isNotEmpty) {
+        url = (audioTracks.first as Map<String, dynamic>)['url'] as String?;
+      }
+      if (url == null || url.isEmpty) return false;
+
       String? coverPath;
       final itemId = next['itemId'] as String?;
       if (itemId != null) {
         final local = DownloadService().getInfo(itemId).localCoverPath;
         if (local != null && local.isNotEmpty) coverPath = local;
       }
+
+      // Resume position for the next book.
+      double startS = 0;
+      if (itemId != null) {
+        final progressKey = next['episodeId'] != null
+            ? '$itemId-${next['episodeId']}'
+            : itemId;
+        final local = await _progressSync.getLocal(progressKey);
+        if (local != null && !(local['isFinished'] as bool? ?? false)) {
+          startS = (local['currentTime'] as num?)?.toDouble() ?? 0;
+        }
+      }
+
       final ok = await _queueAdvancerChannel.invokeMethod<bool>('prepareNext', {
+        'url': url,
+        'isLocal': isLocal,
+        'headers': audioHeaders ?? <String, String>{},
         'title': next['title'] ?? '',
         'artist': next['author'] ?? '',
         'durationS': (next['duration'] as num?)?.toDouble() ?? 0,
         'coverPath': coverPath,
+        'startS': startS,
       });
       debugPrint('[PreBuffer] native prepareNext returned $ok');
+      return ok ?? false;
     } catch (e) {
       debugPrint('[PreBuffer] native prepareNext failed: $e');
+      return false;
     }
   }
 
@@ -3170,6 +3227,24 @@ class AudioPlayerService extends ChangeNotifier {
       if (posSec > 0) _lastKnownPositionSec = posSec;
 
       _maybePreloadNextBook();
+
+      // On iOS in background, fire the cross-book transition just before the
+      // current item ends. The native handover swaps the player item in one
+      // step, keeping the AVPlayer rate continuous so iOS doesn't drop the
+      // background route. Foreground still uses the regular auto-advance path.
+      if (Platform.isIOS &&
+          _isBackgrounded &&
+          _preloadedNextBook != null &&
+          !_autoQueueAdvancing &&
+          _totalDuration > 0 &&
+          (_player?.playing ?? false)) {
+        final remaining = _totalDuration - posSec;
+        if (remaining > 0 && remaining <= 0.5) {
+          debugPrint('[PreBuffer] Proactive iOS transition at remaining=${remaining.toStringAsFixed(2)}s');
+          _onAutoQueueAdvanced();
+          return;
+        }
+      }
 
       if (sec <= 0) return;
 
