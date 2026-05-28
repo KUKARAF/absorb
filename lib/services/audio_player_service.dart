@@ -64,18 +64,29 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   // Strip the call sites + the channel once #243 is closed.
   static const _absorbDiagChannel = MethodChannel('com.absorb.audio_diag');
 
-  static Future<void> _logAbsorbDiag(String tag) async {
-    if (!Platform.isAndroid) return;
+  /// Fetch the raw diag snapshot from the Java side. Returns null on iOS or
+  /// when the channel is unavailable. Used by click() to also read the
+  /// keycode for intent disambiguation, not just to log it.
+  static Future<Map<String, dynamic>?> _absorbDiagSnapshot() async {
+    if (!Platform.isAndroid) return null;
     try {
-      final snap = await _absorbDiagChannel.invokeMapMethod<String, dynamic>('snapshot');
-      if (snap == null) return;
-      debugPrint('[AbsorbDiag] $tag: '
-          'keyCode=${snap['lastKeyCode']} keyAgeMs=${snap['lastKeyAgeMs']} '
-          'lastPlayCaller=${snap['lastPlayCaller']} playAgeMs=${snap['lastPlayCallerAgeMs']} '
-          'lastPauseCaller=${snap['lastPauseCaller']} pauseAgeMs=${snap['lastPauseCallerAgeMs']}');
+      return await _absorbDiagChannel.invokeMapMethod<String, dynamic>('snapshot');
     } catch (e) {
-      debugPrint('[AbsorbDiag] $tag: snapshot failed: $e');
+      debugPrint('[AbsorbDiag] snapshot failed: $e');
+      return null;
     }
+  }
+
+  static void _logAbsorbDiagFromSnapshot(String tag, Map<String, dynamic>? snap) {
+    if (snap == null) return;
+    debugPrint('[AbsorbDiag] $tag: '
+        'keyCode=${snap['lastKeyCode']} keyAgeMs=${snap['lastKeyAgeMs']} '
+        'lastPlayCaller=${snap['lastPlayCaller']} playAgeMs=${snap['lastPlayCallerAgeMs']} '
+        'lastPauseCaller=${snap['lastPauseCaller']} pauseAgeMs=${snap['lastPauseCallerAgeMs']}');
+  }
+
+  static Future<void> _logAbsorbDiag(String tag) async {
+    _logAbsorbDiagFromSnapshot(tag, await _absorbDiagSnapshot());
   }
 
   /// Force-push current PlaybackState so the notification picks up
@@ -409,6 +420,12 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   int _clickCount = 0;
   DateTime? _hardwareButtonTime; // cooldown after hardware next/prev
   DateTime? _noisyPauseAt; // suppress clicks for a window after BT disconnect
+  // Keycode of the media button event that arrived at the most recent click().
+  // Read from the [AbsorbDiag] snapshot at click arrival and consumed by the
+  // 400ms resolver to honor PAUSE/PLAY intent instead of blindly toggling -
+  // Android Auto sends KEYCODE_MEDIA_PAUSE when the user switches to Radio,
+  // and the old toggle path bounced it back as a phantom resume (GH #243).
+  int? _lastClickKeyCode;
   // True while the click resolver is synchronously calling pause()/play().
   // pause() uses this to skip stamping _noisyPauseAt for click-driven pauses,
   // so legit user pause-then-play flows are not blocked by the disconnect guard.
@@ -484,7 +501,8 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> click([MediaButton button = MediaButton.media]) async {
     debugPrint('[Handler] click(button=$button) count=${_clickCount + 1} playing=${_player.playing}');
-    await _logAbsorbDiag('click');
+    final diagSnap = await _absorbDiagSnapshot();
+    _logAbsorbDiagFromSnapshot('click', diagSnap);
     // Pre-fetch BT-route state so the snapshot can fill in the AA-disconnect
     // heuristic and the suppression branch below has a value to test against.
     final btNow = await AudioPlayerService._isBluetoothAudioConnected();
@@ -547,6 +565,19 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
       }
     }
 
+    // Stash the keycode for the resolver if it belongs to this click. Only
+    // do this for clicks that actually count - early-return guards above
+    // skip the stash so they can't poison the keycode of a click that does
+    // make it to the resolver. 500ms cap is a safety margin; typical
+    // keyAgeMs from the Java side is 0-2ms.
+    if (diagSnap != null) {
+      final age = diagSnap['lastKeyAgeMs'];
+      final kc = diagSnap['lastKeyCode'];
+      if (age is int && age >= 0 && age < 500 && kc is int && kc != 0) {
+        _lastClickKeyCode = kc;
+      }
+    }
+
     _clickCount++;
     _clickTimer?.cancel();
     _clickTimer = Timer(const Duration(milliseconds: 400), () async {
@@ -559,7 +590,33 @@ class AudioPlayerHandler extends BaseAudioHandler with SeekHandler {
         case 1:
           _inClickResolver = true;
           try {
-            if (_player.playing) {
+            // Honor the actual keycode the system dispatched when we can.
+            // audio_service collapses MEDIA_PLAY / MEDIA_PAUSE / PLAY_PAUSE /
+            // HEADSETHOOK all into MediaButton.media, but Android Auto sends
+            // MEDIA_PAUSE specifically when the user switches to another media
+            // app - blindly toggling there resumes us right after we paused
+            // (GH #243). For the unambiguous play / pause keycodes, follow the
+            // intent. PLAY_PAUSE / HEADSETHOOK / unknown / stale stay as
+            // toggles so single-button BT remotes keep working.
+            const keycodeMediaPlay = 126;
+            const keycodeMediaPause = 127;
+            final kc = _lastClickKeyCode;
+            _lastClickKeyCode = null;
+            if (kc == keycodeMediaPause) {
+              if (_player.playing) {
+                debugPrint('[Handler] → single press (MEDIA_PAUSE) → PAUSE');
+                await pause();
+              } else {
+                debugPrint('[Handler] → single press (MEDIA_PAUSE while paused) → no-op (suppressed phantom toggle to PLAY)');
+              }
+            } else if (kc == keycodeMediaPlay) {
+              if (!_player.playing) {
+                debugPrint('[Handler] → single press (MEDIA_PLAY) → PLAY');
+                await play();
+              } else {
+                debugPrint('[Handler] → single press (MEDIA_PLAY while playing) → no-op');
+              }
+            } else if (_player.playing) {
               debugPrint('[Handler] → single press → PAUSE');
               await pause();
             } else {
@@ -1206,16 +1263,6 @@ class AudioPlayerService extends ChangeNotifier {
       List<dynamic>? audioTracks,
       Map<String, String>? audioHeaders) async {
     try {
-      String? url;
-      bool isLocal = false;
-      if (localPaths != null && localPaths.isNotEmpty) {
-        url = localPaths.first;
-        isLocal = true;
-      } else if (audioTracks != null && audioTracks.isNotEmpty) {
-        url = (audioTracks.first as Map<String, dynamic>)['url'] as String?;
-      }
-      if (url == null || url.isEmpty) return false;
-
       String? coverPath;
       final itemId = next['itemId'] as String?;
       if (itemId != null) {
@@ -1223,7 +1270,6 @@ class AudioPlayerService extends ChangeNotifier {
         if (local != null && local.isNotEmpty) coverPath = local;
       }
 
-      // Resume position for the next book.
       double startS = 0;
       if (itemId != null) {
         final progressKey = next['episodeId'] != null
@@ -1236,9 +1282,6 @@ class AudioPlayerService extends ChangeNotifier {
       }
 
       final ok = await _queueAdvancerChannel.invokeMethod<bool>('prepareNext', {
-        'url': url,
-        'isLocal': isLocal,
-        'headers': audioHeaders ?? <String, String>{},
         'title': next['title'] ?? '',
         'artist': next['author'] ?? '',
         'durationS': (next['duration'] as num?)?.toDouble() ?? 0,
