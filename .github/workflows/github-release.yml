@@ -76,8 +76,11 @@ jobs:
         env:
           RAW: ${{ steps.version.outputs.raw }}
         run: |
+          # gradle already names the APK absorb-<version>-<code>.apk, so skip
+          # the mv when source and destination are the same file.
           APK_SRC=$(ls build/app/outputs/apk/github/release/*.apk | head -1)
-          mv "$APK_SRC" "build/app/outputs/apk/github/release/absorb-${RAW//+/-}.apk"
+          APK_DST="build/app/outputs/apk/github/release/absorb-${RAW//+/-}.apk"
+          [ "$APK_SRC" = "$APK_DST" ] || mv "$APK_SRC" "$APK_DST"
 
       - name: Upload APK to GitHub draft release
         env:
