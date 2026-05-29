@@ -3952,6 +3952,15 @@ class AudioPlayerService extends ChangeNotifier {
   bool _seekedWhilePaused = false;
   bool _wasPlayingBeforeInterrupt = false;
 
+  // Storm guard for the idle-on-resume re-init path. A book the player can't
+  // start (e.g. a thousands-of-files book the engine never leaves `idle` on)
+  // would otherwise re-init in a tight loop, opening a new server play session
+  // each pass. Cap re-inits within a short window.
+  int _idleReinitCount = 0;
+  DateTime? _lastIdleReinit;
+  static const _idleReinitWindow = Duration(seconds: 10);
+  static const _idleReinitMaxAttempts = 3;
+
   /// Auto-rewind calculation using linear scaling.
   /// Scales linearly from minRewind at activationDelay to maxRewind at 1 hour.
   /// activationDelay = minimum pause before rewind kicks in (0 = always).
@@ -4058,7 +4067,20 @@ class AudioPlayerService extends ChangeNotifier {
     // If the player is idle (source was disposed), we need to fully re-initialize
     // playback instead of just calling play() on an empty player.
     if (_player?.processingState == ProcessingState.idle && _currentItemId != null && _api != null) {
-      debugPrint('[Player] Player is idle on resume - re-initializing playback for $_currentItemId');
+      // Cap re-inits within a window so a book the engine can't start doesn't
+      // spin here forever, hammering the server with fresh play sessions.
+      final now = DateTime.now();
+      if (_lastIdleReinit != null && now.difference(_lastIdleReinit!) < _idleReinitWindow) {
+        _idleReinitCount++;
+      } else {
+        _idleReinitCount = 1;
+      }
+      _lastIdleReinit = now;
+      if (_idleReinitCount > _idleReinitMaxAttempts) {
+        debugPrint('[Player] Idle-on-resume re-init capped after $_idleReinitCount attempts — giving up to avoid a retry storm');
+        return;
+      }
+      debugPrint('[Player] Player is idle on resume - re-initializing playback for $_currentItemId (attempt $_idleReinitCount)');
       playItem(
         api: _api!,
         itemId: _currentItemId!,

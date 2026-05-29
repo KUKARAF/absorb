@@ -811,13 +811,12 @@ class ApiService {
     final baseUri = Uri.parse(_cleanBaseUrl);
     final basePath = baseUri.path;
     if (basePath.isNotEmpty && contentUrl.startsWith('$basePath/')) {
-      final url = '${baseUri.origin}$contentUrl?token=$token';
-      debugPrint('[ABS] Track URL: $url');
-      return url;
+      return '${baseUri.origin}$contentUrl?token=$token';
     }
-    final url = '$_cleanBaseUrl$contentUrl?token=$token';
-    debugPrint('[ABS] Track URL: $url');
-    return url;
+    // No per-track logging here: this runs in a hot loop over every track, and
+    // books with thousands of files would flood (and roll over) the log buffer.
+    // The session's "First track contentUrl" line already gives a sample.
+    return '$_cleanBaseUrl$contentUrl?token=$token';
   }
 
   /// Sync playback progress. Returns true if sync succeeded.
