@@ -49,6 +49,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const _isGithubBuild = bool.fromEnvironment('GITHUB_BUILD');
   AutoRewindSettings _rewindSettings = const AutoRewindSettings();
   double _defaultSpeed = 1.0;
+
+  void _setDefaultSpeed(double v) {
+    final s = ((v * 20).round() / 20.0).clamp(0.5, 3.0);
+    setState(() => _defaultSpeed = s);
+    PlayerSettings.setDefaultSpeed(s);
+  }
+
   bool _wifiOnlyDownloads = false;
   bool _autoDownloadOnStream = false;
   int _rollingDownloadCount = 3;
@@ -1138,15 +1145,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Text(l.defaultSpeedSubtitle,
                         style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 11)),
                     ),
-                    AbsorbSlider(
-                      value: _defaultSpeed,
-                      min: 0.5,
-                      max: 3.0,
-                      divisions: 25,
-                      onChanged: _loaded ? (v) {
-                        setState(() => _defaultSpeed = double.parse(v.toStringAsFixed(2)));
-                        PlayerSettings.setDefaultSpeed(double.parse(v.toStringAsFixed(2)));
-                      } : null,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                      child: Row(children: [
+                        GestureDetector(
+                          onTap: _loaded ? () => _setDefaultSpeed(_defaultSpeed - 0.05) : null,
+                          child: Container(
+                            width: 36, height: 36,
+                            decoration: BoxDecoration(shape: BoxShape.circle, color: cs.onSurface.withValues(alpha: 0.08)),
+                            child: Icon(Icons.remove_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.7)),
+                          ),
+                        ),
+                        Expanded(child: AbsorbSlider(
+                          value: _defaultSpeed,
+                          min: 0.5,
+                          max: 3.0,
+                          divisions: 50,
+                          activeColor: cs.primary,
+                          onChanged: _loaded ? _setDefaultSpeed : null,
+                        )),
+                        GestureDetector(
+                          onTap: _loaded ? () => _setDefaultSpeed(_defaultSpeed + 0.05) : null,
+                          child: Container(
+                            width: 36, height: 36,
+                            decoration: BoxDecoration(shape: BoxShape.circle, color: cs.onSurface.withValues(alpha: 0.08)),
+                            child: Icon(Icons.add_rounded, size: 20, color: cs.onSurface.withValues(alpha: 0.7)),
+                          ),
+                        ),
+                      ]),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(52, 0, 52, 0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('0.5x', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+                          Text('3.0x', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+                        ],
+                      ),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -1163,10 +1199,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               )),
                             backgroundColor: isActive ? cs.primary : cs.surfaceContainerHighest,
                             side: BorderSide.none,
-                            onPressed: () {
-                              setState(() => _defaultSpeed = s);
-                              PlayerSettings.setDefaultSpeed(s);
-                            },
+                            onPressed: _loaded ? () => _setDefaultSpeed(s) : null,
                           );
                         }).toList(),
                       ),
