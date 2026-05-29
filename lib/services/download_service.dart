@@ -558,6 +558,10 @@ class DownloadService extends ChangeNotifier {
 
     final appDir = await getApplicationDocumentsDirectory();
     final currentPrefix = appDir.path; // .../Documents
+    // Audio lives in the App Group container - stable across updates in practice
+    // (unlike Documents), but resolve it so we can remap audio paths too if the
+    // container ever shifts. Belt and suspenders so downloads survive an update.
+    final groupAudioBase = await _iosAppGroupAudioBase();
 
     bool changed = false;
     final entries = Map<String, DownloadInfo>.from(_downloads);
@@ -566,21 +570,25 @@ class DownloadService extends ChangeNotifier {
       final info = entry.value;
       bool needsUpdate = false;
 
-      // Remap localPaths
+      // Remap localPaths (audio sits under the App Group; legacy audio under
+      // Documents). Apply both: each is a no-op for paths it doesn't own.
       final newPaths = <String>[];
       for (final path in info.localPaths) {
-        final remapped = _remapIOSPath(path, currentPrefix);
+        final remapped =
+            _remapAppGroupPath(_remapIOSPath(path, currentPrefix), groupAudioBase);
         newPaths.add(remapped);
         if (remapped != path) needsUpdate = true;
       }
 
+      // Covers always live in Documents, so only that prefix can go stale.
       final newCoverPath = info.localCoverPath != null
           ? _remapIOSPath(info.localCoverPath!, currentPrefix)
           : null;
       if (newCoverPath != info.localCoverPath) needsUpdate = true;
 
       final newDirPath = info.localDirPath != null
-          ? _remapIOSPath(info.localDirPath!, currentPrefix)
+          ? _remapAppGroupPath(
+              _remapIOSPath(info.localDirPath!, currentPrefix), groupAudioBase)
           : null;
       if (newDirPath != info.localDirPath) needsUpdate = true;
 
@@ -710,6 +718,19 @@ class DownloadService extends ChangeNotifier {
     final idx = path.indexOf(marker);
     if (idx < 0) return path;
     return '$currentPrefix/${path.substring(idx + marker.length)}';
+  }
+
+  /// Replace a stale App Group container prefix with the current one. Audio is
+  /// stored at `<group>/audio/downloads/...`; if the container path ever shifts
+  /// across an update, rejoin the stable `/audio/downloads` tail onto the freshly
+  /// resolved base so previously-downloaded books keep playing. No-op when the
+  /// path is already current (the usual case) or for non-audio paths.
+  String _remapAppGroupPath(String path, String? groupAudioBase) {
+    if (groupAudioBase == null || path.startsWith(groupAudioBase)) return path;
+    const marker = '/audio/downloads';
+    final idx = path.indexOf(marker);
+    if (idx < 0) return path;
+    return '$groupAudioBase${path.substring(idx + marker.length)}';
   }
 
   /// Validate that downloaded files still exist on disk and clean up orphans.
