@@ -62,8 +62,24 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
         self?.widgetChannel?.invokeMethod("log", arguments: ["msg": line])
       }
     }
+    AbsorbAudioEQProcessor.setFormatLogger { [weak self] line in
+      DispatchQueue.main.async {
+        self?.widgetChannel?.invokeMethod("log", arguments: ["msg": line])
+      }
+    }
 
     IOSQueueAdvancer.logSink = { [weak self] line in
+      DispatchQueue.main.async {
+        self?.widgetChannel?.invokeMethod("log", arguments: ["msg": line])
+      }
+    }
+
+    AbsorbAudioEngine.logSink = { [weak self] line in
+      DispatchQueue.main.async {
+        self?.widgetChannel?.invokeMethod("log", arguments: ["msg": line])
+      }
+    }
+    AbsorbAudioBridge.logSink = { [weak self] line in
       DispatchQueue.main.async {
         self?.widgetChannel?.invokeMethod("log", arguments: ["msg": line])
       }
@@ -236,6 +252,7 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
     let messenger = flutterEngine.binaryMessenger
 
     IOSQueueAdvancer.shared.register(with: messenger)
+    AbsorbAudioBridge.shared.register(with: messenger)
 
     // iOS audio output device switching is not implemented yet — iOS routes
     // through the system's MPVolumeView/AVRoutePicker rather than letting apps
@@ -389,17 +406,20 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
       case "setEnabled":
         let enabled = args?["enabled"] as? Bool ?? false
         AudioEQProcessor.shared.setEnabled(enabled)
+        AbsorbAudioEQProcessor.shared.setEnabled(enabled)
         result(true)
 
       case "setBand":
         let band = args?["band"] as? Int ?? 0
         let level = args?["level"] as? Int ?? 0
         AudioEQProcessor.shared.setBandLevel(Int32(level), forBand: Int32(band))
+        AbsorbAudioEQProcessor.shared.setBandLevel(Int32(level), forBand: Int32(band))
         result(true)
 
       case "setBassBoost":
         let strength = args?["strength"] as? Int ?? 0
         AudioEQProcessor.shared.setBassBoostStrength(Int32(strength))
+        AbsorbAudioEQProcessor.shared.setBassBoostStrength(Int32(strength))
         result(true)
 
       case "setVirtualizer":
@@ -409,11 +429,13 @@ let flutterEngine = FlutterEngine(name: "SharedEngine", project: nil, allowHeadl
       case "setLoudness":
         let gain = args?["gain"] as? Int ?? 0
         AudioEQProcessor.shared.setLoudnessGain(Int32(gain))
+        AbsorbAudioEQProcessor.shared.setLoudnessGain(Int32(gain))
         result(true)
 
       case "setMono":
         let enabled = args?["enabled"] as? Bool ?? false
         AudioEQProcessor.shared.setMonoEnabled(enabled)
+        AbsorbAudioEQProcessor.shared.setMonoEnabled(enabled)
         result(true)
 
       default:
