@@ -1361,7 +1361,7 @@ mixin _AbsorbingMixin on ChangeNotifier, _StateMixin, _CoreMixin {
 
     // auto_next
     if (isPodCurrent) {
-      return _peekNextPodcastEpisode(currentItemId);
+      return await _peekNextPodcastEpisode(currentItemId);
     }
     return await _peekNextBookInSeries(currentItemId);
   }
@@ -1428,29 +1428,51 @@ mixin _AbsorbingMixin on ChangeNotifier, _StateMixin, _CoreMixin {
     return _entryTitle(next);
   }
 
-  String? _peekNextPodcastEpisode(String currentCompoundKey) {
+  Future<String?> _peekNextPodcastEpisode(String currentCompoundKey) async {
     if (currentCompoundKey.length < 37) return null;
     final showId = currentCompoundKey.substring(0, 36);
     final currentEpId = currentCompoundKey.substring(37);
-    final showCached = _absorbingItemCache.values.cast<Map<String, dynamic>>().where((e) {
-      final mt = e['mediaType'] as String?;
-      return mt == 'podcast' && (e['id'] as String?) == showId;
-    }).firstOrNull;
-    if (showCached == null) return null;
-    final media = showCached['media'] as Map<String, dynamic>? ?? const {};
-    final eps = (media['episodes'] as List<dynamic>? ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .toList();
-    if (eps.isEmpty) return null;
     final self = this as LibraryProvider;
-    final currentIdx = eps.indexWhere((e) => e['id'] == currentEpId);
+
+    // Mirror _addNextPodcastEpisode: the absorbing cache stores per-episode
+    // synthetic entries (recentEpisode), not the full episodes list, so read
+    // the full list from a cached entry that has it or fall back to the API,
+    // then sort by the same advance direction. Without this the peek looks at
+    // the raw API order and shows nothing even though advancing works.
+    List<dynamic> eps = const [];
+    final showCached = _absorbingItemCache.values
+        .cast<Map<String, dynamic>>()
+        .where((e) => (e['id'] as String?) == showId)
+        .firstOrNull;
+    final cachedEps = (showCached?['media'] as Map<String, dynamic>?)?['episodes']
+        as List<dynamic>?;
+    if (cachedEps != null && cachedEps.isNotEmpty) {
+      eps = cachedEps;
+    } else if (_api != null) {
+      final fullItem = await _api!.getLibraryItem(showId);
+      final media = fullItem?['media'] as Map<String, dynamic>? ?? const {};
+      eps = media['episodes'] as List<dynamic>? ?? const [];
+    }
+    final episodes = eps.whereType<Map<String, dynamic>>().toList();
+    if (episodes.isEmpty) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+    final advanceNewestFirst =
+        (prefs.getString('podcast_advance_dir_$showId') ?? 'oldest_first') ==
+            'newest_first';
+    episodes.sort((a, b) {
+      final aTime = (a['publishedAt'] as num?)?.toInt() ?? 0;
+      final bTime = (b['publishedAt'] as num?)?.toInt() ?? 0;
+      return advanceNewestFirst ? bTime.compareTo(aTime) : aTime.compareTo(bTime);
+    });
+
+    final currentIdx = episodes.indexWhere((e) => e['id'] == currentEpId);
     final start = currentIdx >= 0 ? currentIdx + 1 : 0;
-    for (var i = start; i < eps.length; i++) {
-      final ep = eps[i];
-      final epId = ep['id'] as String?;
+    for (var i = start; i < episodes.length; i++) {
+      final epId = episodes[i]['id'] as String?;
       if (epId == null) continue;
       if (self.isItemFinishedByKey('$showId-$epId')) continue;
-      return ep['title'] as String?;
+      return episodes[i]['title'] as String?;
     }
     return null;
   }

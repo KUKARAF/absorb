@@ -168,6 +168,19 @@ class PlayerSettings {
   }
   static Future<void> setPodcastQueueMode(String value) => _set('podcastQueueMode', value, notify: true);
 
+  /// Per-show podcast auto-advance direction: 'oldest_first' (default) or
+  /// 'newest_first'. Stored under a raw (un-scoped) key because the advance
+  /// logic in _lp_absorbing reads it straight from SharedPreferences.
+  static Future<String> getPodcastAdvanceDir(String showId) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('podcast_advance_dir_$showId') ?? 'oldest_first';
+  }
+  static Future<void> setPodcastAdvanceDir(String showId, String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('podcast_advance_dir_$showId', value);
+    _notify();
+  }
+
   /// Active playlist ID for playlist queue mode. Null when no playlist is selected.
   static Future<String?> getQueuePlaylistId() async {
     final s = await ScopedPrefs.getString('queuePlaylistId');

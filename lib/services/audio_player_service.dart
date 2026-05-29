@@ -1151,6 +1151,12 @@ class AudioPlayerService extends ChangeNotifier {
     notifyListeners();
   }
   bool get hasBook => _currentItemId != null;
+  /// True when a loaded item is in an active session - playing OR paused.
+  /// stop() drops the engine to idle while keeping _currentItemId, so this is
+  /// false for a stopped session even though [hasBook] stays true.
+  bool get hasActiveSession =>
+      _currentItemId != null &&
+      (_player?.processingState ?? ProcessingState.idle) != ProcessingState.idle;
   bool get isPlaying => _player?.playing ?? false;
   /// True while [playItem] is setting up a new audio source.
   bool _isLoadingNewItem = false;

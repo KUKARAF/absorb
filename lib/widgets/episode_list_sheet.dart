@@ -58,8 +58,6 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
   bool _subscribed = false;
   bool _newestFirst = true;
   bool _hideFinished = false;
-  String _podcastAdvanceDir = 'oldest_first'; // 'oldest_first' or 'newest_first'
-  bool _podcastAutoAdvanceOn = false;
   bool _selectMode = false;
   final Set<String> _selectedEpisodeIds = {};
   bool _isBatchUpdating = false;
@@ -96,7 +94,6 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     super.initState();
     _loadSortOrder();
     _loadHideFinished();
-    _loadAutoAdvanceDir();
     _loadEpisodes();
     _loadAutoDownloadState();
   }
@@ -172,22 +169,6 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getBool('podcast_hide_finished_$_itemId');
     if (saved != null && mounted) setState(() => _hideFinished = saved);
-  }
-
-  void _loadAutoAdvanceDir() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('podcast_advance_dir_$_itemId');
-    if (saved != null && mounted) setState(() => _podcastAdvanceDir = saved);
-    final mode = await PlayerSettings.getPodcastQueueMode();
-    if (mounted) setState(() => _podcastAutoAdvanceOn = mode == 'auto_next');
-  }
-
-  void _toggleAutoAdvanceDir() {
-    final newDir = _podcastAdvanceDir == 'oldest_first' ? 'newest_first' : 'oldest_first';
-    setState(() => _podcastAdvanceDir = newDir);
-    SharedPreferences.getInstance().then((prefs) {
-      prefs.setString('podcast_advance_dir_$_itemId', newDir);
-    });
   }
 
   void _toggleHideFinished() {
@@ -476,44 +457,6 @@ class _EpisodeListSheetState extends State<EpisodeListSheet> {
                 _hideFinished ? Icons.visibility_rounded : Icons.visibility_off_rounded,
                 _hideFinished ? l.episodeListShowFinishedEpisodes : l.episodeListHideFinishedEpisodes,
                 onTap: () { Navigator.pop(ctx); _toggleHideFinished(); }),
-              if (_podcastAutoAdvanceOn)
-                StatefulBuilder(builder: (ctx, setLocalState) {
-                  final reversed = _podcastAdvanceDir == 'newest_first';
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: cs.onSurface.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: cs.onSurface.withValues(alpha: 0.1)),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      child: Row(children: [
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(l.reversePlayOrder, style: TextStyle(color: cs.onSurface, fontSize: 13, fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 2),
-                          Text(
-                            reversed ? l.episodeListPlaysNewerToOlder : l.episodeListPlaysOlderToNewer,
-                            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11.5),
-                          ),
-                        ])),
-                        SizedBox(
-                          height: 28,
-                          child: FittedBox(
-                            fit: BoxFit.contain,
-                            child: Switch(
-                              value: reversed,
-                              onChanged: (v) {
-                                _toggleAutoAdvanceDir();
-                                setLocalState(() {});
-                              },
-                            ),
-                          ),
-                        ),
-                      ]),
-                    ),
-                  );
-                }),
             ]),
           ),
         );
