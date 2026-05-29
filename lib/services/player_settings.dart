@@ -576,4 +576,21 @@ class PlayerSettings {
 
   static Future<void> setBookSpeed(String itemId, double speed) =>
       _set('bookSpeed_$itemId', speed);
+
+  // ── Per-book sleep-rewind override (falls back to the global default) ──
+
+  static Future<int?> getBookSleepRewindSeconds(String itemId) =>
+      ScopedPrefs.getInt('sleepRewind_$itemId');
+
+  static Future<void> setBookSleepRewindSeconds(String itemId, int seconds) =>
+      _set('sleepRewind_$itemId', seconds);
+
+  /// Per-book override if one is set for [itemId], otherwise the global default.
+  static Future<int> getEffectiveSleepRewindSeconds(String? itemId) async {
+    if (itemId != null) {
+      final book = await getBookSleepRewindSeconds(itemId);
+      if (book != null) return book;
+    }
+    return getSleepRewindSeconds();
+  }
 }

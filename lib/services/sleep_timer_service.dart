@@ -358,7 +358,7 @@ class SleepTimerService extends ChangeNotifier {
       // Restore volume so next playback starts at normal level
       _player.setVolume(_fadeStartVolume);
       // Auto-rewind so the user resumes from a few seconds back
-      final rewindSeconds = await PlayerSettings.getSleepRewindSeconds();
+      final rewindSeconds = await PlayerSettings.getEffectiveSleepRewindSeconds(_player.currentItemId);
       if (rewindSeconds > 0) {
         final currentPos = _player.position;
         final newPos = currentPos - Duration(seconds: rewindSeconds);

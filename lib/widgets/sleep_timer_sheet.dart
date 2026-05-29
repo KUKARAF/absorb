@@ -45,7 +45,7 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
       PlayerSettings.getShakeAddMinutes(),
       PlayerSettings.getSleepTimerMinutes(),
       PlayerSettings.getSleepTimerChapters(),
-      PlayerSettings.getSleepRewindSeconds(),
+      PlayerSettings.getEffectiveSleepRewindSeconds(AudioPlayerService().currentItemId),
       PlayerSettings.getSleepTimerTab(),
     ]);
     if (mounted)
@@ -666,7 +666,13 @@ class _SleepTimerSheetState extends State<SleepTimerSheet> {
           onChanged: (v) {
             final seconds = (v * 60).round();
             setState(() => _sleepRewindSeconds = seconds);
-            PlayerSettings.setSleepRewindSeconds(seconds);
+            // Modal edits the current book only; settings sets the default.
+            final itemId = AudioPlayerService().currentItemId;
+            if (itemId != null) {
+              PlayerSettings.setBookSleepRewindSeconds(itemId, seconds);
+            } else {
+              PlayerSettings.setSleepRewindSeconds(seconds);
+            }
           },
         ),
       ),

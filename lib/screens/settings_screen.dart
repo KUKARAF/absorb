@@ -67,6 +67,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _backSkip = 10;
   bool _skipChapterBarrier = true;
   String _shakeMode = 'addTime';
+  int _sleepRewindSeconds = 0;
+  static const _maxRewindMinutes = 120;
   bool _resetSleepOnPause = false;
   bool _sleepFadeOut = true;
   int _sleepFadeDuration = 30;
@@ -382,7 +384,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final qpId = results[48] as String?;
     final rmabBaseUrl = await ScopedPrefs.getString(kRmabBaseUrlKey);
     final rmabApiToken = await ScopedPrefs.getString(kRmabApiTokenKey);
+    final sleepRewind = await PlayerSettings.getSleepRewindSeconds();
     if (mounted) setState(() {
+      _sleepRewindSeconds = sleepRewind;
       _rmabBaseUrl = rmabBaseUrl;
       _rmabApiToken = rmabApiToken;
       _rewindSettings = s;
@@ -564,6 +568,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveRewind(AutoRewindSettings s) async {
     setState(() => _rewindSettings = s);
     await s.save();
+  }
+
+  String _rewindLabel(int seconds, AppLocalizations l) {
+    if (seconds == 0) return l.off;
+    if (seconds < 60) return l.sleepTimerSheetSecondsShort(seconds);
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return s > 0
+        ? l.sleepTimerSheetMinSecShort(m, s)
+        : l.sleepTimerSheetMinShort(m);
   }
 
   Future<void> _saveLocalServerUrl(AuthProvider auth, AppLocalizations l) async {
@@ -1542,6 +1556,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         setState(() => _resetSleepOnPause = v);
                         PlayerSettings.setResetSleepOnPause(v);
                       } : null,
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: Row(children: [
+                        Icon(Icons.replay_rounded, size: 18,
+                          color: _sleepRewindSeconds > 0 ? cs.primary : cs.onSurfaceVariant),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(l.sleepTimerSheetRewindOnSleep,
+                          style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant))),
+                        Text(_rewindLabel(_sleepRewindSeconds, l),
+                          style: tt.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: _sleepRewindSeconds > 0 ? cs.primary : cs.onSurfaceVariant)),
+                      ]),
+                    ),
+                    AbsorbSlider(
+                      value: (_sleepRewindSeconds / 60).clamp(0.0, _maxRewindMinutes.toDouble()),
+                      min: 0,
+                      max: _maxRewindMinutes.toDouble(),
+                      divisions: _maxRewindMinutes,
+                      onChanged: _loaded ? (v) {
+                        final seconds = (v * 60).round();
+                        setState(() => _sleepRewindSeconds = seconds);
+                        PlayerSettings.setSleepRewindSeconds(seconds);
+                      } : null,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(28, 0, 28, 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(l.off, style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+                          Text(l.sleepTimerSheetMinShort(_maxRewindMinutes),
+                            style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3), fontSize: 11)),
+                        ],
+                      ),
                     ),
                     const Divider(height: 1, indent: 16, endIndent: 16),
                     SwitchListTile(
