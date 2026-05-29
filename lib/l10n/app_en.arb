@@ -1682,7 +1682,7 @@
   "tipsSheetOfflineModeTitle": "Offline Mode",
   "tipsSheetOfflineModeDesc": "Tap the airplane button on the Absorbing screen to enter offline mode. This stops syncing, saves data, and only shows your downloaded books. Great for flights or low signal areas.",
   "tipsSheetUpcomingReleasesTitle": "Upcoming Releases",
-  "tipsSheetUpcomingReleasesDesc": "Open the Library top-right menu to see new and upcoming books across all the series in your library, sorted by release date.",
+  "tipsSheetUpcomingReleasesDesc": "On the Series tab, tap the tab again to open its sort and filter sheet, then choose Upcoming Releases to see new and upcoming books across your series, sorted by release date.",
   "tipsSheetPerBookEqTitle": "Per-Book Equalizer",
   "tipsSheetPerBookEqDesc": "Each book remembers its own equalizer settings. Tweak EQ once for a sci-fi epic and the next time you play it, it sounds the same.",
   "tipsSheetPerBookSpeedTitle": "Per-Book Speed",
@@ -1694,7 +1694,7 @@
   "tipsSheetCarModeTitle": "Car Mode",
   "tipsSheetCarModeDesc": "Tap the car icon to switch to giant-button mode designed for safer use while driving.",
   "tipsSheetAudibleSeriesTitle": "Audible Series Discovery",
-  "tipsSheetAudibleSeriesDesc": "Open a series and tap the search icon to pull the full series list from Audible, including missing entries and books you haven't started.",
+  "tipsSheetAudibleSeriesDesc": "Open a series and use the overflow menu (the three dots) to pull the full series list from Audible, including missing entries and books you haven't started.",
 
   "bookCardUnknownTitle": "Unknown Title",
   "bookCardExplicitBadge": "E",

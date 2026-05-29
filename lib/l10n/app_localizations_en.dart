@@ -4832,7 +4832,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tipsSheetUpcomingReleasesDesc =>
-      'Open the Library top-right menu to see new and upcoming books across all the series in your library, sorted by release date.';
+      'On the Series tab, tap the tab again to open its sort and filter sheet, then choose Upcoming Releases to see new and upcoming books across your series, sorted by release date.';
 
   @override
   String get tipsSheetPerBookEqTitle => 'Per-Book Equalizer';
@@ -4874,7 +4874,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tipsSheetAudibleSeriesDesc =>
-      'Open a series and tap the search icon to pull the full series list from Audible, including missing entries and books you haven\'t started.';
+      'Open a series and use the overflow menu (the three dots) to pull the full series list from Audible, including missing entries and books you haven\'t started.';
 
   @override
   String get bookCardUnknownTitle => 'Unknown Title';
