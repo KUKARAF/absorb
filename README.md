@@ -54,6 +54,12 @@ A modern audiobookshelf client with a card-based player experience.
 - **Car mode** — large-button driving UI for use without Android Auto
 - **Localization** — community translations via Crowdin
 
+## Translations
+
+[![Crowdin](https://badges.crowdin.net/absorb/localized.svg)](https://crowdin.com/project/absorb)
+
+Absorb is translated by the community on [Crowdin](https://crowdin.com/project/absorb). Want your language added or improved? Jump in, no coding needed.
+
 ## Install
 
 [![Get it on GitHub](https://img.shields.io/badge/Get_it_on-GitHub-blue?style=for-the-badge&logo=github)](../../releases)
