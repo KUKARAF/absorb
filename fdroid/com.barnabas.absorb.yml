@@ -1,12 +1,15 @@
 # DRAFT F-Droid metadata for the official fdroiddata repo.
 # Copy to fdroiddata/metadata/com.barnabas.absorb.yml when opening the merge request.
 #
-# The load-bearing custom bits (verified against this repo) are the `fdroid`
-# flavor selection and the prebuild steps that strip the Chromecast plugin so
-# the APK links no Google Play Services. The Flutter SDK plumbing (srclibs /
-# buildserver image) should be matched to fdroiddata's CURRENT convention for
-# Flutter apps — copy the `srclibs`/`sudo` lines from a recently-merged Flutter
-# app in fdroiddata rather than trusting a pinned version here.
+# Modeled on current Flutter apps in fdroiddata (FluffyChat / LocalSend / Saber):
+# F-Droid provides the Flutter SDK via `srclibs: flutter@stable`, the build runs
+# `flutter build apk --flavor fdroid` in a `build:` block (NOT `gradle:`), and the
+# Chromecast plugin is stripped in `prebuild:`.
+#
+# Bits to confirm against F-Droid CI on the first MR (flagged inline):
+#  - the Flutter version pin (3.44.0 = what Absorb is currently built with)
+#  - whether any `sudo:`/`ndk:` packages are needed (Absorb has no Rust/native
+#    desktop deps, so likely none — add if CI complains)
 
 Categories:
   - Multimedia
@@ -21,41 +24,41 @@ Description: |-
   audiobooks and podcasts, with chapter navigation, sleep timer, equalizer,
   Android Auto, and home-screen widgets.
 
-  Note: the F-Droid build omits Chromecast and the Wear OS companion login
-  bridge, which both require proprietary Google Play Services.
+  This F-Droid build has no Google Play Services, so Chromecast and the Wear OS
+  companion login are not available here. Everything else works normally.
 
 RepoType: git
 Repo: https://github.com/pounat/absorb.git
 
 Builds:
-  - versionName: 1.8.91
-    versionCode: 159
-    commit: v1.8.91          # tag the release commit; update per submission
-    subdir: android/app
-    # --- Flutter SDK: match fdroiddata's current Flutter convention ---
-    # e.g. srclibs: [flutter@<tag>] plus the flutter precommand in `prebuild`,
-    # or the buildserver's bundled flutter. Left intentionally unset here.
-    gradle:
-      - fdroid
-    rm:
-      - lib/services/chromecast_service.dart
-      - lib/widgets/chromecast_button.dart
+  - versionName: 1.8.92
+    versionCode: 160
+    commit: v1.8.92
+    srclibs:
+      - flutter@stable
     prebuild:
-      # Swap the GMS-free stubs into the real filenames.
+      # Pin Flutter to the version Absorb is developed against.
+      - git -C $$flutter$$ checkout -f 3.44.0
+      # Strip Chromecast (it needs Google Play Services): swap the GMS-free
+      # stubs into place and drop the plugin from pubspec. Do NOT delete
+      # pubspec.lock — a full re-resolve drifts flutter_carplay to an
+      # API-incompatible version and breaks the build.
       - mv lib/services/chromecast_service_stub.dart lib/services/chromecast_service.dart
       - mv lib/widgets/chromecast_button_stub.dart lib/widgets/chromecast_button.dart
-      # Drop the Chromecast plugin so its play-services-cast AAR is never pulled.
-      # Keep pubspec.lock: pub get drops just flutter_chrome_cast (and its
-      # orphaned cast deps) while every other version stays pinned. Deleting
-      # the lock forces a full re-resolve that drifts e.g. flutter_carplay to
-      # an API-incompatible version and breaks the build.
       - sed -i '/flutter_chrome_cast:/d' pubspec.yaml
-      - flutter pub get
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter pub get
+    build:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter build apk --release --flavor fdroid
+    scandelete:
+      - .pub-cache
     output: build/app/outputs/flutter-apk/app-fdroid-release.apk
 
-# F-Droid signs with its own key (no reproducible-build setup yet), so F-Droid
-# installs are independent of the GitHub-flavor APK signature.
+# F-Droid signs with its own key (no reproducible-build setup), so F-Droid
+# installs are independent of the GitHub/Play APK signatures.
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 1.8.91
-CurrentVersionCode: 159
+CurrentVersion: 1.8.92
+CurrentVersionCode: 160
