@@ -36,6 +36,9 @@ jobs:
     env:
       BUNDLE_ID: com.barnabas.absorb
       APPLE_TEAM_ID: 3W9C9PWP64
+      # Mapped here so the Play upload step can guard on its presence and skip
+      # silently when the service account secret isn't configured.
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
 
     steps:
       - uses: actions/checkout@v4
@@ -178,6 +181,19 @@ jobs:
               --draft \
               --title "$VERSION_TAG"
           fi
+
+      # Upload the AAB to Play Console as a DRAFT on the internal track. It just
+      # parks in the console for you to roll out manually - nothing is submitted
+      # or sent for review. Skips silently if the service account secret is unset.
+      - name: Upload AAB to Play Console (internal, draft)
+        if: ${{ env.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.barnabas.absorb
+          releaseFiles: build/app/outputs/bundle/playstoreRelease/*.aab
+          track: internal
+          status: draft
 
       - name: Upload to TestFlight
         env:
