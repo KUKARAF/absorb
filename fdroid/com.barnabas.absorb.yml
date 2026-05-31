@@ -1,16 +1,3 @@
-# DRAFT F-Droid metadata for the official fdroiddata repo.
-# Copy to fdroiddata/metadata/com.barnabas.absorb.yml when opening the merge request.
-#
-# Modeled on current Flutter apps in fdroiddata (FluffyChat / LocalSend / Saber):
-# F-Droid provides the Flutter SDK via `srclibs: flutter@stable`, the build runs
-# `flutter build apk --flavor fdroid` in a `build:` block (NOT `gradle:`), and the
-# Chromecast plugin is stripped in `prebuild:`.
-#
-# Bits to confirm against F-Droid CI on the first MR (flagged inline):
-#  - the Flutter version pin (3.44.0 = what Absorb is currently built with)
-#  - whether any `sudo:`/`ndk:` packages are needed (Absorb has no Rust/native
-#    desktop deps, so likely none — add if CI complains)
-
 Categories:
   - Multimedia
 License: GPL-3.0-or-later
@@ -34,31 +21,25 @@ Builds:
   - versionName: 1.8.92
     versionCode: 160
     commit: v1.8.92
+    output: build/app/outputs/flutter-apk/app-fdroid-release.apk
     srclibs:
       - flutter@stable
     prebuild:
-      # Pin Flutter to the version Absorb is developed against.
       - git -C $$flutter$$ checkout -f 3.44.0
-      # Strip Chromecast (it needs Google Play Services): swap the GMS-free
-      # stubs into place and drop the plugin from pubspec. Do NOT delete
-      # pubspec.lock — a full re-resolve drifts flutter_carplay to an
-      # API-incompatible version and breaks the build.
       - mv lib/services/chromecast_service_stub.dart lib/services/chromecast_service.dart
       - mv lib/widgets/chromecast_button_stub.dart lib/widgets/chromecast_button.dart
       - sed -i '/flutter_chrome_cast:/d' pubspec.yaml
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter pub get
+    scandelete:
+      - .pub-cache
     build:
       - export PUB_CACHE=$(pwd)/.pub-cache
       - $$flutter$$/bin/flutter build apk --release --flavor fdroid
-    scandelete:
-      - .pub-cache
-    output: build/app/outputs/flutter-apk/app-fdroid-release.apk
 
-# F-Droid signs with its own key (no reproducible-build setup), so F-Droid
-# installs are independent of the GitHub/Play APK signatures.
 AutoUpdateMode: Version
-UpdateCheckMode: Tags
+UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
+UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
 CurrentVersion: 1.8.92
 CurrentVersionCode: 160

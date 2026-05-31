@@ -47,11 +47,17 @@ android {
 
     flavorDimensions += "distribution"
     productFlavors {
+        // github + playstore keep the broad Flutter proguard keep. fdroid omits
+        // it so R8 can strip Flutter's unused deferred-components manager, which
+        // would otherwise drag proprietary Google Play Core class references into
+        // the APK and fail F-Droid's scanner.
         create("github") {
             dimension = "distribution"
+            proguardFiles("proguard-flutter-keep.pro")
         }
         create("playstore") {
             dimension = "distribution"
+            proguardFiles("proguard-flutter-keep.pro")
         }
         // GMS-free build for F-Droid: no Chromecast, Wear bridge, or in-app updater.
         create("fdroid") {
@@ -111,4 +117,11 @@ dependencies {
         add("githubImplementation", it)
         add("playstoreImplementation", it)
     }
+}
+
+// F-Droid build must ship no Google Play Core (proprietary; the Flutter engine
+// pulls it in for deferred components, which Absorb doesn't use). Scoped to the
+// fdroid flavor so the github/playstore builds are unchanged.
+configurations.matching { it.name.startsWith("fdroid") }.configureEach {
+    exclude(group = "com.google.android.play")
 }
