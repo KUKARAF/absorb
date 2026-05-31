@@ -129,6 +129,8 @@
   "librarySearchEpisodes": "Episoden",
   "librarySearchSeries": "Serien",
   "librarySearchAuthors": "Autoren",
+  "librarySearchTags": "Schlagwörter",
+  "librarySearchGenres": "Genres",
   "librarySeriesCount": "{count} Serien",
   "@librarySeriesCount": {
     "placeholders": {
@@ -182,8 +184,10 @@
   "downloaded": "Heruntergeladen",
   "hasEbook": "Mit eBook",
   "genre": "Genre",
+  "tag": "Schlagwort",
   "clearFilter": "Filter zurücksetzen",
   "noGenresFound": "Keine Genres gefunden",
+  "noTagsFound": "Keine Schlagwörter gefunden",
   "asc": "AUF",
   "desc": "AB",
   "absorbingTitle": "Absorbing",
@@ -409,6 +413,26 @@
   "queueModeOff": "Aus",
   "queueModeManual": "Manuell",
   "queueModeAuto": "Auto",
+  "queueModePlaylist": "Wiedergabeliste",
+  "queuePlaylistNone": "Keine Wiedergabeliste ausgewählt",
+  "queuePlaylistActiveLabel": "Wiedergabeliste: {name}",
+  "@queuePlaylistActiveLabel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "exit": "Beenden",
+  "upNext": "Als Nächstes: {label}",
+  "@upNext": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistAllFinished": "Alle abgeschlossen",
   "queueModeBooks": "Bücher",
   "queueModePodcasts": "Podcasts",
   "autoDownloadQueue": "Auto-Download-Warteschlange",
@@ -862,6 +886,39 @@
   "adminRmabAskAdmin": "Hol dir eine Login-URL von deinem Server-Admin",
   "adminRmabUrlHelpUser": "Hol dir eine Login-URL von deinem Server-Admin. Diese wird in RMAB > Admin > Users generiert.",
   "adminRmabSettingsInfo": "ReadMeABook ist ein selbst gehosteter Dienst zum Anfordern und Herunterladen von Hörbüchern. Es muss von deinem Server-Admin installiert und eingerichtet werden.",
+  "rmabConfigTokenLabel": "API-Token",
+  "rmabConfigConnect": "Verbinden",
+  "rmabConfigDisconnect": "Trennen",
+  "rmabConfigOpenWebView": "In der Browseransicht öffnen",
+  "rmabConfigConnectedAs": "Verbunden als {name}",
+  "@rmabConfigConnectedAs": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "rmabConfigErrorInvalidUrl": "Gültige http(s)-URL eingeben",
+  "rmabConfigErrorMissingToken": "API-Token eingeben",
+  "rmabConfigErrorUnauthorized": "Token vom Server abgelehnt",
+  "rmabConfigErrorGeneric": "Verbindung konnte nicht hergestellt werden",
+  "rmabSearchHint": "Nach Titel oder Autor suchen",
+  "rmabBookAlreadyAvailable": "Bereits in deiner Bibliothek",
+  "rmabBookAlreadyRequested": "Bereits angefordert",
+  "rmabRequestSubmitting": "Wird übermittelt…",
+  "rmabRequestSent": "Anfrage gesendet",
+  "rmabRequestErrorAlreadyAvailable": "Bereits in deiner Bibliothek",
+  "rmabRequestErrorBeingProcessed": "Wird bereits bearbeitet",
+  "rmabRequestDetailStatus": "Status",
+  "rmabRequestDetailProgress": "Fortschritt",
+  "rmabStatusActive": "Im Gang",
+  "rmabStatusWaiting": "Warten",
+  "rmabStatusAvailable": "Verfügbar",
+  "rmabStatusDownloaded": "Heruntergeladen",
+  "rmabStatusFailed": "Fehlgeschlagen",
+  "rmabStatusCancelled": "Abgebrochen",
+  "rmabStatusDenied": "Verweigert",
+  "rmabStatusUnknown": "Unbekannt",
   "narratedBy": "Gesprochen von {narrator}",
   "@narratedBy": {
     "placeholders": {
@@ -899,6 +956,8 @@
   "clearLocalMetadata": "Lokale Metadaten löschen",
   "searchOnGoodreads": "Auf Goodreads suchen",
   "editServerDetails": "Server-Details bearbeiten",
+  "encodeTab": "Verschlüsseln",
+  "stereo": "Stereo",
   "aboutSection": "Info",
   "chaptersCount": "Kapitel ({count})",
   "@chaptersCount": {
@@ -1349,6 +1408,17 @@
   "updateKindPreRelease": "Pre-Release-Version",
   "updateKindVersion": "Version",
   "downloadButton": "Herunterladen",
+  "adminEmail": "E-Mail",
+  "smtpSection": "SMTP",
+  "smtpPort": "Port",
+  "smtpUser": "Benutzername",
+  "smtpPass": "Passwort",
+  "smtpSaveSettings": "Speichern",
+  "deleteEreaderDevice": "Löschen",
+  "ereaderDeviceName": "Name",
+  "ereaderDeviceEmail": "E-Mail",
+  "ereaderAvailUserOrUp": "Alle Benutzer",
+  "ereaderAvailGuestOrUp": "Jeder",
   "libraryCountOne": "{count} Bibliothek",
   "@libraryCountOne": {
     "placeholders": {
@@ -2988,5 +3058,6 @@
   "tipsRestored": "Tipps wiederhergestellt",
   "resetSpeedPresets": "Geschwindigkeits-Voreinstellungen zurücksetzen",
   "resetSpeedPresetsSubtitle": "Standard-Wiedergabegeschwindigkeiten wiederherstellen",
-  "speedPresetsReset": "Geschwindigkeits-Voreinstellungen zurückgesetzt"
+  "speedPresetsReset": "Geschwindigkeits-Voreinstellungen zurückgesetzt",
+  "authorName": "Name"
 }
