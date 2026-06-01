@@ -5,6 +5,8 @@ AuthorName: Nathan Poulson
 SourceCode: https://github.com/pounat/absorb
 IssueTracker: https://github.com/pounat/absorb/issues
 
+AutoName: Absorb
+
 RepoType: git
 Repo: https://github.com/pounat/absorb.git
 
