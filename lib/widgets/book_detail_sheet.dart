@@ -29,6 +29,7 @@ import '../services/metadata_override_service.dart';
 import '../services/scoped_prefs.dart';
 import '../main.dart' show rootNavigatorKey;
 import '../screens/app_shell.dart';
+import '../screens/chapter_editor_screen.dart';
 import 'author_books_sheet.dart';
 import 'narrator_books_sheet.dart';
 import 'series_books_sheet.dart';
@@ -668,6 +669,22 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
       double duration, Map<String, dynamic>? ebookFile, bool isEbookOnly, String serverPath) {
     final cs = Theme.of(context).colorScheme;
     final l = AppLocalizations.of(context)!;
+    // Continue-shelf actions only make sense when this book is actually shown
+    // in the relevant home shelf right now.
+    final inContinueListening = lib.isInContinueListeningShelf(widget.itemId);
+    final rawSeries = ((_item?['media'] as Map<String, dynamic>?)?['metadata']
+        as Map<String, dynamic>?)?['series'];
+    final bookSeriesIds = <String>[];
+    if (rawSeries is List) {
+      for (final s in rawSeries.whereType<Map<String, dynamic>>()) {
+        final id = (s['id'] as String? ?? '').trim();
+        if (id.isNotEmpty) bookSeriesIds.add(id);
+      }
+    } else if (rawSeries is Map<String, dynamic>) {
+      final id = (rawSeries['id'] as String? ?? '').trim();
+      if (id.isNotEmpty) bookSeriesIds.add(id);
+    }
+    final continueSeriesId = lib.continueSeriesShelfMatch(bookSeriesIds);
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).bottomSheetTheme.backgroundColor,
@@ -730,6 +747,12 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
               if (progress > 0 || isFinished)
                 _moreItem(cs, Icons.restart_alt_rounded, l.resetProgress,
                   onTap: () { Navigator.pop(ctx); _resetProgress(context, auth, duration); }),
+              if (inContinueListening && !lib.isOffline)
+                _moreItem(cs, Icons.playlist_remove_rounded, l.removeFromContinueListening,
+                  onTap: () { Navigator.pop(ctx); _removeFromContinueListening(context, auth, lib); }),
+              if (continueSeriesId != null && !lib.isOffline)
+                _moreItem(cs, Icons.bookmark_remove_rounded, l.removeSeriesFromContinueSeries,
+                  onTap: () { Navigator.pop(ctx); _removeSeriesFromContinueSeries(context, auth, lib, continueSeriesId); }),
               if (auth.apiService != null && !lib.isOffline)
                 _moreItem(cs, Icons.manage_search_rounded,
                   _hasLocalOverride ? l.reLookupLocalMetadata : l.lookupLocalMetadata,
@@ -760,6 +783,14 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                         audioFiles: audioFiles,
                         relPath: rel);
                   }),
+              if (auth.canUpdateMetadata && !lib.isOffline && !isEbookOnly)
+                _moreItem(cs, Icons.format_list_numbered_rounded, 'Edit Chapters',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
+                      builder: (_) => ChapterEditorScreen(itemId: widget.itemId, bookTitle: title),
+                    ));
+                  }),
               if (auth.isAdmin && serverPath.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 GestureDetector(
@@ -777,6 +808,49 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
         );
       },
     );
+  }
+
+  Future<void> _removeFromContinueListening(
+      BuildContext context, AuthProvider auth, LibraryProvider lib) async {
+    final l = AppLocalizations.of(context)!;
+    final api = auth.apiService;
+    final progressId = lib.getProgressData(widget.itemId)?['id'] as String?;
+    if (api == null || progressId == null) {
+      if (context.mounted) {
+        showOverlayToast(context, l.couldNotUpdate, icon: Icons.error_outline_rounded);
+      }
+      return;
+    }
+    final ok = await api.removeItemFromContinueListening(progressId);
+    if (ok) {
+      await lib.refreshProgressShelves(force: true, reason: 'remove-continue-listening');
+    }
+    if (!context.mounted) return;
+    HapticFeedback.mediumImpact();
+    showOverlayToast(context,
+        ok ? l.removedFromContinueListening : l.couldNotUpdate,
+        icon: ok ? Icons.playlist_remove_rounded : Icons.error_outline_rounded);
+  }
+
+  Future<void> _removeSeriesFromContinueSeries(
+      BuildContext context, AuthProvider auth, LibraryProvider lib, String seriesId) async {
+    final l = AppLocalizations.of(context)!;
+    final api = auth.apiService;
+    if (api == null) {
+      if (context.mounted) {
+        showOverlayToast(context, l.couldNotUpdate, icon: Icons.error_outline_rounded);
+      }
+      return;
+    }
+    final ok = await api.removeSeriesFromContinueListening(seriesId);
+    if (ok) {
+      await lib.refreshProgressShelves(force: true, reason: 'remove-continue-series');
+    }
+    if (!context.mounted) return;
+    HapticFeedback.mediumImpact();
+    showOverlayToast(context,
+        ok ? l.removedSeriesFromContinueSeries : l.couldNotUpdate,
+        icon: ok ? Icons.bookmark_remove_rounded : Icons.error_outline_rounded);
   }
 
   Widget _moreItem(ColorScheme cs, IconData icon, String label, {required VoidCallback onTap}) {

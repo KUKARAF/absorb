@@ -997,6 +997,35 @@ class ApiService {
     }
   }
 
+  /// Hide an entire series from the "Continue Series" home shelf.
+  /// GET /api/me/series/:seriesId/remove-from-continue-listening
+  Future<bool> removeSeriesFromContinueListening(String seriesId) async {
+    try {
+      final resp = await _authGet(
+        Uri.parse('$_cleanBaseUrl/api/me/series/$seriesId/remove-from-continue-listening'),
+        timeout: const Duration(seconds: 10));
+      return resp.statusCode == 200;
+    } catch (e) {
+      debugPrint('[API] removeSeriesFromContinueListening error: $e');
+      return false;
+    }
+  }
+
+  /// Hide a single item from the "Continue Listening" home shelf.
+  /// GET /api/me/progress/:mediaProgressId/remove-from-continue-listening
+  /// The path id is the media-progress record id (not the libraryItemId).
+  Future<bool> removeItemFromContinueListening(String mediaProgressId) async {
+    try {
+      final resp = await _authGet(
+        Uri.parse('$_cleanBaseUrl/api/me/progress/$mediaProgressId/remove-from-continue-listening'),
+        timeout: const Duration(seconds: 10));
+      return resp.statusCode == 200;
+    } catch (e) {
+      debugPrint('[API] removeItemFromContinueListening error: $e');
+      return false;
+    }
+  }
+
   // ─── Podcast Episode Endpoints ─────────────────────────────
 
   /// Start a playback session for a podcast episode.
@@ -2142,6 +2171,27 @@ class ApiService {
       }
     } catch (e) { debugPrint('matchLibraryItem error: $e'); }
     return null;
+  }
+
+  /// Update a book's chapters. POST /api/items/:id/chapters
+  /// [chapters] is the full ordered list of {id, start, end, title}. Pass an
+  /// empty list to clear all chapters. Returns true on a 200 response.
+  Future<bool> updateChapters(
+      String itemId, List<Map<String, dynamic>> chapters) async {
+    try {
+      final r = await _authPost(
+        Uri.parse('$_cleanBaseUrl/api/items/$itemId/chapters'),
+        body: jsonEncode({'chapters': chapters}),
+        timeout: const Duration(seconds: 20),
+      );
+      if (r.statusCode != 200) {
+        debugPrint('[API] updateChapters failed: ${r.statusCode}');
+      }
+      return r.statusCode == 200;
+    } catch (e) {
+      debugPrint('[API] updateChapters error: $e');
+      return false;
+    }
   }
 
   /// Start an M4B encode task on the server.

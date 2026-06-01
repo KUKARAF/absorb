@@ -437,6 +437,58 @@ mixin _CoreMixin on ChangeNotifier, _StateMixin {
     return data;
   }
 
+  /// True if [itemId] currently appears in the personalized "Continue Listening"
+  /// shelf. Gates the "Remove from Continue Listening" book action.
+  bool isInContinueListeningShelf(String itemId) {
+    for (final section in _personalizedSections) {
+      if (section is! Map<String, dynamic>) continue;
+      if (section['id'] != 'continue-listening') continue;
+      for (final e in (section['entities'] as List<dynamic>? ?? const [])) {
+        if (e is Map<String, dynamic> && e['id'] == itemId) return true;
+      }
+    }
+    return false;
+  }
+
+  /// If one of [seriesIds] (the opened book's series) is currently shown in the
+  /// "Continue Series" shelf, returns that series id (needed for the remove
+  /// call); otherwise null. Gates the "Remove Series from Continue Series".
+  ///
+  /// The shelf entities are the *next book* in each continued series. The server
+  /// clears the book's own series list and re-attaches the continued series as a
+  /// single {id, name, sequence} object at `media.metadata.series` (see
+  /// libraryFilters.getLibraryItemsContinueSeries) - so we read the id from
+  /// there, not from the entity (book) id.
+  String? continueSeriesShelfMatch(Iterable<String> seriesIds) {
+    final wanted = {for (final s in seriesIds) if (s.isNotEmpty) s};
+    if (wanted.isEmpty) return null;
+    String? idFrom(dynamic raw) {
+      if (raw is Map<String, dynamic>) {
+        final id = raw['id'] as String?;
+        if (id != null && wanted.contains(id)) return id;
+      } else if (raw is List) {
+        for (final s in raw) {
+          final id = s is Map<String, dynamic> ? s['id'] as String? : null;
+          if (id != null && wanted.contains(id)) return id;
+        }
+      }
+      return null;
+    }
+
+    for (final section in _personalizedSections) {
+      if (section is! Map<String, dynamic>) continue;
+      if (section['id'] != 'continue-series') continue;
+      for (final e in (section['entities'] as List<dynamic>? ?? const [])) {
+        if (e is! Map<String, dynamic>) continue;
+        final metadata =
+            (e['media'] as Map<String, dynamic>?)?['metadata'] as Map<String, dynamic>?;
+        final match = idFrom(metadata?['series']) ?? idFrom(e['series']);
+        if (match != null) return match;
+      }
+    }
+    return null;
+  }
+
   Map<String, dynamic>? getEpisodeProgressData(
       String itemId, String episodeId) {
     final key = '$itemId-$episodeId';

@@ -3712,6 +3712,36 @@ abstract class AppLocalizations {
   /// **'Added to Absorbing'**
   String get addedToAbsorbing;
 
+  /// No description provided for @removeFromContinueListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from Continue Listening'**
+  String get removeFromContinueListening;
+
+  /// No description provided for @removedFromContinueListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed from Continue Listening'**
+  String get removedFromContinueListening;
+
+  /// No description provided for @removeSeriesFromContinueSeries.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove Series from Continue Series'**
+  String get removeSeriesFromContinueSeries;
+
+  /// No description provided for @removedSeriesFromContinueSeries.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed from Continue Series'**
+  String get removedSeriesFromContinueSeries;
+
+  /// No description provided for @couldNotUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not update, try again'**
+  String get couldNotUpdate;
+
   /// No description provided for @addToPlaylist.
   ///
   /// In en, this message translates to:

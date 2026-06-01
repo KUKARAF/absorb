@@ -1936,6 +1936,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get addedToAbsorbing => '已添加到收听中';
 
   @override
+  String get removeFromContinueListening => 'Remove from Continue Listening';
+
+  @override
+  String get removedFromContinueListening => 'Removed from Continue Listening';
+
+  @override
+  String get removeSeriesFromContinueSeries =>
+      'Remove Series from Continue Series';
+
+  @override
+  String get removedSeriesFromContinueSeries => 'Removed from Continue Series';
+
+  @override
+  String get couldNotUpdate => 'Could not update, try again';
+
+  @override
   String get addToPlaylist => '添加到播放列表';
 
   @override

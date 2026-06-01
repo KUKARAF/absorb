@@ -1998,6 +1998,22 @@ class AppLocalizationsRo extends AppLocalizations {
   String get addedToAbsorbing => 'Added to Absorbing';
 
   @override
+  String get removeFromContinueListening => 'Remove from Continue Listening';
+
+  @override
+  String get removedFromContinueListening => 'Removed from Continue Listening';
+
+  @override
+  String get removeSeriesFromContinueSeries =>
+      'Remove Series from Continue Series';
+
+  @override
+  String get removedSeriesFromContinueSeries => 'Removed from Continue Series';
+
+  @override
+  String get couldNotUpdate => 'Could not update, try again';
+
+  @override
   String get addToPlaylist => 'Add to Playlist';
 
   @override
