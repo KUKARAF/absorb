@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 import '../widgets/overlay_toast.dart';
 
 // NOTE: strings here are intentionally hardcoded English for now; this admin
@@ -54,7 +55,9 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
   bool _showSeconds = false;
   bool _showShift = false;
   final TextEditingController _shiftCtl = TextEditingController(text: '0');
+  final TextEditingController _bulkCtl = TextEditingController();
   bool _hasChanges = false;
+  String? _asin;
 
   @override
   void initState() {
@@ -68,6 +71,7 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
       c.dispose();
     }
     _shiftCtl.dispose();
+    _bulkCtl.dispose();
     super.dispose();
   }
 
@@ -83,6 +87,7 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
     try {
       final item = await api.getLibraryItem(widget.itemId);
       final media = item?['media'] as Map<String, dynamic>? ?? {};
+      final meta = media['metadata'] as Map<String, dynamic>? ?? {};
       final dur = (media['duration'] as num?)?.toDouble() ?? 0;
       final chs = (media['chapters'] as List<dynamic>? ?? []);
       final afs = (media['audioFiles'] as List<dynamic>? ?? [])
@@ -93,6 +98,7 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
       setState(() {
         _duration = dur;
         _audioFiles = afs;
+        _asin = (meta['asin'] as String?)?.trim();
         _originalChapters = chs.whereType<Map<String, dynamic>>().toList();
         _initChapters(_originalChapters);
         _loading = false;
@@ -362,6 +368,196 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
     });
   }
 
+  // ─── Bulk add ───────────────────────────────────────────────
+
+  void _handleBulkAdd() {
+    final input = _bulkCtl.text.trim();
+    if (input.isEmpty) return;
+    final m = RegExp(r'(\d+)').firstMatch(input);
+    if (m == null) {
+      _addSingle(input);
+    } else {
+      _promptBulkCount(input, m);
+    }
+  }
+
+  void _addSingle(String title) {
+    final start = _chapters.isNotEmpty ? _chapters.last.end : 0.0;
+    final end = _duration > 0 ? (start + 300).clamp(0.0, _duration) : start + 300;
+    setState(() {
+      _chapters.add(_Ch(uid: _uid++, id: _chapters.length, start: _clampStart(start), end: end, title: title));
+      _bulkCtl.clear();
+      _syncTitleControllers();
+      _check();
+    });
+  }
+
+  String _padNum(int n, int width, bool leadingZeros) {
+    final s = n.toString();
+    return (leadingZeros && width > 1) ? s.padLeft(width, '0') : s;
+  }
+
+  Future<void> _promptBulkCount(String input, RegExpMatch m) async {
+    final numStr = m.group(1)!;
+    final startNum = int.parse(numStr);
+    final width = numStr.length;
+    final zeros = numStr.length > 1 && numStr.startsWith('0');
+    final before = input.substring(0, m.start);
+    final after = input.substring(m.start + numStr.length);
+
+    final countCtl = TextEditingController(text: '5');
+    final count = await showDialog<int>(
+      context: context,
+      builder: (dctx) {
+        final cs = Theme.of(dctx).colorScheme;
+        return AlertDialog(
+          title: const Text('Add numbered chapters'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Next: "$before${_padNum(startNum + 1, width, zeros)}$after", "$before${_padNum(startNum + 2, width, zeros)}$after", ...',
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: countCtl,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'How many chapters'),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(dctx, int.tryParse(countCtl.text.trim())),
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+    countCtl.dispose();
+    if (count == null) return;
+    if (count < 1 || count > 150) {
+      showOverlayToast(context, 'Enter a count between 1 and 150', icon: Icons.error_outline_rounded);
+      return;
+    }
+    final base = _chapters.isNotEmpty ? _chapters.last.start + 1 : 0.0;
+    setState(() {
+      for (int i = 0; i < count; i++) {
+        _chapters.add(_Ch(
+          uid: _uid++,
+          id: _chapters.length,
+          start: _clampStart(base + i),
+          end: _duration,
+          title: '$before${_padNum(startNum + i, width, zeros)}$after',
+        ));
+      }
+      _bulkCtl.clear();
+      _syncTitleControllers();
+      _check();
+    });
+  }
+
+  // ─── Audnexus lookup ────────────────────────────────────────
+
+  Future<void> _openLookup() async {
+    final api = context.read<AuthProvider>().apiService;
+    if (api == null) return;
+    final result = await showModalBottomSheet<_LookupResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _ChapterLookupSheet(api: api, initialAsin: _asin, mediaDuration: _duration),
+    );
+    if (result == null || !mounted) return;
+    var data = result.data;
+    if (result.removeBranding) data = _removeBranding(data);
+    final audible = (data['chapters'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+    if (audible.isEmpty) return;
+    if (result.titlesOnly) {
+      _applyTitlesOnly(audible);
+    } else {
+      _applyChapters(audible);
+    }
+  }
+
+  void _applyTitlesOnly(List<Map<String, dynamic>> audible) {
+    setState(() {
+      for (int i = 0; i < _chapters.length && i < audible.length; i++) {
+        if (_locked.contains(_chapters[i].uid)) continue;
+        _chapters[i].title = audible[i]['title'] as String? ?? _chapters[i].title;
+      }
+      _syncTitleControllers();
+      _check();
+    });
+    showOverlayToast(context, 'Chapter titles updated', icon: Icons.check_rounded);
+  }
+
+  void _applyChapters(List<Map<String, dynamic>> audible) {
+    final converted = <_Ch>[];
+    for (final ch in audible) {
+      final startMs = (ch['startOffsetMs'] as num?)?.toDouble() ??
+          ((ch['startOffsetSec'] as num?)?.toDouble() ?? 0) * 1000;
+      final start = startMs / 1000;
+      if (_duration > 0 && start >= _duration) continue;
+      final lenMs = (ch['lengthMs'] as num?)?.toDouble() ?? 0;
+      final end = _duration > 0 ? ((startMs + lenMs) / 1000).clamp(0.0, _duration) : (startMs + lenMs) / 1000;
+      converted.add(_Ch(uid: 0, id: 0, start: start, end: end, title: ch['title'] as String? ?? ''));
+    }
+    // Merge, keeping locked chapters where they are (by current position).
+    final merged = <_Ch>[];
+    int aIdx = 0;
+    final maxLen = _chapters.length > converted.length ? _chapters.length : converted.length;
+    for (int i = 0; i < maxLen; i++) {
+      if (i < _chapters.length && _locked.contains(_chapters[i].uid)) {
+        merged.add(_chapters[i]);
+      } else if (aIdx < converted.length) {
+        final c = converted[aIdx++];
+        merged.add(_Ch(uid: _uid++, id: merged.length, start: c.start, end: c.end, title: c.title));
+      } else if (i < _chapters.length) {
+        merged.add(_chapters[i]);
+      }
+    }
+    setState(() {
+      _chapters
+        ..clear()
+        ..addAll(merged);
+      _syncTitleControllers();
+      _check();
+    });
+    showOverlayToast(context, 'Chapters applied', icon: Icons.check_rounded);
+  }
+
+  /// Mirror the web client's "remove Audible branding": shift every chapter
+  /// earlier by the intro duration and drop a trailing outro-only chapter.
+  Map<String, dynamic> _removeBranding(Map<String, dynamic> data) {
+    try {
+      final intro = (data['brandIntroDurationMs'] as num?)?.toDouble() ?? 0;
+      final outro = (data['brandOutroDurationMs'] as num?)?.toDouble() ?? 0;
+      final chapters = (data['chapters'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map((c) => Map<String, dynamic>.from(c))
+          .toList();
+      for (int i = 0; i < chapters.length; i++) {
+        final off = (chapters[i]['startOffsetMs'] as num?)?.toDouble() ?? 0;
+        if (off < intro) {
+          chapters[i]['startOffsetMs'] = i * 1000;
+          chapters[i]['startOffsetSec'] = i;
+        } else {
+          chapters[i]['startOffsetMs'] = off - intro;
+          chapters[i]['startOffsetSec'] = ((off - intro) / 1000).floor();
+        }
+      }
+      if (chapters.isNotEmpty) {
+        final lastLen = (chapters.last['lengthMs'] as num?)?.toDouble() ?? 0;
+        if (lastLen <= outro) chapters.removeLast();
+      }
+      return {...data, 'chapters': chapters};
+    } catch (_) {
+      return data;
+    }
+  }
+
   Future<void> _reset() async {
     final ok = await _confirm('Discard changes?', 'Revert to the saved chapters.');
     if (ok != true) return;
@@ -494,12 +690,45 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
         const Divider(height: 1),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.only(bottom: 32),
+            padding: const EdgeInsets.only(bottom: 16),
             itemCount: _chapters.length,
             itemBuilder: (_, i) => _row(cs, _chapters[i], i),
           ),
         ),
+        _bulkBar(cs),
       ],
+    );
+  }
+
+  Widget _bulkBar(ColorScheme cs) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
+          border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3))),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _bulkCtl,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Add chapter (e.g. "Chapter 01")',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _handleBulkAdd(),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_rounded),
+            tooltip: 'Add chapter(s)',
+            onPressed: _handleBulkAdd,
+          ),
+        ]),
+      ),
     );
   }
 
@@ -531,6 +760,11 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
                   icon: const Icon(Icons.library_music_rounded, size: 18),
                   label: const Text('From Tracks'),
                 ),
+              OutlinedButton.icon(
+                onPressed: _openLookup,
+                icon: const Icon(Icons.travel_explore_rounded, size: 18),
+                label: const Text('Lookup'),
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -689,5 +923,236 @@ class _IconBtn extends StatelessWidget {
         child: Icon(icon, size: 20, color: color ?? cs.onSurfaceVariant),
       ),
     );
+  }
+}
+
+class _LookupResult {
+  final Map<String, dynamic> data;
+  final bool titlesOnly;
+  final bool removeBranding;
+  _LookupResult({required this.data, required this.titlesOnly, required this.removeBranding});
+}
+
+/// ASIN -> Audnexus chapter lookup. Collects ASIN/region/branding, searches via
+/// the server, previews the result, and returns how to apply it.
+class _ChapterLookupSheet extends StatefulWidget {
+  final ApiService api;
+  final String? initialAsin;
+  final double mediaDuration;
+  const _ChapterLookupSheet({required this.api, required this.initialAsin, required this.mediaDuration});
+
+  @override
+  State<_ChapterLookupSheet> createState() => _ChapterLookupSheetState();
+}
+
+class _ChapterLookupSheetState extends State<_ChapterLookupSheet> {
+  late final TextEditingController _asinCtl;
+  String _region = 'US';
+  bool _removeBranding = false;
+  bool _finding = false;
+  String? _error;
+  Map<String, dynamic>? _data;
+
+  static const _regions = ['US', 'CA', 'UK', 'AU', 'FR', 'DE', 'JP', 'IT', 'IN', 'ES'];
+
+  @override
+  void initState() {
+    super.initState();
+    _asinCtl = TextEditingController(text: widget.initialAsin ?? '');
+  }
+
+  @override
+  void dispose() {
+    _asinCtl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final asin = _asinCtl.text.trim();
+    if (asin.isEmpty) {
+      setState(() => _error = 'Enter an ASIN');
+      return;
+    }
+    setState(() {
+      _finding = true;
+      _error = null;
+    });
+    final data = await widget.api.searchChapters(asin, _region);
+    if (!mounted) return;
+    setState(() {
+      _finding = false;
+      if (data == null) {
+        _error = 'Lookup failed - check the ASIN';
+      } else if (data['error'] != null) {
+        _error = 'No chapters found for that ASIN';
+      } else {
+        _data = data;
+      }
+    });
+  }
+
+  String _clock(num seconds) {
+    final s = seconds.round();
+    final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
+    final mm = m.toString().padLeft(2, '0'), ss = sec.toString().padLeft(2, '0');
+    return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+        child: _data == null ? _inputView(cs) : _resultsView(cs, _data!),
+      ),
+    );
+  }
+
+  Widget _handle(ColorScheme cs) => Center(
+        child: Container(
+          width: 40,
+          height: 4,
+          margin: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+              color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)),
+        ),
+      );
+
+  Widget _inputView(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _handle(cs),
+        Text('Find chapters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: cs.onSurface)),
+        const SizedBox(height: 4),
+        Text('Looks up chapters from Audible/Audnexus by ASIN.',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _asinCtl,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(labelText: 'ASIN', isDense: true, border: OutlineInputBorder()),
+            ),
+          ),
+          const SizedBox(width: 10),
+          DropdownButton<String>(
+            value: _region,
+            onChanged: (v) => setState(() => _region = v ?? 'US'),
+            items: [for (final r in _regions) DropdownMenuItem(value: r, child: Text(r))],
+          ),
+        ]),
+        Row(children: [
+          Checkbox(value: _removeBranding, onChanged: (v) => setState(() => _removeBranding = v ?? false)),
+          const Flexible(child: Text('Remove Audible branding (intro/outro)')),
+        ]),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(_error!, style: TextStyle(color: cs.error, fontSize: 12)),
+          ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _finding ? null : _search,
+            child: _finding
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Search'),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _resultsView(ColorScheme cs, Map<String, dynamic> data) {
+    final chapters = (data['chapters'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+    final runtime = (data['runtimeLengthSec'] as num?)?.toDouble() ?? 0;
+    final bookDur = widget.mediaDuration;
+    final mismatch = runtime > 0 && bookDur > 0 && (runtime - bookDur).abs() > 60;
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      _handle(cs),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(children: [
+          IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => setState(() => _data = null)),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${chapters.length} chapters found',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface)),
+              Text('Audible ${_clock(runtime)}  -  Book ${_clock(bookDur)}',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            ]),
+          ),
+        ]),
+      ),
+      if (mismatch)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            runtime > bookDur
+                ? 'The Audible version is longer than your file - later chapters may not line up.'
+                : 'The Audible version is shorter than your file - chapters may not line up.',
+            style: const TextStyle(fontSize: 12, color: Colors.orange),
+          ),
+        ),
+      const Divider(height: 12),
+      Flexible(
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: chapters.length,
+          itemBuilder: (_, i) {
+            final ch = chapters[i];
+            final off = (ch['startOffsetSec'] as num?)?.toDouble() ??
+                ((ch['startOffsetMs'] as num?)?.toDouble() ?? 0) / 1000;
+            final pastEnd = bookDur > 0 && off >= bookDur;
+            return Container(
+              color: pastEnd ? cs.error.withValues(alpha: 0.12) : null,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(children: [
+                SizedBox(
+                  width: 72,
+                  child: Text(_clock(off),
+                      style: TextStyle(
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant)),
+                ),
+                Expanded(
+                  child: Text(ch['title'] as String? ?? '',
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+                ),
+              ]),
+            );
+          },
+        ),
+      ),
+      SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(
+                    context, _LookupResult(data: data, titlesOnly: true, removeBranding: _removeBranding)),
+                child: const Text('Titles only'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton(
+                onPressed: () => Navigator.pop(
+                    context, _LookupResult(data: data, titlesOnly: false, removeBranding: _removeBranding)),
+                child: const Text('Apply chapters'),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    ]);
   }
 }

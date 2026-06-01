@@ -2194,6 +2194,27 @@ class ApiService {
     }
   }
 
+  /// Look up chapters for an ASIN. The server proxies this to Audnexus.
+  /// GET /api/search/chapters?asin=&region=
+  /// Returns the raw result map on 200 (chapters + runtime + brand-intro/outro
+  /// durations, or {error, stringKey} when the lookup fails), else null.
+  Future<Map<String, dynamic>?> searchChapters(String asin, String region) async {
+    try {
+      final uri = Uri.parse('$_cleanBaseUrl/api/search/chapters')
+          .replace(queryParameters: {'asin': asin, 'region': region});
+      final r = await _authGet(uri, timeout: const Duration(seconds: 20));
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+      debugPrint('[API] searchChapters failed: ${r.statusCode}');
+      return null;
+    } catch (e) {
+      debugPrint('[API] searchChapters error: $e');
+      return null;
+    }
+  }
+
   /// Start an M4B encode task on the server.
   /// POST /api/tools/item/:id/encode-m4b?codec=&bitrate=&channels=
   Future<bool> startM4bEncode(
