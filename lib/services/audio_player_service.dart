@@ -4315,15 +4315,28 @@ class AudioPlayerService extends ChangeNotifier {
     }
   }
 
-  Future<void> seekTo(Duration pos) async {
+  Future<void> seekTo(Duration pos,
+      {PlaybackEventType logAs = PlaybackEventType.seek, String? logDetail}) async {
     _resetStuckDetection();
     if (_player != null && !_player!.playing) _seekedWhilePaused = true;
     final from = position;
     await _seekAbsolute(pos.inMilliseconds / 1000.0);
-    _logEvent(PlaybackEventType.seek,
-        detail: '${_formatPos(from)} → ${_formatPos(pos)}',
+    _logEvent(logAs,
+        detail: logDetail ?? '${_formatPos(from)} → ${_formatPos(pos)}',
         overridePosition: from.inMilliseconds / 1000.0);
     notifyListeners();
+  }
+
+  /// Rewind triggered by the sleep timer firing. Same mechanics as a manual
+  /// seek-back, but logged as an auto-rewind so the playback history reads
+  /// "Auto-rewound 15m (sleep timer)" instead of a raw seek (GH #232).
+  Future<void> sleepTimerRewind(int seconds) async {
+    if (seconds <= 0) return;
+    var target = position - Duration(seconds: seconds);
+    if (target < Duration.zero) target = Duration.zero;
+    final amount = seconds % 60 == 0 ? '${seconds ~/ 60}m' : '${seconds}s';
+    await seekTo(target,
+        logAs: PlaybackEventType.autoRewind, logDetail: '$amount (sleep timer)');
   }
 
   Future<void> skipForward([int seconds = 30]) async {

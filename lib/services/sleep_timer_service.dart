@@ -360,9 +360,7 @@ class SleepTimerService extends ChangeNotifier {
       // Auto-rewind so the user resumes from a few seconds back
       final rewindSeconds = await PlayerSettings.getEffectiveSleepRewindSeconds(_player.currentItemId);
       if (rewindSeconds > 0) {
-        final currentPos = _player.position;
-        final newPos = currentPos - Duration(seconds: rewindSeconds);
-        _player.seekTo(newPos < Duration.zero ? Duration.zero : newPos);
+        await _player.sleepTimerRewind(rewindSeconds);
         debugPrint('[SleepTimer] Rewound ${rewindSeconds}s');
       }
     }
