@@ -56,6 +56,34 @@ class SocketService {
   /// Payload: serialized Task object including action and data.libraryItemId.
   void Function(Map<String, dynamic> data)? onEncodeFinished;
 
+  // Encode task progress/finished fan-out so screens can subscribe alongside
+  // the library provider's onEncodeFinished above.
+  final List<void Function(Map<String, dynamic>)> _encodeProgressListeners = [];
+  final List<void Function(Map<String, dynamic>)> _encodeFinishedListeners = [];
+
+  void addEncodeProgressListener(void Function(Map<String, dynamic>) fn) {
+    if (!_encodeProgressListeners.contains(fn)) _encodeProgressListeners.add(fn);
+  }
+  void removeEncodeProgressListener(void Function(Map<String, dynamic>) fn) =>
+      _encodeProgressListeners.remove(fn);
+  void addEncodeFinishedListener(void Function(Map<String, dynamic>) fn) {
+    if (!_encodeFinishedListeners.contains(fn)) _encodeFinishedListeners.add(fn);
+  }
+  void removeEncodeFinishedListener(void Function(Map<String, dynamic>) fn) =>
+      _encodeFinishedListeners.remove(fn);
+
+  void _emitEncodeProgress(Map<String, dynamic> data) {
+    for (final fn in List.of(_encodeProgressListeners)) {
+      fn(data);
+    }
+  }
+
+  void _emitEncodeFinished(Map<String, dynamic> data) {
+    for (final fn in List.of(_encodeFinishedListeners)) {
+      fn(data);
+    }
+  }
+
   /// Called when ereader devices change. Server emits this both for the
   /// per-user update (always) and admin-wide updates (only to admins).
   /// Payload shape: { ereaderDevices: [...] } already filtered for this user.
@@ -159,7 +187,13 @@ class SocketService {
         if (data is Map<String, dynamic> && data['action'] == 'encode-m4b') {
           debugPrint('[Socket] Encode finished');
           onEncodeFinished?.call(data);
+          _emitEncodeFinished(data);
         }
+      });
+
+      // M4B encode/embed progress: { libraryItemId, progress 0-100 }
+      _socket!.on('task_progress', (data) {
+        if (data is Map<String, dynamic>) _emitEncodeProgress(data);
       });
 
       // Ereader device list changed (admin-wide or per-user). Payload carries
@@ -295,7 +329,12 @@ class SocketService {
       _socket!.on('task_finished', (data) {
         if (data is Map<String, dynamic> && data['action'] == 'encode-m4b') {
           onEncodeFinished?.call(data);
+          _emitEncodeFinished(data);
         }
+      });
+
+      _socket!.on('task_progress', (data) {
+        if (data is Map<String, dynamic>) _emitEncodeProgress(data);
       });
 
       _socket!.on('ereader-devices-updated', (data) {

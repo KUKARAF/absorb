@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import '../services/socket_service.dart';
 import '../screens/chapter_editor_screen.dart';
 
 enum _ETab { details, cover, chapters, match, encode }
@@ -98,6 +99,7 @@ class _MetadataEditViewState extends State<MetadataEditView>
   String _encodeBitrate = '128k';
   int _encodeChannels = 2;
   bool _encoding = false;
+  double? _encodeProgress; // 0-100 from socket task_progress, null = not started
 
   @override
   void initState() {
@@ -110,6 +112,11 @@ class _MetadataEditViewState extends State<MetadataEditView>
       if (widget.isAdmin && !widget.isEbookOnly) _ETab.encode,
     ];
     _tabCtrl = TabController(length: _tabs.length, vsync: this);
+    // Listen for encode progress/finish for the editor's lifetime so a running
+    // encode shows up even if it was started elsewhere (e.g. the web UI).
+    SocketService()
+      ..addEncodeProgressListener(_onEncodeProgress)
+      ..addEncodeFinishedListener(_onEncodeFinished);
     final m = widget.metadata;
     _titleCtrl = TextEditingController(text: m['title'] as String? ?? '');
     _subtitleCtrl = TextEditingController(text: m['subtitle'] as String? ?? '');
@@ -173,6 +180,9 @@ class _MetadataEditViewState extends State<MetadataEditView>
     _coverScroll.dispose();
     _matchScroll.dispose();
     _encodeScroll.dispose();
+    SocketService()
+      ..removeEncodeProgressListener(_onEncodeProgress)
+      ..removeEncodeFinishedListener(_onEncodeFinished);
     _searchTitleCtrl.dispose();
     _searchAuthorCtrl.dispose();
     super.dispose();
@@ -506,12 +516,32 @@ class _MetadataEditViewState extends State<MetadataEditView>
             icon: _encoding
                 ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary))
                 : const Icon(Icons.transform_rounded, size: 18),
-            label: Text(l.startM4bEncode),
+            label: Text(_encoding
+                ? (_encodeProgress != null ? 'Encoding ${_encodeProgress!.toStringAsFixed(0)}%' : 'Encoding...')
+                : l.startM4bEncode),
             style: FilledButton.styleFrom(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
         ),
+        if (_encoding) ...[
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: _encodeProgress != null ? (_encodeProgress! / 100).clamp(0.0, 1.0) : null,
+              minHeight: 6,
+              backgroundColor: cs.onSurface.withValues(alpha: 0.1),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _encodeProgress != null
+                ? '${_encodeProgress!.toStringAsFixed(0)}% - keeps running if you leave this page'
+                : 'Starting...',
+            style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
       ]),
     );
   }
@@ -594,7 +624,10 @@ class _MetadataEditViewState extends State<MetadataEditView>
   Future<void> _startEncode() async {
     final api = context.read<AuthProvider>().apiService;
     if (api == null) return;
-    setState(() => _encoding = true);
+    setState(() {
+      _encoding = true;
+      _encodeProgress = 0;
+    });
     final ok = await api.startM4bEncode(
       widget.itemId,
       codec: _encodeCodec,
@@ -602,12 +635,45 @@ class _MetadataEditViewState extends State<MetadataEditView>
       channels: _encodeChannels,
     );
     if (!mounted) return;
-    setState(() => _encoding = false);
     final l = AppLocalizations.of(context)!;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? l.encodeStarted : l.encodeFailed)),
-    );
-    // stays on the edit page
+    if (!ok) {
+      setState(() {
+        _encoding = false;
+        _encodeProgress = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.encodeFailed)));
+      return;
+    }
+    // Keep _encoding true; progress + completion arrive over the socket.
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.encodeStarted)));
+  }
+
+  void _onEncodeProgress(Map<String, dynamic> data) {
+    if (!mounted || data['libraryItemId'] != widget.itemId) return;
+    final p = (data['progress'] as num?)?.toDouble();
+    if (p == null) return;
+    // Flip into the encoding state even if this encode was started elsewhere.
+    setState(() {
+      _encoding = true;
+      _encodeProgress = p.clamp(0, 100);
+    });
+  }
+
+  void _onEncodeFinished(Map<String, dynamic> data) {
+    if (!mounted) return;
+    final id = (data['data'] as Map?)?['libraryItemId'] ?? data['libraryItemId'];
+    if (id != null && id != widget.itemId) return;
+    final wasEncoding = _encoding;
+    setState(() {
+      _encoding = false;
+      _encodeProgress = null;
+    });
+    if (!wasEncoding) return;
+    final failed = data['error'] != null || data['isFailed'] == true;
+    if (!failed) context.read<LibraryProvider>().refresh();
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(failed ? 'Encode failed' : 'Encode complete')));
   }
 
   // ─── Build ──────────────────────────────────────────────────
