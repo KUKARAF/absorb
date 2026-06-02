@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -5,63 +6,48 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import '../screens/chapter_editor_screen.dart';
 
-/// Opens a full-screen editor for a library item's metadata (admin only).
-/// Has two tabs: Quick Match (search providers) and Custom (manual fields).
-void showEditMetadataSheet(
-  BuildContext context, {
-  required String itemId,
-  required Map<String, dynamic> metadata,
-  List<String> tags = const [],
-  List<dynamic> audioFiles = const [],
-  String relPath = '',
-}) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.85,
-      minChildSize: 0.3,
-      maxChildSize: 0.95,
-      snap: true,
-      builder: (ctx, sc) => _EditMetadataContent(
-        itemId: itemId,
-        metadata: metadata,
-        tags: tags,
-        audioFiles: audioFiles,
-        relPath: relPath,
-        scrollController: sc,
-      ),
-    ),
-  );
-}
+enum _ETab { details, cover, chapters, match, encode }
 
-class _EditMetadataContent extends StatefulWidget {
+/// The unified per-book editor body: one swipeable tab bar over Details, Cover,
+/// Chapters, Match and Encode (in Audiobookshelf web order). Hosted full-screen
+/// by BookEditScreen. The Chapters tab embeds [ChapterEditBody]; the rest are
+/// built here. Each tab has its own scroll controller so swiping between
+/// adjacent tabs never double-attaches one controller.
+class MetadataEditView extends StatefulWidget {
   final String itemId;
+  final String bookTitle;
   final Map<String, dynamic> metadata;
   final List<String> tags;
   final List<dynamic> audioFiles;
   final String relPath;
-  final ScrollController scrollController;
+  final bool isEbookOnly;
+  final bool isAdmin;
 
-  const _EditMetadataContent({
+  const MetadataEditView({
+    super.key,
     required this.itemId,
+    required this.bookTitle,
     required this.metadata,
     this.tags = const [],
     this.audioFiles = const [],
     this.relPath = '',
-    required this.scrollController,
+    this.isEbookOnly = false,
+    this.isAdmin = false,
   });
 
   @override
-  State<_EditMetadataContent> createState() => _EditMetadataContentState();
+  State<MetadataEditView> createState() => _MetadataEditViewState();
 }
 
-class _EditMetadataContentState extends State<_EditMetadataContent>
+class _MetadataEditViewState extends State<MetadataEditView>
     with SingleTickerProviderStateMixin {
+  final ScrollController _detailsScroll = ScrollController();
+  final ScrollController _coverScroll = ScrollController();
+  final ScrollController _matchScroll = ScrollController();
+  final ScrollController _encodeScroll = ScrollController();
+  late final List<_ETab> _tabs;
   late final TabController _tabCtrl;
 
   // Custom edit controllers
@@ -79,6 +65,8 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
   late final TextEditingController _isbnCtrl;
   late final TextEditingController _languageCtrl;
   late final TextEditingController _coverUrlCtrl;
+  late final TextEditingController _coverSearchTitleCtrl;
+  late final TextEditingController _coverSearchAuthorCtrl;
 
   // Quick match
   late final TextEditingController _searchTitleCtrl;
@@ -99,6 +87,10 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
   }
 
   String? _coverFilePath;
+  int _coverVersion = 0; // cache-bust the cover preview when it changes
+  List<String> _coverResults = [];
+  bool _coverSearching = false;
+  String _coverProvider = 'best';
   bool _saving = false;
 
   // Encode tab
@@ -110,7 +102,14 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 3, vsync: this);
+    _tabs = [
+      _ETab.details,
+      _ETab.cover,
+      if (!widget.isEbookOnly) _ETab.chapters,
+      _ETab.match,
+      if (widget.isAdmin && !widget.isEbookOnly) _ETab.encode,
+    ];
+    _tabCtrl = TabController(length: _tabs.length, vsync: this);
     final m = widget.metadata;
     _titleCtrl = TextEditingController(text: m['title'] as String? ?? '');
     _subtitleCtrl = TextEditingController(text: m['subtitle'] as String? ?? '');
@@ -123,6 +122,8 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     _isbnCtrl = TextEditingController(text: m['isbn'] as String? ?? '');
     _languageCtrl = TextEditingController(text: m['language'] as String? ?? '');
     _coverUrlCtrl = TextEditingController();
+    _coverSearchTitleCtrl = TextEditingController(text: m['title'] as String? ?? '');
+    _coverSearchAuthorCtrl = TextEditingController(text: m['authorName'] as String? ?? '');
 
     final series = m['series'] as List<dynamic>? ?? [];
     for (final s in series) {
@@ -166,6 +167,12 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     _isbnCtrl.dispose();
     _languageCtrl.dispose();
     _coverUrlCtrl.dispose();
+    _coverSearchTitleCtrl.dispose();
+    _coverSearchAuthorCtrl.dispose();
+    _detailsScroll.dispose();
+    _coverScroll.dispose();
+    _matchScroll.dispose();
+    _encodeScroll.dispose();
     _searchTitleCtrl.dispose();
     _searchAuthorCtrl.dispose();
     super.dispose();
@@ -262,7 +269,8 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     final l = AppLocalizations.of(context)!;
     if (ok) {
       context.read<LibraryProvider>().refresh();
-      Navigator.pop(context);
+      _coverVersion++;
+      // stays on the edit page
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(
@@ -373,7 +381,8 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     final l = AppLocalizations.of(context)!;
     if (ok) {
       context.read<LibraryProvider>().refresh();
-      Navigator.pop(context);
+      _coverVersion++;
+      // stays on the edit page
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(
@@ -450,7 +459,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     final channelText = _currentChannelText(l);
 
     return SingleChildScrollView(
-      controller: widget.scrollController,
+      controller: _encodeScroll,
       padding: EdgeInsets.fromLTRB(20, 20, 20, 24 + MediaQuery.of(context).viewPadding.bottom),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _encodeLabel(l.codec, tt, cs),
@@ -598,10 +607,26 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(ok ? l.encodeStarted : l.encodeFailed)),
     );
-    if (ok) Navigator.pop(context);
+    // stays on the edit page
   }
 
   // ─── Build ──────────────────────────────────────────────────
+
+  String _tabLabel(_ETab t) => switch (t) {
+        _ETab.details => 'Details',
+        _ETab.cover => 'Cover',
+        _ETab.chapters => 'Chapters',
+        _ETab.match => 'Match',
+        _ETab.encode => 'Encode',
+      };
+
+  Widget _tabBody(_ETab t, ColorScheme cs, TextTheme tt, AppLocalizations l) => switch (t) {
+        _ETab.details => _buildCustomTab(cs, tt, l),
+        _ETab.cover => _buildCoverTab(cs, tt, l),
+        _ETab.chapters => ChapterEditBody(itemId: widget.itemId, bookTitle: widget.bookTitle),
+        _ETab.match => _buildQuickMatchTab(cs, tt, l),
+        _ETab.encode => _buildEncodeTab(cs, tt, l),
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -609,52 +634,23 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
     final tt = Theme.of(context).textTheme;
     final l = AppLocalizations.of(context)!;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+    return Column(children: [
+      TabBar(
+        controller: _tabCtrl,
+        isScrollable: true,
+        tabAlignment: TabAlignment.start,
+        labelColor: cs.primary,
+        unselectedLabelColor: cs.onSurfaceVariant,
+        indicatorColor: cs.primary,
+        tabs: [for (final t in _tabs) Tab(text: _tabLabel(t))],
       ),
-      child: Column(children: [
-        // Drag pill
-        Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(top: 12, bottom: 8),
-          decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2)))),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(children: [
-            Text(l.editDetails, style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-            const Spacer(),
-            if (_saving)
-              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-          ]),
-        ),
-        const SizedBox(height: 8),
-
-        // Tabs
-        TabBar(
+      Expanded(
+        child: TabBarView(
           controller: _tabCtrl,
-          labelColor: cs.primary,
-          unselectedLabelColor: cs.onSurfaceVariant,
-          indicatorColor: cs.primary,
-          tabs: [
-            Tab(text: l.quickMatch),
-            Tab(text: l.custom),
-            Tab(text: l.encodeTab),
-          ],
+          children: [for (final t in _tabs) _tabBody(t, cs, tt, l)],
         ),
-
-        // Tab content
-        Expanded(
-          child: TabBarView(
-            controller: _tabCtrl,
-            children: [
-              _buildQuickMatchTab(cs, tt, l),
-              _buildCustomTab(cs, tt, l),
-              _buildEncodeTab(cs, tt, l),
-            ],
-          ),
-        ),
-      ]),
-    );
+      ),
+    ]);
   }
 
   // ─── Quick Match Tab ────────────────────────────────────────
@@ -710,12 +706,12 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
       Divider(color: cs.onSurface.withValues(alpha: 0.08), height: 1),
       Expanded(
         child: _isSearching
-            ? ListView(controller: widget.scrollController, children: [
+            ? ListView(controller: _matchScroll, children: [
                 const SizedBox(height: 80),
                 Center(child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurfaceVariant)),
               ])
             : _searchResults.isEmpty
-                ? ListView(controller: widget.scrollController, children: [
+                ? ListView(controller: _matchScroll, children: [
                     const SizedBox(height: 80),
                     Center(child: Text(
                       _hasSearched ? l.noResultsFound : l.searchForMetadataAbove,
@@ -724,7 +720,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
                     )),
                   ])
                 : ListView.separated(
-                    controller: widget.scrollController,
+                    controller: _matchScroll,
                     padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + MediaQuery.of(context).viewPadding.bottom),
                     itemCount: _searchResults.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -871,6 +867,7 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
       const SizedBox(height: 8),
       Expanded(
         child: ListView(
+          controller: _detailsScroll,
           padding: EdgeInsets.fromLTRB(20, 0, 20, 32 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).viewPadding.bottom),
           children: [
             _field(l.titleLabel, _titleCtrl, tt),
@@ -929,7 +926,54 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
               Expanded(child: _field(l.isbnLabel, _isbnCtrl, tt)),
             ]),
 
-            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  // ─── Cover Tab ──────────────────────────────────────────────
+
+  Widget _buildCoverTab(ColorScheme cs, TextTheme tt, AppLocalizations l) {
+    final base = _safeBaseCoverUrl();
+    final coverUrl = base.isEmpty ? '' : '$base?v=$_coverVersion';
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+        child: Row(children: [
+          const Spacer(),
+          FilledButton.icon(
+            onPressed: _saving ? null : _saveCustom,
+            icon: _saving
+                ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onPrimary))
+                : const Icon(Icons.check_rounded, size: 18),
+            label: Text(l.save),
+            style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 8),
+      Expanded(
+        child: ListView(
+          controller: _coverScroll,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+          children: [
+            Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  height: 200,
+                  child: CachedNetworkImage(
+                    imageUrl: coverUrl,
+                    httpHeaders: context.read<AuthProvider>().apiService?.mediaHeaders,
+                    fit: BoxFit.contain,
+                    errorWidget: (_, __, ___) => _placeholder(cs),
+                    placeholder: (_, __) => _placeholder(cs),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             Text(l.coverImage, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Row(children: [
@@ -973,10 +1017,234 @@ class _EditMetadataContentState extends State<_EditMetadataContent>
                   ),
                 ]),
               ),
+            const SizedBox(height: 24),
+            Text('Search for a cover', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text('Refine the title/author to clean up results - this does not change the book.',
+                style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _coverSearchTitleCtrl,
+              decoration: InputDecoration(
+                labelText: 'Title',
+                isDense: true,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              style: tt.bodyMedium,
+              onSubmitted: (_) => _searchCovers(),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _coverSearchAuthorCtrl,
+              decoration: InputDecoration(
+                labelText: 'Author',
+                isDense: true,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              style: tt.bodyMedium,
+              onSubmitted: (_) => _searchCovers(),
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              DropdownButton<String>(
+                value: _coverProvider,
+                onChanged: (v) => setState(() => _coverProvider = v ?? 'best'),
+                items: const [
+                  DropdownMenuItem(value: 'best', child: Text('Best')),
+                  DropdownMenuItem(value: 'all', child: Text('All')),
+                  DropdownMenuItem(value: 'google', child: Text('Google')),
+                  DropdownMenuItem(value: 'fantlab', child: Text('FantLab')),
+                  DropdownMenuItem(value: 'audible', child: Text('Audible')),
+                  DropdownMenuItem(value: 'itunes', child: Text('iTunes')),
+                  DropdownMenuItem(value: 'openlibrary', child: Text('OpenLibrary')),
+                  DropdownMenuItem(value: 'audiobookcovers', child: Text('AudiobookCovers.com')),
+                ],
+              ),
+              const Spacer(),
+              FilledButton.tonalIcon(
+                onPressed: _coverSearching ? null : _searchCovers,
+                icon: _coverSearching
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.search_rounded, size: 18),
+                label: const Text('Search'),
+              ),
+            ]),
+            if (_coverResults.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 3,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 1.0,
+                children: [
+                  for (final url in _coverResults)
+                    GestureDetector(
+                      onTap: () => _showCoverPreview(url),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: CachedNetworkImage(
+                          imageUrl: url,
+                          fit: BoxFit.contain,
+                          placeholder: (_, __) => _placeholder(cs),
+                          errorWidget: (_, __, ___) => _placeholder(cs),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              if (_coverSearching)
+                const Padding(
+                  padding: EdgeInsets.only(top: 16),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+            ],
           ],
         ),
       ),
     ]);
+  }
+
+  String _safeBaseCoverUrl() {
+    final api = context.read<AuthProvider>().apiService;
+    if (api == null) return '';
+    final base = api.baseUrl.endsWith('/') ? api.baseUrl.substring(0, api.baseUrl.length - 1) : api.baseUrl;
+    return '$base/api/items/${widget.itemId}/cover';
+  }
+
+  static const _bestCoverProviders = ['audiobookcovers', 'google', 'fantlab', 'audible'];
+  static const _allCoverProviders = ['google', 'fantlab', 'audible', 'openlibrary', 'itunes', 'audiobookcovers'];
+
+  Future<void> _searchCovers() async {
+    final api = context.read<AuthProvider>().apiService;
+    final title = _coverSearchTitleCtrl.text.trim();
+    if (api == null || title.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(const SnackBar(content: Text('Enter a title first')));
+      return;
+    }
+    final author = _coverSearchAuthorCtrl.text.trim();
+    final providers = switch (_coverProvider) {
+      'best' => _bestCoverProviders,
+      'all' => _allCoverProviders,
+      _ => [_coverProvider],
+    };
+    // Query one provider at a time and append results as they arrive, so a
+    // slow provider can't time out the whole search and covers stream in.
+    setState(() {
+      _coverSearching = true;
+      _coverResults = [];
+    });
+    final seen = <String>{};
+    for (final p in providers) {
+      if (!mounted) return;
+      final results = await api.searchCovers(title, author: author, provider: p);
+      if (!mounted) return;
+      final fresh = results.where(seen.add).toList();
+      if (fresh.isNotEmpty) setState(() => _coverResults = [..._coverResults, ...fresh]);
+    }
+    if (!mounted) return;
+    setState(() => _coverSearching = false);
+    if (_coverResults.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(const SnackBar(content: Text('No covers found')));
+    }
+  }
+
+  Future<void> _applyCoverUrl(String url) async {
+    final api = context.read<AuthProvider>().apiService;
+    if (api == null) return;
+    setState(() => _saving = true);
+    final ok = await api.updateItemCoverUrl(widget.itemId, url);
+    if (!mounted) return;
+    if (ok) context.read<LibraryProvider>().refresh();
+    setState(() {
+      _saving = false;
+      if (ok) _coverVersion++;
+    });
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(ok ? 'Cover updated' : 'Could not update cover')));
+  }
+
+  /// Show a cover result full-size with its resolution and an explicit Apply.
+  Future<void> _showCoverPreview(String url) async {
+    Size? size;
+    try {
+      final provider = CachedNetworkImageProvider(url);
+      final completer = Completer<Size>();
+      final stream = provider.resolve(ImageConfiguration.empty);
+      late final ImageStreamListener listener;
+      listener = ImageStreamListener((info, _) {
+        if (!completer.isCompleted) {
+          completer.complete(Size(info.image.width.toDouble(), info.image.height.toDouble()));
+        }
+        stream.removeListener(listener);
+      }, onError: (e, __) {
+        if (!completer.isCompleted) completer.completeError(e);
+        stream.removeListener(listener);
+      });
+      stream.addListener(listener);
+      size = await completer.future.timeout(const Duration(seconds: 10));
+    } catch (_) {}
+
+    if (!mounted) return;
+    final apply = await showDialog<bool>(
+      context: context,
+      builder: (dctx) {
+        final cs = Theme.of(dctx).colorScheme;
+        return Dialog(
+          insetPadding: const EdgeInsets.all(20),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Flexible(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: InteractiveViewer(
+                    child: CachedNetworkImage(
+                      imageUrl: url,
+                      fit: BoxFit.contain,
+                      placeholder: (_, __) => const SizedBox(
+                          height: 200, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                      errorWidget: (_, __, ___) => const SizedBox(
+                          height: 200, child: Center(child: Icon(Icons.broken_image_rounded))),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                size != null ? '${size.width.toInt()} x ${size.height.toInt()}' : 'Unknown resolution',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('Cancel')),
+                const Spacer(),
+                FilledButton.icon(
+                  onPressed: () => Navigator.pop(dctx, true),
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  label: const Text('Apply cover'),
+                ),
+              ]),
+            ]),
+          ),
+        );
+      },
+    );
+    if (apply == true && mounted) {
+      await _applyCoverUrl(url);
+    }
   }
 
   Widget _field(String label, TextEditingController ctrl, TextTheme tt, {int maxLines = 1, String? hint, TextInputType? keyboardType}) {

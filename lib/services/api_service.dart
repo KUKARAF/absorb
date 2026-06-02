@@ -1982,6 +1982,39 @@ class ApiService {
     return false;
   }
 
+  /// Search provider cover images for a book.
+  /// GET /api/search/covers?title=&author=&provider=  ->  { results: [url, ...] }
+  Future<List<String>> searchCovers(String title,
+      {String? author, String provider = 'google'}) async {
+    try {
+      final uri = Uri.parse('$_cleanBaseUrl/api/search/covers').replace(queryParameters: {
+        'title': title,
+        if (author != null && author.trim().isNotEmpty) 'author': author.trim(),
+        'provider': provider,
+      });
+      final r = await _authGet(uri, timeout: const Duration(seconds: 25));
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body);
+        final results = data is Map<String, dynamic> ? data['results'] : data;
+        if (results is List) {
+          final urls = <String>[];
+          for (final e in results) {
+            if (e is String && e.isNotEmpty) {
+              urls.add(e);
+            } else if (e is Map<String, dynamic>) {
+              final u = (e['cover'] ?? e['url'] ?? e['image']) as String?;
+              if (u != null && u.isNotEmpty) urls.add(u);
+            }
+          }
+          return urls;
+        }
+      }
+    } catch (e) {
+      debugPrint('[API] searchCovers error: $e');
+    }
+    return [];
+  }
+
   // ─── Podcast Endpoints ────────────────────────────────────
 
   /// Search for podcasts (uses iTunes)

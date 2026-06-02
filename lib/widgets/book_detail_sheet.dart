@@ -29,7 +29,7 @@ import '../services/metadata_override_service.dart';
 import '../services/scoped_prefs.dart';
 import '../main.dart' show rootNavigatorKey;
 import '../screens/app_shell.dart';
-import '../screens/chapter_editor_screen.dart';
+import '../screens/book_edit_screen.dart';
 import 'author_books_sheet.dart';
 import 'narrator_books_sheet.dart';
 import 'series_books_sheet.dart';
@@ -39,7 +39,6 @@ import 'metadata_lookup_sheet.dart';
 import 'playlist_picker_sheet.dart';
 import 'collection_picker_sheet.dart';
 import 'absorb_wave_icon.dart';
-import 'edit_metadata_sheet.dart';
 import 'stackable_sheet.dart';
 
 // ─── BOOK DETAIL BOTTOM SHEET ───────────────────────────────
@@ -765,31 +764,10 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
                 _moreItem(cs, Icons.local_library_rounded, l.searchOnGoodreads,
                   onTap: () { Navigator.pop(ctx); _openGoodreads(title, authorName); }),
               if (auth.canUpdateMetadata && !lib.isOffline)
-                _moreItem(cs, Icons.edit_rounded, l.editServerDetails,
+                _moreItem(cs, Icons.edit_rounded, 'Edit...',
                   onTap: () {
                     Navigator.pop(ctx);
-                    final media = _item!['media'] as Map<String, dynamic>? ?? {};
-                    final meta = media['metadata'] as Map<String, dynamic>? ?? {};
-                    final mediaTags =
-                        ((media['tags'] as List<dynamic>?) ?? const [])
-                            .cast<String>();
-                    final audioFiles =
-                        (media['audioFiles'] as List<dynamic>?) ?? const [];
-                    final rel = _item!['relPath'] as String? ?? '';
-                    showEditMetadataSheet(context,
-                        itemId: widget.itemId,
-                        metadata: meta,
-                        tags: mediaTags,
-                        audioFiles: audioFiles,
-                        relPath: rel);
-                  }),
-              if (auth.canUpdateMetadata && !lib.isOffline && !isEbookOnly)
-                _moreItem(cs, Icons.format_list_numbered_rounded, 'Edit Chapters',
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
-                      builder: (_) => ChapterEditorScreen(itemId: widget.itemId, bookTitle: title),
-                    ));
+                    _openEditPage(auth, title, isEbookOnly);
                   }),
               if (auth.isAdmin && serverPath.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -851,6 +829,28 @@ class _BookDetailSheetContentState extends State<_BookDetailSheetContent> {
     showOverlayToast(context,
         ok ? l.removedSeriesFromContinueSeries : l.couldNotUpdate,
         icon: ok ? Icons.bookmark_remove_rounded : Icons.error_outline_rounded);
+  }
+
+  /// Opens the unified per-book edit page (Chapters / Details / Match / Encode)
+  /// from the "..." menu.
+  void _openEditPage(AuthProvider auth, String title, bool isEbookOnly) {
+    final media = _item!['media'] as Map<String, dynamic>? ?? {};
+    final meta = media['metadata'] as Map<String, dynamic>? ?? {};
+    final mediaTags = ((media['tags'] as List<dynamic>?) ?? const []).cast<String>();
+    final audioFiles = (media['audioFiles'] as List<dynamic>?) ?? const [];
+    final rel = _item!['relPath'] as String? ?? '';
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
+      builder: (_) => BookEditScreen(
+        itemId: widget.itemId,
+        bookTitle: title,
+        metadata: meta,
+        tags: mediaTags,
+        audioFiles: audioFiles,
+        relPath: rel,
+        isEbookOnly: isEbookOnly,
+        isAdmin: auth.isAdmin,
+      ),
+    ));
   }
 
   Widget _moreItem(ColorScheme cs, IconData icon, String label, {required VoidCallback onTap}) {

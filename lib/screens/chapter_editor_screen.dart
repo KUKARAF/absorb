@@ -30,19 +30,52 @@ class _Ch {
   });
 }
 
-/// Full chapter editor, mirroring the ABS web editor: edit start/title,
-/// add/insert/remove, lock, shift times, set-from-tracks, validation, and
-/// save / reset / remove-all. (Audnexus lookup and play-preview come later.)
-class ChapterEditorScreen extends StatefulWidget {
+/// Standalone full-screen wrapper around [ChapterEditBody]. Kept for direct
+/// navigation; the unified editor embeds [ChapterEditBody] as a tab instead.
+class ChapterEditorScreen extends StatelessWidget {
   final String itemId;
   final String bookTitle;
   const ChapterEditorScreen({super.key, required this.itemId, required this.bookTitle});
 
   @override
-  State<ChapterEditorScreen> createState() => _ChapterEditorScreenState();
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Edit Chapters', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            Text(bookTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          ],
+        ),
+      ),
+      body: ChapterEditBody(itemId: itemId, bookTitle: bookTitle),
+    );
+  }
 }
 
-class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
+/// The editor body, embeddable as a tab. Mirrors the ABS web editor: edit
+/// start/title, add/insert/remove, lock, shift times, set-from-tracks, Audnexus
+/// lookup, play-preview with scrubbing, and save / reset / remove-all.
+class ChapterEditBody extends StatefulWidget {
+  final String itemId;
+  final String bookTitle;
+  const ChapterEditBody({super.key, required this.itemId, required this.bookTitle});
+
+  @override
+  State<ChapterEditBody> createState() => _ChapterEditBodyState();
+}
+
+class _ChapterEditBodyState extends State<ChapterEditBody>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   bool _loading = true;
   bool _saving = false;
   String? _loadError;
@@ -59,6 +92,7 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
   bool _showShift = false;
   final TextEditingController _shiftCtl = TextEditingController(text: '0');
   final TextEditingController _bulkCtl = TextEditingController();
+  final ScrollController _listScroll = ScrollController();
   bool _hasChanges = false;
   String? _asin;
   List<Map<String, dynamic>> _tracks = [];
@@ -91,6 +125,7 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
     }
     _shiftCtl.dispose();
     _bulkCtl.dispose();
+    _listScroll.dispose();
     _previewPosSub?.cancel();
     _previewStateSub?.cancel();
     _preview?.dispose();
@@ -810,59 +845,51 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Edit Chapters', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            Text(widget.bookTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-          ],
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (_loadError != null) {
+      return Center(child: Text(_loadError!, style: TextStyle(color: cs.error)));
+    }
+    return Stack(children: [
+      _buildBody(cs),
+      if (_saving)
+        const Positioned.fill(
+          child: ColoredBox(
+            color: Color(0x55000000),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
         ),
-        actions: [
-          if (!_loading && _loadError == null) ...[
-            if (_hasChanges)
-              TextButton(onPressed: _saving ? null : _reset, child: const Text('Reset')),
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilledButton(
-                onPressed: (_hasChanges && !_saving) ? _save : null,
-                child: const Text('Save'),
-              ),
-            ),
-          ],
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-          : _loadError != null
-              ? Center(child: Text(_loadError!, style: TextStyle(color: cs.error)))
-              : Stack(children: [
-                  _buildBody(cs),
-                  if (_saving)
-                    const Positioned.fill(
-                      child: ColoredBox(
-                        color: Color(0x55000000),
-                        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                      ),
-                    ),
-                ]),
+    ]);
+  }
+
+  Widget _saveBar(ColorScheme cs) {
+    if (!_hasChanges) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      child: Row(children: [
+        OutlinedButton(onPressed: _saving ? null : _reset, child: const Text('Reset')),
+        const Spacer(),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: const Text('Save chapters'),
+        ),
+      ]),
     );
   }
 
   Widget _buildBody(ColorScheme cs) {
     return Column(
       children: [
+        _saveBar(cs),
         _toolbar(cs),
         if (_showShift) _shiftPanel(cs),
         const Divider(height: 1),
         Expanded(
           child: ListView.builder(
+            controller: _listScroll,
             padding: const EdgeInsets.only(bottom: 16),
             itemCount: _chapters.length,
             itemBuilder: (_, i) => _row(cs, _chapters[i], i),
@@ -1131,7 +1158,7 @@ class _ChapterEditorScreenState extends State<ChapterEditorScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Scrub to the exact spot, then set',
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              Text('Start → ${_clock(global)}',
+              Text('Start at ${_clock(global)}',
                   style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
