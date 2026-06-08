@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Absorb
+Comment=Audiobookshelf client
+Exec=absorb
+Icon=io.github.rafa.absorb
+Type=Application
+Categories=Audio;
+StartupNotify=true

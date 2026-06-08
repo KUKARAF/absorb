@@ -1,0 +1,99 @@
+name: Linux Flatpak
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build & publish Flatpak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pubspec version
+        id: version
+        run: |
+          RAW=$(grep '^version:' pubspec.yaml | sed 's/version: *//')
+          VERSION_NAME="${RAW%%+*}"
+          echo "raw=$RAW" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config clang \
+            libgtk-3-dev libmpv-dev
+
+      - name: Build Flutter Linux
+        run: |
+          flutter pub get
+          flutter build linux --release
+
+      - name: Install flatpak tools
+        run: |
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub \
+            org.freedesktop.Platform//24.08 \
+            org.freedesktop.Sdk//24.08 \
+            org.freedesktop.Sdk.Extension.ffmpeg-full//24.08
+
+      - name: Build flatpak
+        run: |
+          flatpak-builder --force-clean --user --install \
+            build-flatpak \
+            packaging/io.github.rafa.absorb.ci.yml
+
+      - name: Export .flatpak bundle
+        run: |
+          flatpak build-bundle \
+            ~/.local/share/flatpak/repo \
+            absorb-${{ steps.version.outputs.raw }}.flatpak \
+            io.github.rafa.absorb
+
+      - name: Upload to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ steps.version.outputs.tag }}
+          RAW: ${{ steps.version.outputs.raw }}
+        run: |
+          if gh release view "$VERSION_TAG" &>/dev/null; then
+            gh release upload "$VERSION_TAG" \
+              "absorb-${RAW}.flatpak" --clobber
+          else
+            gh release create "$VERSION_TAG" \
+              "absorb-${RAW}.flatpak" \
+              --draft --title "$VERSION_TAG"
+          fi
+
+      - name: Notify Discord
+        if: always() && env.DISCORD_WEBHOOK_URL != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          VERSION: ${{ steps.version.outputs.raw }}
+          RUN_URL: ${{ format('https://github.com/{0}/actions/runs/{1}', github.repository, github.run_id) }}
+          STATUS: ${{ job.status }}
+        run: |
+          if [ "$STATUS" = "success" ]; then
+            TITLE="Linux Flatpak build successful"; COLOR=3066993
+          else
+            TITLE="Linux Flatpak build failed"; COLOR=15158332
+          fi
+          curl -sS -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"$TITLE\",\"description\":\"v${VERSION}\\n[Build log](${RUN_URL})\",\"color\":${COLOR}}]}" \
+            > /dev/null 2>&1 || true

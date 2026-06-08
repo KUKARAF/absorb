@@ -1,0 +1,59 @@
+app-id: io.github.rafa.absorb
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+
+# ffmpeg-full provides libavcodec/libavformat/etc. needed to build mpv
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.ffmpeg-full
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '24.08'
+    add-ld-path: '.'
+
+build-options:
+  append-path: /usr/lib/sdk/ffmpeg-full/bin
+  append-ld-library-path: /usr/lib/sdk/ffmpeg-full/lib
+  prepend-pkg-config-path: /usr/lib/sdk/ffmpeg-full/lib/pkgconfig
+
+command: absorb
+
+finish-args:
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  - --filesystem=home
+
+modules:
+  # Build libmpv so it's available inside the sandbox at runtime.
+  - name: libmpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dbuild-date=false
+      - -Dalsa=disabled
+      - -Dgl=enabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz
+        sha256: "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"
+
+  # Install the pre-built Flutter bundle produced by the CI Flutter build step.
+  - name: absorb
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 build/linux/x64/release/bundle/absorb /app/bin/absorb
+      - cp -r build/linux/x64/release/bundle/lib /app/lib
+      - cp -r build/linux/x64/release/bundle/data /app/data
+      - install -Dm644 packaging/io.github.rafa.absorb.desktop
+          /app/share/applications/io.github.rafa.absorb.desktop
+      - install -Dm644 assets/icon/app_icon.png
+          /app/share/icons/hicolor/512x512/apps/io.github.rafa.absorb.png
+    sources:
+      - type: dir
+        path: ..
