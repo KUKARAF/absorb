@@ -20,6 +20,7 @@ dependencies:
   just_audio_web: ^0.4.14
   # just_audio_web:
   #   path: ../just_audio_web
+  just_audio_mpv: ^0.1.7
   audio_session: ^0.1.24
   rxdart: '>=0.26.0 <0.29.0'
   path: ^1.8.0
@@ -52,3 +53,5 @@ flutter:
         sharedDarwinSource: true
       web:
         default_package: just_audio_web
+      linux:
+        default_package: just_audio_mpv

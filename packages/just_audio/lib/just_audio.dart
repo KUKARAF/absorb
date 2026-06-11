@@ -55,6 +55,33 @@ JustAudioPlatform get _pluginPlatform {
 /// You must call [dispose] to release the resources used by this player,
 /// including any temporary files created to cache assets.
 class AudioPlayer {
+  static const MethodChannel _mainChannel =
+      MethodChannel('com.ryanheise.just_audio.methods');
+
+  /// Dart-level streaming disk cache (used on platforms without native cache).
+  static final _dartStreamingCache = _StreamingDiskCache();
+
+  /// Configure the streaming disk cache.
+  /// [sizeMb] = 0 disables the cache. Values > 0 enable LRU caching.
+  /// On Android this configures ExoPlayer's native cache; on other platforms
+  /// a Dart-level disk cache is used instead.
+  static Future<void> configureStreamingCache(int sizeMb) async {
+    if (Platform.isAndroid) {
+      await _mainChannel.invokeMethod('configureStreamingCache', {'sizeMb': sizeMb});
+    } else {
+      await _dartStreamingCache.configure(sizeMb);
+    }
+  }
+
+  /// Clear all cached streaming data without disabling the cache.
+  static Future<void> clearStreamingCache() async {
+    if (Platform.isAndroid) {
+      await _mainChannel.invokeMethod('clearStreamingCache');
+    } else {
+      await _dartStreamingCache.clear();
+    }
+  }
+
   /// The user agent to set on all HTTP requests.
   final String? _userAgent;
 
@@ -613,8 +640,8 @@ class AudioPlayer {
       if (!_disposed) {
         _positionSubject!.addStream(createPositionStream(
             steps: 800,
-            minPeriod: const Duration(milliseconds: 16),
-            maxPeriod: const Duration(milliseconds: 200)));
+            minPeriod: const Duration(milliseconds: 500),
+            maxPeriod: const Duration(milliseconds: 1000)));
       }
     }
     return _positionSubject!.stream;
@@ -1111,9 +1138,13 @@ class AudioPlayer {
     if (_disposed) return;
     _automaticallyWaitsToMinimizeStalling =
         automaticallyWaitsToMinimizeStalling;
-    await (await _platform).setAutomaticallyWaitsToMinimizeStalling(
-        SetAutomaticallyWaitsToMinimizeStallingRequest(
-            enabled: automaticallyWaitsToMinimizeStalling));
+    try {
+      await (await _platform).setAutomaticallyWaitsToMinimizeStalling(
+          SetAutomaticallyWaitsToMinimizeStallingRequest(
+              enabled: automaticallyWaitsToMinimizeStalling));
+    } catch (e) {
+      // Not supported on all platforms (e.g. Linux).
+    }
   }
 
   /// Sets canUseNetworkResourcesForLiveStreamingWhilePaused on iOS/macOS,
@@ -1471,9 +1502,13 @@ class AudioPlayer {
         }
         if (!automaticallyWaitsToMinimizeStalling) {
           // Only set if different from default.
-          await platform.setAutomaticallyWaitsToMinimizeStalling(
-              SetAutomaticallyWaitsToMinimizeStallingRequest(
-                  enabled: automaticallyWaitsToMinimizeStalling));
+          try {
+            await platform.setAutomaticallyWaitsToMinimizeStalling(
+                SetAutomaticallyWaitsToMinimizeStallingRequest(
+                    enabled: automaticallyWaitsToMinimizeStalling));
+          } catch (e) {
+            // Not supported on all platforms (e.g. Linux).
+          }
           if (checkInterruption()) return platform;
         }
         await platform.setVolume(SetVolumeRequest(volume: volume));
@@ -3356,7 +3391,27 @@ _ProxyHandler _proxyHandlerForUri(
   // Keep redirected [Uri] to speed-up requests
   Uri? redirectedUri;
   Future<void> handler(_ProxyHttpServer server, HttpRequest request) async {
+    // ── Dart streaming disk cache ──
+    final cache = AudioPlayer._dartStreamingCache;
+    if (cache.isEnabled) {
+      final cachedFile = cache.getCachedFile(uri);
+      if (cachedFile != null) {
+        debugPrint('[StreamCache] HIT ${uri.path} (${cachedFile.lengthSync()} bytes)');
+        await _serveCachedFile(
+            request, cachedFile, cache.getCachedHeaders(uri));
+        return;
+      }
+    }
+
     final client = _createHttpClient(userAgent: userAgent);
+    IOSink? cacheWriter;
+    int bytesWritten = 0;
+    final isRangeRequest =
+        request.headers[HttpHeaders.rangeHeader]?.isNotEmpty == true;
+    if (cache.isEnabled && !isRangeRequest) {
+      cacheWriter = cache.createWriter(uri);
+    }
+
     // Try to make normal request
     String? host;
     try {
@@ -3374,18 +3429,33 @@ _ProxyHandler _proxyHandlerForUri(
       }
 
       request.response.headers.clear();
+      final responseHeaders = <String, String>{};
       originResponse.headers.forEach((name, value) {
         final filteredValue = value
             .map((e) => e.replaceAll(RegExp(r'[^\x09\x20-\x7F]'), '?'))
             .toList();
         request.response.headers.set(name, filteredValue);
+        responseHeaders[name] = filteredValue.join(', ');
       });
       request.response.statusCode = originResponse.statusCode;
+
+      // Only cache successful full responses
+      if (cacheWriter != null && originResponse.statusCode != 200) {
+        try { await cacheWriter.close(); } catch (_) {}
+        cache.removeIncomplete(uri);
+        cacheWriter = null;
+      }
 
       // Send response
       if (headers != null && request.uri.path.toLowerCase().endsWith('.m3u8') ||
           ['application/x-mpegURL', 'application/vnd.apple.mpegurl']
               .contains(request.headers.value(HttpHeaders.contentTypeHeader))) {
+        // Don't cache playlist files
+        if (cacheWriter != null) {
+          try { await cacheWriter.close(); } catch (_) {}
+          cache.removeIncomplete(uri);
+          cacheWriter = null;
+        }
         // If this is an m3u8 file with headers, prepare the nested URIs.
         // TODO: Handle other playlist formats similarly?
         final m3u8 = await originResponse.transform(utf8.decoder).join();
@@ -3422,6 +3492,18 @@ _ProxyHandler _proxyHandlerForUri(
           if (done) break;
           request.response.add(chunk);
           await request.response.flush();
+          if (cacheWriter != null) {
+            cacheWriter.add(chunk);
+            bytesWritten += chunk.length;
+          }
+        }
+        // Finalize cache only if we got the complete response
+        if (cacheWriter != null && !done) {
+          await cacheWriter.flush();
+          await cacheWriter.close();
+          cache.markComplete(uri, bytesWritten, headers: responseHeaders);
+          cacheWriter = null;
+          debugPrint('[StreamCache] STORED ${uri.path} ($bytesWritten bytes)');
         }
       }
       await request.response.flush();
@@ -3432,8 +3514,14 @@ _ProxyHandler _proxyHandlerForUri(
         // Try parsing HTTP 0.9 response
         //request.response.headers.clear();
         final socket = await Socket.connect(uri.host, uri.port);
-        final clientSocket =
-            await request.response.detachSocket(writeHeaders: false);
+        Socket clientSocket;
+        try {
+          clientSocket =
+              await request.response.detachSocket(writeHeaders: false);
+        } catch (_) {
+          socket.close();
+          return;
+        }
         final done = Completer<dynamic>();
         socket.listen(
           clientSocket.add,
@@ -3464,6 +3552,12 @@ _ProxyHandler _proxyHandlerForUri(
         socket.write("\n");
         await socket.flush();
         await done.future;
+      }
+    } finally {
+      // Clean up incomplete cache entry on any failure
+      if (cacheWriter != null) {
+        try { await cacheWriter.close(); } catch (_) {}
+        cache.removeIncomplete(uri);
       }
     }
   }
@@ -4078,4 +4172,265 @@ HttpClient _createHttpClient({String? userAgent}) {
     client.userAgent = userAgent;
   }
   return client;
+}
+
+// ── Dart-level streaming disk cache (used on iOS/macOS where no native
+//    ExoPlayer cache exists) ──────────────────────────────────────────────
+
+/// Serves a fully-cached audio file from disk, supporting Range requests.
+Future<void> _serveCachedFile(HttpRequest request, File cachedFile,
+    Map<String, String>? storedHeaders) async {
+  final fileLength = cachedFile.lengthSync();
+  final rangeHeader = request.headers[HttpHeaders.rangeHeader];
+
+  int start = 0;
+  int end = fileLength - 1;
+
+  // Copy original response headers if we stored them
+  request.response.headers.clear();
+  if (storedHeaders != null) {
+    storedHeaders.forEach((name, value) {
+      // Skip content-length / content-range — we'll set our own
+      final lower = name.toLowerCase();
+      if (lower == 'content-length' ||
+          lower == 'content-range' ||
+          lower == 'transfer-encoding') return;
+      try {
+        request.response.headers.set(name, value);
+      } catch (_) {}
+    });
+  }
+  request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+  request.response.headers.set(HttpHeaders.contentLengthHeader, fileLength);
+
+  if (rangeHeader != null && rangeHeader.isNotEmpty) {
+    final match =
+        RegExp(r'bytes=(\d*)-(\d*)').firstMatch(rangeHeader.first);
+    if (match != null) {
+      if (match.group(1)!.isNotEmpty) start = int.parse(match.group(1)!);
+      if (match.group(2)!.isNotEmpty) end = int.parse(match.group(2)!);
+      if (end >= fileLength) end = fileLength - 1;
+      request.response.statusCode = HttpStatus.partialContent;
+      request.response.headers
+          .set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$fileLength');
+      request.response.headers
+          .set(HttpHeaders.contentLengthHeader, end - start + 1);
+    }
+  }
+
+  request.response.bufferOutput = false;
+
+  final raf = cachedFile.openSync();
+  try {
+    raf.setPositionSync(start);
+    var remaining = end - start + 1;
+    while (remaining > 0) {
+      final chunkSize = remaining > 65536 ? 65536 : remaining;
+      final chunk = raf.readSync(chunkSize);
+      if (chunk.isEmpty) break;
+      request.response.add(chunk);
+      remaining -= chunk.length;
+    }
+    await request.response.flush();
+    await request.response.close();
+  } finally {
+    raf.closeSync();
+  }
+}
+
+/// Simple LRU streaming disk cache.
+///
+/// Audio data is written to files keyed by a hash of the request URI path.
+/// A JSON manifest tracks size and last-access time for LRU eviction.
+class _StreamingDiskCache {
+  int _maxSizeBytes = 0;
+  Directory? _cacheDir;
+  File? _manifestFile;
+  Map<String, _CacheEntry> _entries = {};
+  bool _manifestDirty = false;
+
+  bool get isEnabled => _maxSizeBytes > 0 && _cacheDir != null;
+
+  Future<void> configure(int sizeMb) async {
+    _maxSizeBytes = sizeMb * 1024 * 1024;
+    if (sizeMb <= 0) {
+      _maxSizeBytes = 0;
+      return;
+    }
+    final appDir = await getTemporaryDirectory();
+    _cacheDir = Directory(p.join(appDir.path, 'just_audio_streaming_cache'));
+    if (!_cacheDir!.existsSync()) {
+      _cacheDir!.createSync(recursive: true);
+    }
+    _manifestFile = File(p.join(_cacheDir!.path, '_manifest.json'));
+    await _loadManifest();
+  }
+
+  Future<void> clear() async {
+    if (_cacheDir != null && _cacheDir!.existsSync()) {
+      _cacheDir!.deleteSync(recursive: true);
+      _cacheDir!.createSync(recursive: true);
+    }
+    _entries.clear();
+    await _saveManifest();
+  }
+
+  Future<void> release() async {
+    _maxSizeBytes = 0;
+    _entries.clear();
+    _cacheDir = null;
+    _manifestFile = null;
+  }
+
+  /// Deterministic cache key from a URI (uses path only so token/host changes
+  /// don't invalidate the cache).
+  String _keyForUri(Uri uri) {
+    final bytes = utf8.encode(uri.path);
+    return md5.convert(bytes).toString();
+  }
+
+  /// Returns the cached file for [uri] if it exists and is complete.
+  File? getCachedFile(Uri uri) {
+    if (!isEnabled) return null;
+    final key = _keyForUri(uri);
+    final entry = _entries[key];
+    if (entry == null || !entry.complete) return null;
+    final file = File(p.join(_cacheDir!.path, key));
+    if (!file.existsSync()) {
+      _entries.remove(key);
+      _scheduleSave();
+      return null;
+    }
+    entry.lastAccess = DateTime.now().millisecondsSinceEpoch;
+    _scheduleSave();
+    return file;
+  }
+
+  /// Returns stored response headers for a cached [uri], or null.
+  Map<String, String>? getCachedHeaders(Uri uri) {
+    final entry = _entries[_keyForUri(uri)];
+    return entry?.headers;
+  }
+
+  /// Open a cache file writer for [uri]. Returns null if caching is disabled.
+  IOSink? createWriter(Uri uri) {
+    if (!isEnabled) return null;
+    final key = _keyForUri(uri);
+    // Don't overwrite a complete entry
+    if (_entries[key]?.complete == true) return null;
+    final file = File(p.join(_cacheDir!.path, key));
+    _entries[key] = _CacheEntry(
+      size: 0,
+      lastAccess: DateTime.now().millisecondsSinceEpoch,
+      complete: false,
+    );
+    return file.openWrite();
+  }
+
+  /// Mark [uri] as fully cached with the given byte size and response headers.
+  void markComplete(Uri uri, int size, {Map<String, String>? headers}) {
+    final key = _keyForUri(uri);
+    final entry = _entries[key];
+    if (entry != null) {
+      entry.size = size;
+      entry.complete = true;
+      entry.headers = headers;
+      _scheduleSave();
+      _evictIfNeeded();
+    }
+  }
+
+  /// Remove an incomplete cache entry (e.g. after a failed download).
+  void removeIncomplete(Uri uri) {
+    final key = _keyForUri(uri);
+    final entry = _entries[key];
+    if (entry != null && !entry.complete) {
+      _entries.remove(key);
+      final file = File(p.join(_cacheDir!.path, key));
+      try {
+        file.deleteSync();
+      } catch (_) {}
+      _scheduleSave();
+    }
+  }
+
+  void _evictIfNeeded() {
+    var totalSize = _entries.values.fold<int>(0, (sum, e) => sum + e.size);
+    if (totalSize <= _maxSizeBytes) return;
+
+    final sorted = _entries.entries.toList()
+      ..sort((a, b) => a.value.lastAccess.compareTo(b.value.lastAccess));
+
+    for (final entry in sorted) {
+      if (totalSize <= _maxSizeBytes) break;
+      final file = File(p.join(_cacheDir!.path, entry.key));
+      try {
+        file.deleteSync();
+      } catch (_) {}
+      totalSize -= entry.value.size;
+      _entries.remove(entry.key);
+    }
+    _scheduleSave();
+  }
+
+  // ── Manifest persistence ──
+
+  Future<void> _loadManifest() async {
+    if (_manifestFile == null || !_manifestFile!.existsSync()) return;
+    try {
+      final raw =
+          jsonDecode(await _manifestFile!.readAsString()) as Map<String, dynamic>;
+      _entries = raw.map((k, v) =>
+          MapEntry(k, _CacheEntry.fromJson(v as Map<String, dynamic>)));
+    } catch (_) {
+      _entries = {};
+    }
+  }
+
+  Timer? _saveTimer;
+  void _scheduleSave() {
+    _manifestDirty = true;
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(seconds: 2), () async {
+      if (_manifestDirty) await _saveManifest();
+    });
+  }
+
+  Future<void> _saveManifest() async {
+    _manifestDirty = false;
+    if (_manifestFile == null) return;
+    try {
+      await _manifestFile!
+          .writeAsString(jsonEncode(_entries.map((k, v) => MapEntry(k, v.toJson()))));
+    } catch (_) {}
+  }
+}
+
+class _CacheEntry {
+  int size;
+  int lastAccess;
+  bool complete;
+  Map<String, String>? headers;
+
+  _CacheEntry({
+    required this.size,
+    required this.lastAccess,
+    required this.complete,
+    this.headers,
+  });
+
+  factory _CacheEntry.fromJson(Map<String, dynamic> json) => _CacheEntry(
+        size: json['size'] as int? ?? 0,
+        lastAccess: json['lastAccess'] as int? ?? 0,
+        complete: json['complete'] as bool? ?? false,
+        headers: (json['headers'] as Map<String, dynamic>?)
+            ?.map((k, v) => MapEntry(k, v as String)),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'size': size,
+        'lastAccess': lastAccess,
+        'complete': complete,
+        if (headers != null) 'headers': headers,
+      };
 }

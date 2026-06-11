@@ -1,5 +1,8 @@
 # Flutter
--keep class io.flutter.** { *; }
+# NOTE: the broad `-keep class io.flutter.** { *; }` lives in
+# proguard-flutter-keep.pro and is applied only to the github + playstore
+# flavors. The fdroid flavor deliberately omits it so R8 strips Flutter's
+# unused deferred-components manager (which references proprietary Play Core).
 -keep class io.flutter.plugins.** { *; }
 
 # just_audio
@@ -14,8 +17,17 @@
 
 # Keep all annotations
 -keepattributes *Annotation*
+-keepattributes Signature
+
+# flutter_local_notifications + Gson generic signatures
+-keep class com.dexterous.flutterlocalnotifications.** { *; }
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken { *; }
 
 # Prevent stripping of native methods
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+
+# home_widget
+-keep class es.antonborri.home_widget.** { *; }

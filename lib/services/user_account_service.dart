@@ -6,14 +6,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SavedAccount {
   final String serverUrl;
   final String username;
-  final String token;
+  final String token; // accessToken (or legacy token for old servers)
+  final String? refreshToken;
   final String? userId;
+  final bool isLegacyToken;
 
   SavedAccount({
     required this.serverUrl,
     required this.username,
     required this.token,
+    this.refreshToken,
     this.userId,
+    this.isLegacyToken = false,
   });
 
   /// Unique key for scoping per-user SharedPreferences data.
@@ -30,14 +34,18 @@ class SavedAccount {
         'serverUrl': serverUrl,
         'username': username,
         'token': token,
+        if (refreshToken != null) 'refreshToken': refreshToken,
         'userId': userId,
+        if (isLegacyToken) 'isLegacyToken': true,
       };
 
   factory SavedAccount.fromJson(Map<String, dynamic> json) => SavedAccount(
         serverUrl: json['serverUrl'] as String,
         username: json['username'] as String,
         token: json['token'] as String,
+        refreshToken: json['refreshToken'] as String?,
         userId: json['userId'] as String?,
+        isLegacyToken: json['isLegacyToken'] as bool? ?? (json['refreshToken'] == null),
       );
 
   @override
@@ -130,8 +138,8 @@ class UserAccountService {
     return false;
   }
 
-  /// Update the token for the active account (e.g. after token refresh).
-  Future<void> updateToken(String serverUrl, String username, String newToken) async {
+  /// Update tokens for the active account (e.g. after token refresh).
+  Future<void> updateTokens(String serverUrl, String username, String newToken, {String? refreshToken}) async {
     final idx = _accounts.indexWhere(
         (a) => a.serverUrl == serverUrl && a.username == username);
     if (idx >= 0) {
@@ -140,7 +148,9 @@ class UserAccountService {
         serverUrl: old.serverUrl,
         username: old.username,
         token: newToken,
+        refreshToken: refreshToken ?? old.refreshToken,
         userId: old.userId,
+        isLegacyToken: old.isLegacyToken,
       );
       await _persist();
     }

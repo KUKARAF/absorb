@@ -1,8 +1,6 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
-import 'package:provider/provider.dart';
-import '../providers/library_provider.dart';
+import '../l10n/app_localizations.dart';
 import '../services/chromecast_service.dart';
 import '../services/api_service.dart';
 
@@ -17,6 +15,7 @@ void showCastDevicePicker(
   String? coverUrl,
   double? totalDuration,
   List<dynamic>? chapters,
+  String? episodeId,
 }) {
   final cast = ChromecastService();
   showModalBottomSheet(
@@ -27,6 +26,7 @@ void showCastDevicePicker(
     ),
     builder: (ctx) {
       final cs = Theme.of(ctx).colorScheme;
+      final l = AppLocalizations.of(ctx)!;
       return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -35,10 +35,9 @@ void showCastDevicePicker(
           children: [
             Container(width: 36, height: 4, decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.24), borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 16),
-            Text('Cast to Device', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: cs.onSurface)),
+            Text(l.castToDevice, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: cs.onSurface)),
             const SizedBox(height: 16),
-            SizedBox(
-              height: 200,
+            Flexible(
               child: StreamBuilder<List<GoogleCastDevice>>(
                 stream: cast.devicesStream,
                 builder: (_, snap) {
@@ -50,7 +49,7 @@ void showCastDevicePicker(
                         children: [
                           SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: cs.onSurfaceVariant)),
                           const SizedBox(height: 12),
-                          Text('Searching for Cast devices...', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+                          Text(l.searchingForCastDevices, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
                         ],
                       ),
                     );
@@ -71,7 +70,7 @@ void showCastDevicePicker(
                             _waitAndCast(cast, api: api, itemId: itemId,
                               title: title ?? '', author: author ?? '',
                               coverUrl: coverUrl, totalDuration: totalDuration ?? 0,
-                              chapters: chapters ?? []);
+                              chapters: chapters ?? [], episodeId: episodeId);
                           }
                         },
                       );
@@ -89,7 +88,7 @@ void showCastDevicePicker(
 }
 
 /// Wait for connection to establish, then cast the item.
-void _waitAndCast(
+Future<void> _waitAndCast(
   ChromecastService cast, {
   required ApiService api,
   required String itemId,
@@ -98,38 +97,28 @@ void _waitAndCast(
   required String? coverUrl,
   required double totalDuration,
   required List<dynamic> chapters,
-}) {
-  if (cast.isConnected) {
-    cast.castItem(api: api, itemId: itemId, title: title, author: author,
-      coverUrl: coverUrl, totalDuration: totalDuration, chapters: chapters);
-    return;
-  }
-
-  StreamSubscription? sub;
-  Timer? timeout;
-
-  void cleanup() {
-    sub?.cancel();
-    timeout?.cancel();
-  }
-
-  sub = GoogleCastSessionManager.instance.currentSessionStream.listen((session) {
-    if (cast.isConnected) {
-      cleanup();
-      Future.delayed(const Duration(milliseconds: 500), () {
-        cast.castItem(api: api, itemId: itemId, title: title, author: author,
-          coverUrl: coverUrl, totalDuration: totalDuration, chapters: chapters);
-      });
+  String? episodeId,
+}) async {
+  // Poll for connection (up to 15s)
+  if (!cast.isConnected) {
+    for (int i = 0; i < 30; i++) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (cast.isConnected) break;
     }
-  });
+    if (!cast.isConnected) {
+      debugPrint('[Cast] Connection timeout — giving up auto-cast');
+      return;
+    }
+  }
 
-  timeout = Timer(const Duration(seconds: 15), () {
-    debugPrint('[Cast] Connection timeout — giving up auto-cast');
-    cleanup();
-  });
+  // Small delay to let session fully initialise
+  await Future.delayed(const Duration(milliseconds: 500));
+  cast.castItem(api: api, itemId: itemId, title: title, author: author,
+    coverUrl: coverUrl, totalDuration: totalDuration, chapters: chapters,
+    episodeId: episodeId);
 }
 
-/// Bottom sheet with cast controls when connected.
+/// Bottom sheet with cast volume, stop, and disconnect controls.
 class CastControlSheet extends StatelessWidget {
   const CastControlSheet({super.key});
 
@@ -140,6 +129,7 @@ class CastControlSheet extends StatelessWidget {
       builder: (context, _) {
         final cast = ChromecastService();
         final accent = Theme.of(context).colorScheme.primary;
+        final l = AppLocalizations.of(context)!;
 
         return SafeArea(
           child: Padding(
@@ -153,91 +143,26 @@ class CastControlSheet extends StatelessWidget {
                 Row(children: [
                   Icon(Icons.cast_connected_rounded, size: 20, color: accent),
                   const SizedBox(width: 10),
-                  Expanded(child: Text(cast.connectedDeviceName ?? 'Cast Device',
+                  Expanded(child: Text(cast.connectedDeviceName ?? l.castDevice,
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: accent), overflow: TextOverflow.ellipsis)),
                 ]),
 
-                if (cast.isCasting) ...[
-                  const SizedBox(height: 20),
-                  // Book info + chapter
-                  Row(children: [
-                    if (cast.castingCoverUrl != null)
-                      ClipRRect(borderRadius: BorderRadius.circular(8),
-                        child: Image.network(cast.castingCoverUrl!, width: 48, height: 48, fit: BoxFit.cover,
-                          headers: context.read<LibraryProvider>().mediaHeaders,
-                          errorBuilder: (_, __, ___) => Container(width: 48, height: 48,
-                            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
-                            child: const Icon(Icons.headphones_rounded, size: 24, color: Colors.white24)))),
-                    const SizedBox(width: 14),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(cast.castingTitle ?? 'Unknown', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 2),
-                      Text(cast.castingAuthor ?? '', style: const TextStyle(fontSize: 12, color: Colors.white60), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      if (cast.currentChapterTitle != null) ...[
-                        const SizedBox(height: 2),
-                        Text(cast.currentChapterTitle!, style: TextStyle(fontSize: 11, color: accent.withValues(alpha: 0.7)), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ],
-                    ])),
-                  ]),
-                  const SizedBox(height: 16),
-
-                  // Progress bar
-                  StreamBuilder<Duration>(
-                    stream: cast.castPositionStream?.map((d) => d ?? Duration.zero),
-                    initialData: cast.castPosition,
-                    builder: (_, snap) {
-                      final pos = snap.data ?? Duration.zero;
-                      final totalMs = (cast.castingDuration * 1000).round();
-                      final progress = totalMs > 0 ? (pos.inMilliseconds / totalMs).clamp(0.0, 1.0) : 0.0;
-                      return Column(children: [
-                        LinearProgressIndicator(value: progress, backgroundColor: Colors.white10, color: accent, minHeight: 3, borderRadius: BorderRadius.circular(2)),
-                        const SizedBox(height: 6),
-                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                          Text(_fmt(pos), style: const TextStyle(fontSize: 11, color: Colors.white38)),
-                          Text(_fmt(Duration(seconds: cast.castingDuration.round())), style: const TextStyle(fontSize: 11, color: Colors.white38)),
-                        ]),
-                      ]);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Playback controls
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    IconButton(onPressed: cast.skipToPreviousChapter, icon: const Icon(Icons.skip_previous_rounded, size: 24, color: Colors.white38)),
-                    IconButton(onPressed: () => cast.skipBackward(10), icon: const Icon(Icons.replay_10_rounded, size: 32, color: Colors.white70)),
-                    const SizedBox(width: 8),
-                    Container(width: 52, height: 52,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white,
-                        boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.3), blurRadius: 16, spreadRadius: -4)]),
-                      child: IconButton(onPressed: cast.togglePlayPause,
-                        icon: Icon(cast.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 28, color: Colors.black87))),
-                    const SizedBox(width: 8),
-                    IconButton(onPressed: () => cast.skipForward(30), icon: const Icon(Icons.forward_30_rounded, size: 32, color: Colors.white70)),
-                    IconButton(onPressed: cast.skipToNextChapter, icon: const Icon(Icons.skip_next_rounded, size: 24, color: Colors.white38)),
-                  ]),
-
-                  // Speed control
-                  const SizedBox(height: 12),
-                  _CastSpeedControl(cast: cast, accent: accent),
-
-                  // Volume control
-                  const SizedBox(height: 8),
-                  _CastVolumeControl(cast: cast, accent: accent),
-                ],
+                const SizedBox(height: 16),
+                _CastVolumeControl(cast: cast, accent: accent),
 
                 const SizedBox(height: 20),
                 Row(children: [
                   if (cast.isCasting) ...[
                     Expanded(child: OutlinedButton.icon(
                       onPressed: () { cast.stopCasting(); Navigator.of(context).pop(); },
-                      icon: const Icon(Icons.stop_rounded, size: 18), label: const Text('Stop Casting'),
+                      icon: const Icon(Icons.stop_rounded, size: 18), label: Text(l.stopCasting),
                       style: OutlinedButton.styleFrom(foregroundColor: Colors.white60, side: const BorderSide(color: Colors.white12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),
                     const SizedBox(width: 12),
                   ],
                   Expanded(child: OutlinedButton.icon(
                     onPressed: () { cast.disconnect(); Navigator.of(context).pop(); },
-                    icon: const Icon(Icons.close_rounded, size: 18), label: const Text('Disconnect'),
+                    icon: const Icon(Icons.close_rounded, size: 18), label: Text(l.disconnect),
                     style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent.withValues(alpha: 0.8),
                       side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.3)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),
@@ -247,67 +172,6 @@ class CastControlSheet extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-
-  String _fmt(Duration d) {
-    final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
-    if (h > 0) return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-    return '$m:${s.toString().padLeft(2, '0')}';
-  }
-}
-
-// ─── Cast Speed Control ─────────────────────────────────────
-
-class _CastSpeedControl extends StatelessWidget {
-  final ChromecastService cast;
-  final Color accent;
-  const _CastSpeedControl({required this.cast, required this.accent});
-
-  static const _presets = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-
-  @override
-  Widget build(BuildContext context) {
-    final speed = cast.castSpeed;
-    return Row(
-      children: [
-        Icon(Icons.speed_rounded, size: 16, color: accent),
-        const SizedBox(width: 8),
-        Text('${speed.toStringAsFixed(2)}x',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: accent)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: SizedBox(
-            height: 32,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: _presets.map((s) {
-                final selected = (s - speed).abs() < 0.01;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: GestureDetector(
-                    onTap: () => cast.setSpeed(s),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: selected ? accent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: selected ? accent.withValues(alpha: 0.4) : Colors.white12),
-                      ),
-                      child: Text('${s}x',
-                        style: TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600,
-                          color: selected ? accent : Colors.white54,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

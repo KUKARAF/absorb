@@ -2,6 +2,7 @@
 #import "./include/just_audio/IndexedAudioSource.h"
 #import "./include/just_audio/IndexedPlayerItem.h"
 #import "./include/just_audio/LoadControl.h"
+#import "./include/just_audio/AudioEQProcessor.h"
 #import <AVFoundation/AVFoundation.h>
 
 @implementation UriAudioSource {
@@ -89,6 +90,9 @@
             item.preferredPeakBitRate = [_loadControl.preferredPeakBitRate doubleValue];
         }
     }
+
+    // Attach EQ processing tap
+    [[AudioEQProcessor shared] attachTapToPlayerItem:item];
 
     return item;
 }

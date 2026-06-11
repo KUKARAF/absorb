@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'scoped_prefs.dart';
 
 /// Types of playback events we track.
 enum PlaybackEventType {
@@ -13,7 +13,20 @@ enum PlaybackEventType {
   skipForward,
   skipBackward,
   speedChange,
+  bookFinished,
+  sessionStart,
+  sessionEnd,
+  clickDebounce,
 }
+
+/// Events that only show in the sheet when the user enables advanced mode.
+const Set<PlaybackEventType> kAdvancedHistoryEvents = {
+  PlaybackEventType.syncLocal,
+  PlaybackEventType.syncServer,
+  PlaybackEventType.sessionStart,
+  PlaybackEventType.sessionEnd,
+  PlaybackEventType.clickDebounce,
+};
 
 /// A single playback event entry.
 class PlaybackEvent {
@@ -51,23 +64,41 @@ class PlaybackEvent {
   String get label {
     switch (type) {
       case PlaybackEventType.play:
+        if (detail != null && detail!.isNotEmpty) return detail!;
         return 'Resumed playback';
       case PlaybackEventType.pause:
+        if (detail != null && detail!.isNotEmpty) return detail!;
         return 'Paused';
       case PlaybackEventType.seek:
+        if (detail != null && detail!.isNotEmpty) return 'Seeked $detail';
         return 'Seeked';
       case PlaybackEventType.syncLocal:
         return 'Saved locally';
       case PlaybackEventType.syncServer:
         return 'Synced to server';
       case PlaybackEventType.autoRewind:
+        if (detail != null && detail!.isNotEmpty) return 'Auto-rewound $detail';
         return 'Auto-rewound';
       case PlaybackEventType.skipForward:
+        if (detail != null && detail!.isNotEmpty) return 'Skipped forward (${detail!})';
         return 'Skipped forward';
       case PlaybackEventType.skipBackward:
+        if (detail != null && detail!.isNotEmpty) return 'Skipped back (${detail!})';
         return 'Skipped back';
       case PlaybackEventType.speedChange:
+        if (detail != null && detail!.isNotEmpty) return 'Speed set to ${detail!}';
         return 'Speed changed';
+      case PlaybackEventType.bookFinished:
+        return 'Book finished';
+      case PlaybackEventType.sessionStart:
+        if (detail != null && detail!.isNotEmpty) return 'Session started ($detail)';
+        return 'Session started';
+      case PlaybackEventType.sessionEnd:
+        if (detail != null && detail!.isNotEmpty) return 'Session ended ($detail)';
+        return 'Session ended';
+      case PlaybackEventType.clickDebounce:
+        if (detail != null && detail!.isNotEmpty) return 'Media button: $detail';
+        return 'Media button';
     }
   }
 
@@ -91,6 +122,14 @@ class PlaybackEvent {
         return '⏮';
       case PlaybackEventType.speedChange:
         return '⚡';
+      case PlaybackEventType.bookFinished:
+        return '🏁';
+      case PlaybackEventType.sessionStart:
+        return '🟢';
+      case PlaybackEventType.sessionEnd:
+        return '🔴';
+      case PlaybackEventType.clickDebounce:
+        return '🖲';
     }
   }
 }
@@ -101,7 +140,7 @@ class PlaybackHistoryService {
   factory PlaybackHistoryService() => _instance;
   PlaybackHistoryService._();
 
-  static const int _maxEventsPerBook = 200;
+  static const int _maxEventsPerBook = 1000;
 
   /// Log an event for a book.
   Future<void> log({
@@ -117,9 +156,8 @@ class PlaybackHistoryService {
       detail: detail,
     );
 
-    final prefs = await SharedPreferences.getInstance();
     final key = 'playback_history_$itemId';
-    final existing = prefs.getStringList(key) ?? [];
+    final existing = await ScopedPrefs.getStringList(key);
 
     existing.add(jsonEncode(event.toJson()));
 
@@ -128,14 +166,13 @@ class PlaybackHistoryService {
       existing.removeRange(0, existing.length - _maxEventsPerBook);
     }
 
-    await prefs.setStringList(key, existing);
+    await ScopedPrefs.setStringList(key, existing);
   }
 
   /// Get all events for a book, newest first.
   Future<List<PlaybackEvent>> getHistory(String itemId) async {
-    final prefs = await SharedPreferences.getInstance();
     final key = 'playback_history_$itemId';
-    final stored = prefs.getStringList(key) ?? [];
+    final stored = await ScopedPrefs.getStringList(key);
 
     final events = <PlaybackEvent>[];
     for (final json in stored) {
@@ -151,7 +188,6 @@ class PlaybackHistoryService {
 
   /// Clear history for a book.
   Future<void> clearHistory(String itemId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('playback_history_$itemId');
+    await ScopedPrefs.remove('playback_history_$itemId');
   }
 }

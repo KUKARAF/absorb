@@ -1,14 +1,22 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
-import 'package:app_links/app_links.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/backup_service.dart';
 import '../services/oidc_service.dart';
 import '../services/user_account_service.dart';
 import '../widgets/absorb_wave_icon.dart';
+import '../services/audio_player_service.dart';
+import '../main.dart' show applyTrustAllCerts, oledNotifier;
+import '../l10n/app_localizations.dart';
+import '../services/wording.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,9 +31,11 @@ class _LoginScreenState extends State<LoginScreen>
   final _serverController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _apiKeyController = TextEditingController();
   final _usernameFocus = FocusNode();
 
   bool _obscurePassword = true;
+  bool _obscureApiKey = true;
   bool _isConnecting = false;
   String _protocol = 'https://';
 
@@ -41,10 +51,10 @@ class _LoginScreenState extends State<LoginScreen>
   // OIDC state
   OidcConfig? _oidcConfig;
   bool _isOidcLoading = false;
-  StreamSubscription? _linkSub;
 
   // Custom headers (advanced)
   bool _showAdvanced = false;
+  bool _trustAllCerts = false;
   final List<(TextEditingController, TextEditingController)> _headerControllers = [];
 
   // App version
@@ -72,59 +82,6 @@ class _LoginScreenState extends State<LoginScreen>
     _animController.forward();
     _serverController.addListener(_onServerChanged);
     _loadVersion();
-    _initDeepLinkListener();
-  }
-
-  /// Listen for deep links (audiobookshelf://oauth callback).
-  void _initDeepLinkListener() {
-    final appLinks = AppLinks();
-    _linkSub = appLinks.uriLinkStream.listen((uri) {
-      debugPrint('[Login] Deep link received: $uri');
-      if (uri.scheme == 'audiobookshelf' && uri.host == 'oauth') {
-        _handleOidcCallback(uri);
-      }
-    });
-  }
-
-  /// Handle the OIDC callback URI from deep link.
-  Future<void> _handleOidcCallback(Uri uri) async {
-    final oidc = OidcService();
-    if (!oidc.isWaitingForCallback) {
-      debugPrint('[Login] No OIDC flow in progress, ignoring callback');
-      return;
-    }
-
-    setState(() {
-      _isOidcLoading = true;
-      _loginError = null;
-    });
-
-    final result = await oidc.handleCallback(uri);
-    if (result != null && mounted) {
-      final serverText = _serverController.text.trim();
-      final cleanUrl = serverText.replaceAll(RegExp(r'^https?://'), '');
-      final fullUrl = '$_protocol$cleanUrl';
-
-      final auth = context.read<AuthProvider>();
-      final success = await auth.loginWithOidc(
-        serverUrl: fullUrl,
-        result: result,
-      );
-
-      if (mounted) {
-        setState(() => _isOidcLoading = false);
-        if (!success) {
-          setState(() => _loginError = auth.errorMessage ?? 'SSO login failed');
-        } else if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      }
-    } else if (mounted) {
-      setState(() {
-        _isOidcLoading = false;
-        _loginError = 'SSO authentication failed. Please try again.';
-      });
-    }
   }
 
   Future<void> _loadVersion() async {
@@ -132,16 +89,20 @@ class _LoginScreenState extends State<LoginScreen>
       final info = await PackageInfo.fromPlatform();
       if (mounted) setState(() => _appVersion = 'v${info.version}');
     } catch (_) {}
+    try {
+      final trust = await PlayerSettings.getTrustAllCerts();
+      if (mounted) setState(() => _trustAllCerts = trust);
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
-    _linkSub?.cancel();
     _animController.dispose();
     _serverController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    _apiKeyController.dispose();
     _usernameFocus.dispose();
     for (final (k, v) in _headerControllers) { k.dispose(); v.dispose(); }
     OidcService().cancel();
@@ -215,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen>
       setState(() {
         _serverChecking = false;
         _serverValid = ok;
-        _serverError = ok ? null : 'Could not reach server';
+        _serverError = ok ? null : AppLocalizations.of(context)!.loginCouldNotReachServer;
         if (ok) {
           _lastValidatedServer = fullUrl;
         } else {
@@ -232,24 +193,34 @@ class _LoginScreenState extends State<LoginScreen>
           }
         });
 
-        Future.delayed(const Duration(milliseconds: 200), () {
-          if (mounted) _usernameFocus.requestFocus();
-        });
+        // Don't auto-focus — user may still be typing IP:port
       }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _serverChecking = false;
         _serverValid = false;
-        _serverError = 'Could not reach server';
+        _serverError = AppLocalizations.of(context)!.loginCouldNotReachServer;
         _oidcConfig = null;
       });
     }
   }
 
   Future<void> _handleLogin() async {
-    if (!_serverValid) return;
-    if (!_formKey.currentState!.validate()) return;
+    final apiKey = _apiKeyController.text.trim();
+
+    // Skip form validation when an API key is supplied — the username
+    // field's required-validator would otherwise block the submit.
+    if (apiKey.isEmpty && !_formKey.currentState!.validate()) return;
+
+    // Validate server first if not yet checked
+    if (!_serverValid) {
+      await _checkServer();
+      if (!_serverValid) {
+        setState(() => _loginError = _serverError ?? AppLocalizations.of(context)!.loginCouldNotReachServer);
+        return;
+      }
+    }
 
     setState(() {
       _isConnecting = true;
@@ -269,23 +240,35 @@ class _LoginScreenState extends State<LoginScreen>
       if (k.isNotEmpty && v.isNotEmpty) headers[k] = v;
     }
 
-    final success = await auth.login(
-      serverUrl: fullUrl,
-      username: _usernameController.text.trim(),
-      password: _passwordController.text,
-      customHeaders: headers,
-    );
+    final success = apiKey.isNotEmpty
+        ? await auth.loginWithApiKey(
+            serverUrl: fullUrl,
+            apiKey: apiKey,
+            customHeaders: headers,
+            l: AppLocalizations.of(context),
+          )
+        : await auth.login(
+            serverUrl: fullUrl,
+            username: _usernameController.text.trim(),
+            password: _passwordController.text,
+            customHeaders: headers,
+            l: AppLocalizations.of(context),
+          );
 
     if (mounted) {
       setState(() => _isConnecting = false);
 
       if (!success) {
         setState(() {
-          _loginError = auth.errorMessage ?? 'Login failed';
+          _loginError = auth.errorMessage ?? AppLocalizations.of(context)!.loginFailed;
         });
-      } else if (Navigator.of(context).canPop()) {
-        // If pushed as a route (e.g. Add Account), pop back
-        Navigator.of(context).pop();
+      } else {
+        TextInput.finishAutofillContext();
+        FocusManager.instance.primaryFocus?.unfocus();
+        if (Navigator.of(context).canPop()) {
+          // If pushed as a route (e.g. Add Account), pop back
+          Navigator.of(context).pop();
+        }
       }
     }
   }
@@ -302,25 +285,61 @@ class _LoginScreenState extends State<LoginScreen>
     final cleanUrl = serverText.replaceAll(RegExp(r'^https?://'), '');
     final fullUrl = '$_protocol$cleanUrl';
 
-    final error = await OidcService().startLogin(fullUrl);
-    if (error != null && mounted) {
+    final oidc = OidcService();
+    final callbackUri = await oidc.startLogin(fullUrl);
+    if (callbackUri == null) {
+      if (!mounted) return;
+      // Quiet path: user just dismissed the popup. Don't surface an error.
+      if (oidc.lastWasUserCancel) {
+        setState(() => _isOidcLoading = false);
+        return;
+      }
+      final base = AppLocalizations.of(context)!.loginSsoFailed;
+      final detail = oidc.lastError;
       setState(() {
         _isOidcLoading = false;
-        _loginError = error;
+        _loginError = detail != null ? '$base\n\n$detail' : base;
+      });
+      return;
+    }
+
+    final result = await oidc.handleCallback(callbackUri);
+    if (result != null && mounted) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      final auth = context.read<AuthProvider>();
+      final success = await auth.loginWithOidc(
+        serverUrl: fullUrl,
+        result: result,
+        l: AppLocalizations.of(context),
+      );
+      if (mounted) {
+        setState(() => _isOidcLoading = false);
+        if (!success) {
+          setState(() => _loginError = auth.errorMessage ?? AppLocalizations.of(context)!.loginSsoFailed);
+        } else if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      }
+    } else if (mounted) {
+      final base = AppLocalizations.of(context)!.loginSsoAuthFailed;
+      final detail = oidc.lastError;
+      setState(() {
+        _isOidcLoading = false;
+        _loginError = detail != null ? '$base\n\n$detail' : base;
       });
     }
-    // If no error, we're waiting for the deep link callback.
-    // _isOidcLoading stays true until callback arrives.
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Container(
-        decoration: BoxDecoration(
+        decoration: oledNotifier.value ? null : BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -334,11 +353,14 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
         child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                 children: [
                   // ── Logo + Tagline ──
                   FadeTransition(
@@ -378,7 +400,7 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                         const SizedBox(height: 28),
                         Text(
-                          'A B S O R B',
+                          l.appTitle,
                           style: tt.headlineMedium?.copyWith(
                             fontWeight: FontWeight.w200,
                             color: cs.onSurface,
@@ -387,7 +409,7 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          'Start Absorbing',
+                          Wording.of(context).loginTagline,
                           style: tt.bodyLarge?.copyWith(
                             color: cs.onSurfaceVariant.withValues(alpha: 0.6),
                             fontWeight: FontWeight.w400,
@@ -429,7 +451,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   Padding(
                                     padding: const EdgeInsets.only(left: 4, bottom: 16),
                                     child: Text(
-                                      'Connect to your server',
+                                      l.loginConnectToServer,
                                       style: tt.titleSmall?.copyWith(
                                         color: cs.onSurfaceVariant.withValues(alpha: 0.7),
                                         fontWeight: FontWeight.w500,
@@ -440,12 +462,19 @@ class _LoginScreenState extends State<LoginScreen>
                                   // Server URL
                                   _buildInputField(
                                     controller: _serverController,
-                                    label: 'Server address',
-                                    hint: 'abs.example.com',
+                                    label: l.loginServerAddress,
+                                    hint: l.loginServerHint,
+                                    helperText: l.loginServerHelper,
                                     keyboardType: TextInputType.url,
                                     textInputAction: TextInputAction.next,
                                     onFieldSubmitted: (_) {
-                                      if (!_serverValid && !_serverChecking) _checkServer();
+                                      if (!_serverValid && !_serverChecking) {
+                                        _checkServer().then((_) {
+                                          if (mounted && _serverValid) _usernameFocus.requestFocus();
+                                        });
+                                      } else if (_serverValid) {
+                                        _usernameFocus.requestFocus();
+                                      }
                                     },
                                     cs: cs,
                                     prefixIcon: Padding(
@@ -513,15 +542,15 @@ class _LoginScreenState extends State<LoginScreen>
                                         Icon(_showAdvanced ? Icons.expand_less_rounded : Icons.expand_more_rounded,
                                           size: 18, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
                                         const SizedBox(width: 4),
-                                        Text('Advanced', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+                                        Text(l.loginAdvanced, style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
                                       ],
                                     ),
                                   ),
                                   if (_showAdvanced) ...[
                                     const SizedBox(height: 8),
-                                    Text('Custom HTTP Headers', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
+                                    Text(l.loginCustomHttpHeaders, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
                                     const SizedBox(height: 4),
-                                    Text('For Cloudflare tunnels or reverse proxies that require extra headers. Add headers before entering your server URL.',
+                                    Text(l.loginCustomHeadersDescription,
                                       style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.4))),
                                     const SizedBox(height: 8),
                                     ..._headerControllers.asMap().entries.map((entry) {
@@ -538,7 +567,7 @@ class _LoginScreenState extends State<LoginScreen>
                                                 style: TextStyle(fontSize: 13, color: cs.onSurface),
                                                 onChanged: (_) => _revalidateServer(),
                                                 decoration: InputDecoration(
-                                                  hintText: 'Header name',
+                                                  hintText: l.loginHeaderName,
                                                   hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.3), fontSize: 13),
                                                   filled: true,
                                                   fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
@@ -555,7 +584,7 @@ class _LoginScreenState extends State<LoginScreen>
                                                 style: TextStyle(fontSize: 13, color: cs.onSurface),
                                                 onChanged: (_) => _revalidateServer(),
                                                 decoration: InputDecoration(
-                                                  hintText: 'Value',
+                                                  hintText: l.loginHeaderValue,
                                                   hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.3), fontSize: 13),
                                                   filled: true,
                                                   fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
@@ -591,14 +620,73 @@ class _LoginScreenState extends State<LoginScreen>
                                           children: [
                                             Icon(Icons.add_rounded, size: 16, color: cs.primary),
                                             const SizedBox(width: 4),
-                                            Text('Add Header', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.primary)),
+                                            Text(l.loginAddHeader, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.primary)),
                                           ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Divider(height: 1),
+                                    const SizedBox(height: 4),
+                                    Text(l.loginSelfSignedCertificates, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            l.loginTrustAllCertificates,
+                                            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
+                                          ),
+                                        ),
+                                        Transform.scale(
+                                          scale: 0.8,
+                                          child: Switch(
+                                            value: _trustAllCerts,
+                                            onChanged: (v) async {
+                                              setState(() => _trustAllCerts = v);
+                                              await PlayerSettings.setTrustAllCerts(v);
+                                              applyTrustAllCerts(v);
+                                              _revalidateServer();
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Divider(height: 1),
+                                    const SizedBox(height: 8),
+                                    Text(l.loginApiKey, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
+                                    const SizedBox(height: 4),
+                                    Text(l.loginApiKeyDescription,
+                                      style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.4))),
+                                    const SizedBox(height: 8),
+                                    TextField(
+                                      controller: _apiKeyController,
+                                      obscureText: _obscureApiKey,
+                                      autocorrect: false,
+                                      enableSuggestions: false,
+                                      style: TextStyle(fontSize: 13, color: cs.onSurface),
+                                      onChanged: (_) => setState(() {}),
+                                      decoration: InputDecoration(
+                                        hintText: l.loginApiKey,
+                                        hintStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.3), fontSize: 13),
+                                        filled: true,
+                                        fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        prefixIcon: Icon(Icons.vpn_key_rounded, size: 18, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+                                        suffixIcon: IconButton(
+                                          icon: Icon(
+                                            _obscureApiKey ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                            size: 18,
+                                            color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                                          ),
+                                          onPressed: () => setState(() => _obscureApiKey = !_obscureApiKey),
                                         ),
                                       ),
                                     ),
                                   ],
 
-                                  // SSO / OIDC button — shown right below server URL so keyboard doesn't hide it
+                                  // SSO / OIDC button — only shown when server supports it
                                   AnimatedSize(
                                     duration: const Duration(milliseconds: 350),
                                     curve: Curves.easeOutCubic,
@@ -608,15 +696,8 @@ class _LoginScreenState extends State<LoginScreen>
                                         : const SizedBox.shrink(),
                                   ),
 
-                                  // Credentials — animated in when server is valid
-                                  AnimatedSize(
-                                    duration: const Duration(milliseconds: 350),
-                                    curve: Curves.easeOutCubic,
-                                    alignment: Alignment.topCenter,
-                                    child: _serverValid
-                                        ? _buildCredentialFields(cs, tt)
-                                        : const SizedBox.shrink(),
-                                  ),
+                                  // Credentials — always visible
+                                  _buildCredentialFields(cs, tt),
                                 ],
                               ),
                             ),
@@ -626,16 +707,35 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
                   ),
 
-                  // ── Version label ──
+                  // ── Version + Restore pill ──
                   const SizedBox(height: 32),
                   FadeTransition(
                     opacity: _fadeAnim,
-                    child: Text(
-                      _appVersion,
-                      style: tt.labelSmall?.copyWith(
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.3),
-                        letterSpacing: 1,
-                      ),
+                    child: Column(
+                      children: [
+                        Text(
+                          _appVersion,
+                          style: tt.labelSmall?.copyWith(
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.3),
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ActionChip(
+                          avatar: Icon(Icons.restore_rounded, size: 16,
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+                          label: Text(l.loginRestoreFromBackup,
+                            style: tt.labelSmall?.copyWith(
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                            )),
+                          backgroundColor: cs.surfaceContainerHighest.withValues(alpha: 0.3),
+                          side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.15)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          onPressed: _restoreFromBackup,
+                        ),
+                      ],
                     ),
                   ),
 
@@ -647,12 +747,14 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
       ),
+    ),
     );
   }
 
   Widget _buildSavedAccounts(ColorScheme cs, TextTheme tt) {
     final accounts = UserAccountService().accounts;
     if (accounts.isEmpty) return const SizedBox.shrink();
+    final l = AppLocalizations.of(context)!;
 
     return FadeTransition(
       opacity: _fadeAnim,
@@ -665,7 +767,7 @@ class _LoginScreenState extends State<LoginScreen>
                 Expanded(child: Divider(color: cs.outlineVariant.withValues(alpha: 0.15))),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Text('saved accounts',
+                  child: Text(l.loginSavedAccounts,
                     style: tt.bodySmall?.copyWith(
                       color: cs.onSurfaceVariant.withValues(alpha: 0.4))),
                 ),
@@ -734,6 +836,99 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
+  Future<void> _restoreFromBackup() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
+      if (result == null || result.files.isEmpty) return;
+
+      final file = File(result.files.single.path!);
+      final jsonStr = await file.readAsString();
+      final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+
+      if (!data.containsKey('version')) {
+        if (mounted) {
+          final l = AppLocalizations.of(context)!;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l.loginInvalidBackupFile)),
+          );
+        }
+        return;
+      }
+
+      final accounts = data['accounts'] as List<dynamic>?;
+      final accountCount = accounts?.length ?? 0;
+      final hasAccounts = accountCount > 0;
+
+      if (!mounted) return;
+      final l = AppLocalizations.of(context)!;
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(l.loginRestoreBackupTitle),
+          content: Text(hasAccounts
+              ? l.loginRestoreBackupWithAccounts(accountCount)
+              : l.loginRestoreBackupNoAccounts),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l.loginRestore),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) return;
+
+      await BackupService.importSettings(data);
+
+      // Auto-login with the first restored account
+      if (hasAccounts && mounted) {
+        final restoredAccounts = UserAccountService().accounts;
+        if (restoredAccounts.isNotEmpty) {
+          final auth = context.read<AuthProvider>();
+          await auth.switchToAccount(restoredAccounts.first);
+
+          if (mounted) {
+            final l2 = AppLocalizations.of(context)!;
+            if (auth.isAuthenticated && auth.serverReachable) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(l2.loginRestoredAndSignedIn(restoredAccounts.first.username)),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ));
+            } else {
+              // Token expired — accounts are saved but need re-auth
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(l2.loginSessionExpired),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ));
+              setState(() {}); // Refresh to show saved accounts list
+            }
+          }
+        }
+      } else if (mounted) {
+        final l3 = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l3.loginSettingsRestored),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        final l4 = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l4.loginRestoreFailed(e.toString()))),
+        );
+      }
+    }
+  }
+
   Future<void> _quickSwitch(SavedAccount account) async {
     setState(() => _isConnecting = true);
 
@@ -754,6 +949,7 @@ class _LoginScreenState extends State<LoginScreen>
     required String label,
     required ColorScheme cs,
     String? hint,
+    String? helperText,
     TextInputType? keyboardType,
     TextInputAction? textInputAction,
     FocusNode? focusNode,
@@ -764,19 +960,27 @@ class _LoginScreenState extends State<LoginScreen>
     bool obscureText = false,
     void Function(String)? onFieldSubmitted,
     String? Function(String?)? validator,
+    Iterable<String>? autofillHints,
   }) {
+    final isUrl = keyboardType == TextInputType.url;
     return TextFormField(
       controller: controller,
       focusNode: focusNode,
       keyboardType: keyboardType,
       textInputAction: textInputAction,
       obscureText: obscureText,
+      autocorrect: !isUrl,
+      enableSuggestions: !isUrl,
+      autofillHints: autofillHints,
       onFieldSubmitted: onFieldSubmitted,
       validator: validator,
       style: TextStyle(color: cs.onSurface),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
+        helperText: helperText,
+        helperStyle: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 11),
+        helperMaxLines: 2,
         prefixIcon: prefixIcon,
         suffixIcon: suffixIcon,
         errorText: errorText,
@@ -802,6 +1006,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildOidcButton(ColorScheme cs, TextTheme tt) {
+    final l = AppLocalizations.of(context)!;
     return Column(
       children: [
         const SizedBox(height: 16),
@@ -817,7 +1022,7 @@ class _LoginScreenState extends State<LoginScreen>
                   )
                 : Icon(Icons.login_rounded, size: 20, color: cs.primary),
             label: Text(
-              _isOidcLoading ? 'Waiting for SSO...' : _oidcConfig!.buttonText,
+              _isOidcLoading ? l.loginWaitingForSso : _oidcConfig!.buttonText,
               style: tt.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: cs.primary,
@@ -831,13 +1036,21 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
         ),
+        const SizedBox(height: 8),
+        Text(
+          l.loginRedirectUri,
+          style: tt.labelSmall?.copyWith(
+            color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+            letterSpacing: 0.3,
+          ),
+        ),
         const SizedBox(height: 16),
         Row(
           children: [
             Expanded(child: Divider(color: cs.outlineVariant.withValues(alpha: 0.2))),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Text('or sign in manually', style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+              child: Text(l.loginOrSignInManually, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
             ),
             Expanded(child: Divider(color: cs.outlineVariant.withValues(alpha: 0.2))),
           ],
@@ -847,7 +1060,10 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildCredentialFields(ColorScheme cs, TextTheme tt) {
-    return Column(
+    final l = AppLocalizations.of(context)!;
+    final usingApiKey = _apiKeyController.text.trim().isNotEmpty;
+    return AutofillGroup(
+      child: Column(
       children: [
         const SizedBox(height: 16),
 
@@ -878,53 +1094,52 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
 
-        // Username
-        _buildInputField(
-          controller: _usernameController,
-          focusNode: _usernameFocus,
-          label: 'Username',
-          cs: cs,
-          textInputAction: TextInputAction.next,
-          prefixIcon: Icon(Icons.person_outline_rounded, size: 20,
-            color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
-          validator: (v) {
-            if (v == null || v.trim().isEmpty) {
-              return 'Please enter your username';
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 14),
-
-        // Password
-        _buildInputField(
-          controller: _passwordController,
-          label: 'Password',
-          cs: cs,
-          obscureText: _obscurePassword,
-          textInputAction: TextInputAction.done,
-          onFieldSubmitted: (_) => _handleLogin(),
-          prefixIcon: Icon(Icons.lock_outline_rounded, size: 20,
-            color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
-          suffixIcon: IconButton(
-            icon: Icon(
-              _obscurePassword
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              size: 20,
-              color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-            onPressed: () {
-              setState(() => _obscurePassword = !_obscurePassword);
+        if (!usingApiKey) ...[
+          // Username
+          _buildInputField(
+            controller: _usernameController,
+            focusNode: _usernameFocus,
+            label: l.loginUsername,
+            cs: cs,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.username],
+            prefixIcon: Icon(Icons.person_outline_rounded, size: 20,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) {
+                return l.loginUsernameRequired;
+              }
+              return null;
             },
           ),
-          validator: (v) {
-            if (v == null || v.isEmpty) {
-              return 'Please enter your password';
-            }
-            return null;
-          },
-        ),
+          const SizedBox(height: 14),
+
+          // Password
+          _buildInputField(
+            controller: _passwordController,
+            label: l.loginPassword,
+            cs: cs,
+            obscureText: _obscurePassword,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.password],
+            onFieldSubmitted: (_) => _handleLogin(),
+            prefixIcon: Icon(Icons.lock_outline_rounded, size: 20,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                size: 20,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+              ),
+              onPressed: () {
+                setState(() => _obscurePassword = !_obscurePassword);
+              },
+            ),
+            // No validator — ABS allows passwordless accounts
+          ),
+        ],
         const SizedBox(height: 24),
 
         // Sign In button
@@ -954,7 +1169,7 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     )
                   : Text(
-                      'Sign In',
+                      l.loginSignIn,
                       key: const ValueKey('text'),
                       style: tt.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
@@ -967,6 +1182,7 @@ class _LoginScreenState extends State<LoginScreen>
 
 
       ],
+      ),
     );
   }
 }

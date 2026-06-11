@@ -1,0 +1,156 @@
+name: Linux Flatpak
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build & publish Flatpak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pubspec version
+        id: version
+        run: |
+          RAW=$(grep '^version:' pubspec.yaml | sed 's/version: *//')
+          VERSION_NAME="${RAW%%+*}"
+          echo "raw=$RAW" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config clang \
+            libgtk-3-dev libmpv-dev \
+            libwebkit2gtk-4.1-dev imagemagick patchelf
+
+      - name: Build Flutter Linux
+        run: |
+          flutter pub get
+          flutter build linux --release
+
+      - name: Bundle libmpv and native deps into Flutter bundle
+        run: |
+          BUNDLE_LIB=build/linux/x64/release/bundle/lib
+          mkdir -p "$BUNDLE_LIB"
+
+          LIBMPV=$(ldconfig -p | awk '/libmpv\.so\.2/{print $NF}' | head -1)
+          [ -z "$LIBMPV" ] && LIBMPV=$(find /usr/lib /lib -name 'libmpv.so.2' 2>/dev/null | head -1)
+          echo "Bundling: $LIBMPV"
+          cp -L "$LIBMPV" "$BUNDLE_LIB/libmpv.so.2"
+
+          # Skip libs provided by GNOME Platform 50 (freedesktop 24.08 base).
+          # Bundling older Ubuntu 24.04 versions causes symbol-version failures
+          # because LD_LIBRARY_PATH causes platform libs to pick up our copies.
+          # Rule: if GNOME Platform ships it, skip it; mpv will use the platform's version.
+          SKIP='libglib-2\|libgobject-2\|libgio-2\|libgmodule-2\|libgthread-2'
+          SKIP="$SKIP"'\|libgtk\|libgdk\|libpango\|libcairo\|libharfbuzz\|libatk\|libepoxy\|libgsk'
+          SKIP="$SKIP"'\|libwayland\|libxkbcommon'
+          SKIP="$SKIP"'\|libGL\.\|libEGL\.\|libGLdispatch\|libGLX\|libGLESv'
+          SKIP="$SKIP"'\|libX11\.\|libXext\|libXfixes\|libXrender\|libxcb\.'
+          SKIP="$SKIP"'\|libXrandr\|libXv\.\|libXss\|libXi\.\|libXau\.\|libXdmcp\.'
+          SKIP="$SKIP"'\|libfontconfig\|libfreetype\|libfribidi\|libpixman'
+          SKIP="$SKIP"'\|libpulse\|libpipewire\|libasound\|libjack'
+          SKIP="$SKIP"'\|libssl\.\|libcrypto\.'
+          SKIP="$SKIP"'\|libgbm\.\|libvulkan\.\|libdrm\.\|libva\.\|libva-\|libvdpau\.'
+          SKIP="$SKIP"'\|libOpenCL\|libOpenGL'
+          SKIP="$SKIP"'\|libstdc++\|libgcc_s\|libc\.so\|libm\.so\|libpthread\|libdl\.so\|librt\.so\|ld-linux'
+          SKIP="$SKIP"'\|liblzma\.\|libzstd\|libz\.so'
+          SKIP="$SKIP"'\|libdbus-1\|libnss\|libresolv\|libsystemd'
+          SKIP="$SKIP"'\|libmount\.\|libblkid\.\|libuuid\.\|libacl\.\|libattr\.\|libapparmor\.\|libcap\.\|libpcre'
+          SKIP="$SKIP"'\|libpng\|libtiff\.'
+          # Note: libjpeg.so.8, libXpresent.so.1, libbz2.so.1.0, libFLAC.so.12
+          # are NOT in GNOME Platform 50 so must be bundled, not skipped.
+
+          ldd "$LIBMPV" | awk '/=>/{print $3}' | grep '^/' | while read dep; do
+            name=$(basename "$dep")
+            if echo "$name" | grep -q "$SKIP"; then
+              continue
+            fi
+            echo "  bundling: $name"
+            cp -L "$dep" "$BUNDLE_LIB/$name" || echo "  WARNING: failed to copy $dep"
+          done
+
+          # Set RPATH=$ORIGIN on every bundled lib so they resolve each other
+          # directly rather than through LD_LIBRARY_PATH, which would otherwise
+          # shadow platform libs for the entire process.
+          echo "Patching RPATHs..."
+          find "$BUNDLE_LIB" -maxdepth 1 -name '*.so*' -type f | while read lib; do
+            patchelf --set-rpath '$ORIGIN' "$lib" 2>/dev/null && echo "  patched: $(basename "$lib")" || true
+          done
+
+          echo "Bundled $(ls "$BUNDLE_LIB" | wc -l) libs:"
+          ls "$BUNDLE_LIB/"
+
+      - name: Install flatpak tools
+        run: |
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub \
+            org.gnome.Platform//50 \
+            org.gnome.Sdk//50
+
+      - name: Resize icon for flatpak
+        run: convert assets/icon/app_icon.png -resize 512x512 assets/icon/app_icon.png
+
+      - name: Build flatpak
+        run: |
+          flatpak-builder --force-clean --user --repo=flatpak-repo \
+            build-flatpak \
+            packaging/io.github.rafa.absorb.ci.yml
+          flatpak build-update-repo --generate-static-deltas flatpak-repo
+
+      - name: Export .flatpak bundle
+        run: |
+          flatpak build-bundle \
+            flatpak-repo \
+            absorb-${{ steps.version.outputs.raw }}.flatpak \
+            io.github.rafa.absorb
+
+      - name: Upload to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ steps.version.outputs.tag }}
+          RAW: ${{ steps.version.outputs.raw }}
+        run: |
+          if gh release view "$VERSION_TAG" &>/dev/null; then
+            gh release upload "$VERSION_TAG" \
+              "absorb-${RAW}.flatpak" --clobber
+          else
+            gh release create "$VERSION_TAG" \
+              "absorb-${RAW}.flatpak" \
+              --draft --title "$VERSION_TAG"
+          fi
+
+      - name: Notify Discord
+        if: always() && env.DISCORD_WEBHOOK_URL != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          VERSION: ${{ steps.version.outputs.raw }}
+          RUN_URL: ${{ format('https://github.com/{0}/actions/runs/{1}', github.repository, github.run_id) }}
+          STATUS: ${{ job.status }}
+        run: |
+          if [ "$STATUS" = "success" ]; then
+            TITLE="Linux Flatpak build successful"; COLOR=3066993
+          else
+            TITLE="Linux Flatpak build failed"; COLOR=15158332
+          fi
+          curl -sS -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"$TITLE\",\"description\":\"v${VERSION}\\n[Build log](${RUN_URL})\",\"color\":${COLOR}}]}" \
+            > /dev/null 2>&1 || true

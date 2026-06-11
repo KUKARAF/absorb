@@ -166,7 +166,7 @@ class _AbsorbTrackShape extends SliderTrackShape {
     }
 
     // Endpoint dots
-    final dotRadius = 3.0;
+    const dotRadius = 3.0;
     final dotColor = sliderTheme.activeTrackColor?.withValues(alpha: 0.5) ??
         Colors.white.withValues(alpha: 0.3);
     final centerY = trackRect.center.dy;
@@ -211,9 +211,9 @@ class AbsorbProgressPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final centerY = size.height / 2;
-    final trackHeight = 8.0;
+    const trackHeight = 8.0;
     final trackTop = centerY - trackHeight / 2;
-    final padding = 14.0;
+    const padding = 14.0;
     final trackLeft = padding;
     final trackWidth = size.width - padding * 2;
     final trackRight = trackLeft + trackWidth;
@@ -234,8 +234,8 @@ class AbsorbProgressPainter extends CustomPainter {
       // Subtle squiggly wave for active portion
       final path = Path();
       final waveAmplitude = isDragging ? 1.5 : 2.5;
-      final waveFrequency = 0.06;
-      final pi2 = 3.14159265 * 2;
+      const waveFrequency = 0.06;
+      const pi2 = 3.14159265 * 2;
       final phaseOffset = wavePhase * pi2;
 
       path.moveTo(trackLeft, centerY);
@@ -283,8 +283,8 @@ class AbsorbProgressPainter extends CustomPainter {
     }
 
     // Thumb handle (tall rounded rect — style 4)
-    final thumbWidth = isDragging ? 7.0 : 5.0;
-    final thumbHeight = isDragging ? 32.0 : 26.0;
+    final thumbWidth = isDragging ? 10.0 : 5.0;
+    final thumbHeight = isDragging ? 34.0 : 26.0;
     final thumbRect = RRect.fromRectAndRadius(
       Rect.fromCenter(
         center: Offset(progressX, centerY),
@@ -294,12 +294,20 @@ class AbsorbProgressPainter extends CustomPainter {
       Radius.circular(thumbWidth / 2),
     );
 
+    // Shadow
     canvas.drawRRect(
       thumbRect.shift(const Offset(0, 1)),
       Paint()
         ..color = Colors.black.withValues(alpha: 0.3)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
     );
+    // White border when dragging for contrast
+    if (isDragging) {
+      canvas.drawRRect(
+        thumbRect.inflate(1.5),
+        Paint()..color = Colors.white,
+      );
+    }
     canvas.drawRRect(thumbRect, Paint()..color = accent);
   }
 

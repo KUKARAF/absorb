@@ -1,11 +1,21 @@
 package com.barnabas.absorb
 
+import android.content.Context
+import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.provider.MediaStore
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
+import android.os.Build
+import android.os.Environment
+import android.os.StatFs
+
 import android.util.Log
 import com.ryanheise.audioservice.AudioServiceActivity
+import com.ryanheise.just_audio.MonoController
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -18,6 +28,13 @@ class MainActivity : AudioServiceActivity() {
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var currentSessionId: Int = 0
+    private var eqEnabled: Boolean = false
+    private var eqLoudnessGainMb: Int = 0  // gain from EQ loudness slider
+    // Some devices (e.g. older Samsung on Android 9) have a broken audio-effect
+    // HAL that fails to initialize. Constructing AudioEffects against it during
+    // playback can crash the process natively, which Kotlin can't catch. Once
+    // init proves the engine is unavailable, skip attaching native effects.
+    private var effectsAvailable: Boolean = true
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -25,6 +42,14 @@ class MainActivity : AudioServiceActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "moveToBackground" -> {
+                        moveTaskToBack(true)
+                        result.success(true)
+                    }
+
+                    "isBluetoothAudioConnected" -> {
+                        result.success(isBluetoothAudioConnected())
+                    }
                     "init" -> handleInit(result)
                     "attachSession" -> {
                         val sessionId = call.argument<Int>("sessionId") ?: 0
@@ -51,10 +76,37 @@ class MainActivity : AudioServiceActivity() {
                         val gain = call.argument<Int>("gain") ?: 0
                         handleSetLoudness(gain, result)
                     }
+                    "setMono" -> {
+                        val enabled = call.argument<Boolean>("enabled") ?: false
+                        MonoController.setMonoEnabled(enabled)
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
         Log.d(TAG, "EQ method channel registered")
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.absorb.storage")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getDeviceStorage" -> {
+                        try {
+                            val stat = StatFs(Environment.getDataDirectory().path)
+                            result.success(mapOf(
+                                "totalBytes" to stat.totalBytes,
+                                "availableBytes" to stat.availableBytes
+                            ))
+                        } catch (e: Exception) {
+                            result.error("STORAGE_ERROR", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // GMS-backed channels (cast foreground service, wear bridges).
+        // Resolves to the real impl in github/playstore, no-op in fdroid.
+        PlatformIntegration.registerChannels(this, flutterEngine)
     }
 
     private fun handleInit(result: MethodChannel.Result) {
@@ -70,6 +122,7 @@ class MainActivity : AudioServiceActivity() {
             val maxLevel = bandRange[1] / 100.0
             tempEq.release()
 
+            effectsAvailable = true
             Log.d(TAG, "init: $numBands bands, frequencies=$frequencies, range=[$minLevel, $maxLevel]dB")
             result.success(mapOf(
                 "bands" to numBands,
@@ -78,6 +131,7 @@ class MainActivity : AudioServiceActivity() {
                 "maxLevel" to maxLevel
             ))
         } catch (e: Exception) {
+            effectsAvailable = false
             Log.e(TAG, "init failed: ${e.message}")
             result.error("EQ_INIT_ERROR", e.message, null)
         }
@@ -96,24 +150,37 @@ class MainActivity : AudioServiceActivity() {
                 return
             }
 
-            equalizer = Equalizer(0, sessionId).apply { enabled = true }
+            // Don't touch the audio-effect HAL on devices where it failed to
+            // init, since constructing effects there can crash natively.
+            // Software presets still drive the EQ UI; we just skip hardware fx.
+            if (!effectsAvailable) {
+                Log.w(TAG, "attachSession: effect engine unavailable, skipping native effects for session $sessionId")
+                result.success(true)
+                return
+            }
+
+            equalizer = Equalizer(0, sessionId).apply { enabled = false }
             bassBoost = try {
-                BassBoost(0, sessionId).apply { enabled = true }
+                BassBoost(0, sessionId).apply { enabled = false }
             } catch (e: Exception) {
                 Log.w(TAG, "BassBoost not supported: ${e.message}"); null
             }
             virtualizer = try {
-                Virtualizer(0, sessionId).apply { enabled = true }
+                Virtualizer(0, sessionId).apply { enabled = false }
             } catch (e: Exception) {
                 Log.w(TAG, "Virtualizer not supported: ${e.message}"); null
             }
             loudnessEnhancer = try {
-                LoudnessEnhancer(sessionId).apply { enabled = true }
+                LoudnessEnhancer(sessionId).apply {
+                    setTargetGain(eqLoudnessGainMb)
+                    enabled = false
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "LoudnessEnhancer not supported: ${e.message}"); null
             }
 
-            Log.d(TAG, "Effects attached to session $sessionId")
+            // Alpha: capture LoudnessEnhancer/eq state on attach for GH #179 (volume falls off).
+            Log.d(TAG, "Effects attached to session $sessionId: eqEnabled=$eqEnabled loudnessGainMb=$eqLoudnessGainMb loudnessEffectOk=${loudnessEnhancer != null}")
             result.success(true)
         } catch (e: Exception) {
             Log.e(TAG, "attachSession failed: ${e.message}")
@@ -123,10 +190,11 @@ class MainActivity : AudioServiceActivity() {
 
     private fun handleSetEnabled(enabled: Boolean, result: MethodChannel.Result) {
         try {
+            // Master switch gates only the band EQ. Bass / virtualizer /
+            // loudness are independent and track their own values, so they
+            // keep working with the equalizer off.
+            eqEnabled = enabled
             equalizer?.enabled = enabled
-            bassBoost?.enabled = enabled
-            virtualizer?.enabled = enabled
-            loudnessEnhancer?.enabled = enabled
             result.success(true)
         } catch (e: Exception) {
             result.error("EQ_ERROR", e.message, null)
@@ -144,7 +212,10 @@ class MainActivity : AudioServiceActivity() {
 
     private fun handleSetBassBoost(strength: Int, result: MethodChannel.Result) {
         try {
-            bassBoost?.setStrength(strength.toShort().coerceIn(0, 1000))
+            val s = strength.toShort().coerceIn(0, 1000)
+            bassBoost?.setStrength(s)
+            // Independent of the band-EQ master: on when there's something to do.
+            bassBoost?.enabled = s > 0
             result.success(true)
         } catch (e: Exception) {
             result.error("EQ_ERROR", e.message, null)
@@ -153,7 +224,9 @@ class MainActivity : AudioServiceActivity() {
 
     private fun handleSetVirtualizer(strength: Int, result: MethodChannel.Result) {
         try {
-            virtualizer?.setStrength(strength.toShort().coerceIn(0, 1000))
+            val s = strength.toShort().coerceIn(0, 1000)
+            virtualizer?.setStrength(s)
+            virtualizer?.enabled = s > 0
             result.success(true)
         } catch (e: Exception) {
             result.error("EQ_ERROR", e.message, null)
@@ -162,7 +235,9 @@ class MainActivity : AudioServiceActivity() {
 
     private fun handleSetLoudness(gain: Int, result: MethodChannel.Result) {
         try {
+            eqLoudnessGainMb = gain
             loudnessEnhancer?.setTargetGain(gain)
+            loudnessEnhancer?.enabled = gain > 0
             result.success(true)
         } catch (e: Exception) {
             result.error("EQ_ERROR", e.message, null)
@@ -178,10 +253,39 @@ class MainActivity : AudioServiceActivity() {
         bassBoost = null
         virtualizer = null
         loudnessEnhancer = null
+        eqLoudnessGainMb = 0
+        eqEnabled = false
+    }
+
+    private fun isBluetoothAudioConnected(): Boolean {
+        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            return devices.any {
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            }
+        }
+        @Suppress("DEPRECATION")
+        return am.isBluetoothA2dpOn || am.isBluetoothScoOn
+    }
+
+    // Discard media search intents from Google Assistant / Android Auto so the
+    // voice query text doesn't leak into the app's search field.
+    override fun onNewIntent(intent: Intent) {
+        val action = intent.action
+        if (action == MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH ||
+            action == Intent.ACTION_SEARCH ||
+            action == "android.media.action.MEDIA_PLAY_FROM_SEARCH") {
+            Log.d(TAG, "Discarding search intent: $action")
+            return
+        }
+        super.onNewIntent(intent)
     }
 
     override fun onDestroy() {
         releaseEffects()
         super.onDestroy()
     }
+
 }

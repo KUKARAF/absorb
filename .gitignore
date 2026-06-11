@@ -3,6 +3,14 @@
 *.log
 *.pyc
 *.swp
+
+# Captured logcat / diagnostic dumps (never commit)
+/drive_*.txt
+/overnight_*.txt
+/podcast_sync_test.txt
+/absorb_logs_share_*.txt
+/*_logcat.txt
+/*_cpu.txt
 .DS_Store
 .atom/
 .build/
@@ -22,6 +30,9 @@ migrate_working_dir/
 # VS Code which you may wish to be included in version control, so this line
 # is commented out by default.
 #.vscode/
+
+# DevTools
+devtools_options.yaml
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -46,3 +57,24 @@ app.*.map.json
 
 android/key.properties
 *.jks
+
+# Build scripts (local only)
+*.sh
+
+# Tests (local only)
+/test/
+
+# Battery profiling output
+/battery-reports/
+
+# Flutter example build artifacts (vendored packages under packages/)
+**/android/app/src/main/java/io/
+**/android/local.properties
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/ios/Runner/GeneratedPluginRegistrant.h
+**/ios/Runner/GeneratedPluginRegistrant.m
+**/macos/Flutter/GeneratedPluginRegistrant.swift
+**/macos/Flutter/ephemeral/
+packages/audio_service/pubspec.lock
+packages/audio_service/example/pubspec.lock

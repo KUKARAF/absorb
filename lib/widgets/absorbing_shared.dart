@@ -1,8 +1,163 @@
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
+import '../providers/library_provider.dart';
 import '../services/download_service.dart';
+import '../services/playback_history_service.dart';
+import 'overlay_toast.dart';
+
+String dateLabel(DateTime dt, [AppLocalizations? l]) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final date = DateTime(dt.year, dt.month, dt.day);
+  if (date == today) return l?.absorbingSharedToday ?? 'Today';
+  if (date == today.subtract(const Duration(days: 1))) return l?.absorbingSharedYesterday ?? 'Yesterday';
+  if (now.difference(dt).inDays < 7) {
+    if (l != null) {
+      switch (dt.weekday) {
+        case 1: return l.absorbingSharedMonday;
+        case 2: return l.absorbingSharedTuesday;
+        case 3: return l.absorbingSharedWednesday;
+        case 4: return l.absorbingSharedThursday;
+        case 5: return l.absorbingSharedFriday;
+        case 6: return l.absorbingSharedSaturday;
+        case 7: return l.absorbingSharedSunday;
+      }
+    }
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return days[dt.weekday - 1];
+  }
+  return '${dt.month}/${dt.day}/${dt.year}';
+}
+
+String timeOfDay(DateTime dt, [AppLocalizations? l]) {
+  final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+  final m = dt.minute.toString().padLeft(2, '0');
+  final isAm = dt.hour < 12;
+  final ampm = l != null
+      ? (isAm ? l.absorbingSharedAm : l.absorbingSharedPm)
+      : (isAm ? 'AM' : 'PM');
+  return '$h:$m $ampm';
+}
+
+String fmtTime(double s) {
+  if (s < 0) s = 0;
+  final h = (s / 3600).floor(); final m = ((s % 3600) / 60).floor(); final sec = (s % 60).floor();
+  if (h > 0) return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+}
+
+String fmtDur(double s) {
+  final h = (s / 3600).floor(); final m = ((s % 3600) / 60).floor(); final sec = (s % 60).floor();
+  if (h > 0) return '${h}h ${m}m';
+  return '${m}m ${sec}s';
+}
+
+IconData historyIcon(PlaybackEventType type) {
+  switch (type) {
+    case PlaybackEventType.play: return Icons.play_arrow_rounded;
+    case PlaybackEventType.pause: return Icons.pause_rounded;
+    case PlaybackEventType.seek: return Icons.swap_horiz_rounded;
+    case PlaybackEventType.syncLocal: return Icons.save_rounded;
+    case PlaybackEventType.syncServer: return Icons.cloud_done_rounded;
+    case PlaybackEventType.autoRewind: return Icons.replay_rounded;
+    case PlaybackEventType.skipForward: return Icons.forward_30_rounded;
+    case PlaybackEventType.skipBackward: return Icons.replay_10_rounded;
+    case PlaybackEventType.speedChange: return Icons.speed_rounded;
+    case PlaybackEventType.bookFinished: return Icons.flag_rounded;
+    case PlaybackEventType.sessionStart: return Icons.fiber_manual_record_rounded;
+    case PlaybackEventType.sessionEnd: return Icons.stop_circle_outlined;
+    case PlaybackEventType.clickDebounce: return Icons.touch_app_rounded;
+  }
+}
+
+class CoverPlaceholder extends StatelessWidget {
+  final String? title;
+  final String? author;
+  const CoverPlaceholder({super.key, this.title, this.author});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final hasText = title != null && title!.isNotEmpty;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.primaryContainer,
+            cs.surfaceContainerHighest,
+          ],
+        ),
+      ),
+      child: hasText
+          ? Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.auto_stories_rounded, size: 28,
+                      color: cs.onPrimaryContainer.withValues(alpha: 0.4)),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: Text(title!, textAlign: TextAlign.center, maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                            height: 1.2, color: cs.onPrimaryContainer)),
+                  ),
+                  if (author != null && author!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Flexible(
+                      child: Text(author!, textAlign: TextAlign.center, maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11,
+                              color: cs.onPrimaryContainer.withValues(alpha: 0.7))),
+                    ),
+                  ],
+                ],
+              ),
+            )
+          : Center(child: Icon(Icons.auto_stories_rounded, size: 48,
+              color: cs.onPrimaryContainer.withValues(alpha: 0.3))),
+    );
+  }
+}
+
+/// Shows [child] with BoxFit.contain; when the image doesn't fill the square,
+/// a blurred copy of the cover is drawn behind it to fill the empty sides.
+/// Set [enabled] to false to skip the blur and just render [child] directly.
+class BlurPaddedCover extends StatelessWidget {
+  final Widget child;
+  final Widget blurChild;
+  final bool enabled;
+  const BlurPaddedCover({super.key, required this.child, required this.blurChild, this.enabled = true});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enabled) return child;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Blurred background fill
+        SizedBox.expand(
+          child: ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24, tileMode: TileMode.clamp),
+            child: blurChild,
+          ),
+        ),
+        // Darkening scrim so the foreground cover pops
+        Container(color: Colors.black.withValues(alpha: 0.15)),
+        // Actual cover, contained (no crop)
+        SizedBox.expand(child: child),
+      ],
+    );
+  }
+}
 
 // ─── DOWNLOAD BUTTON WITH FILL BAR (wide card style) ────────
 
@@ -27,6 +182,7 @@ class _DownloadWideButtonState extends State<DownloadWideButton> {
     final downloading = _dl.isDownloading(widget.itemId);
     final downloaded = _dl.isDownloaded(widget.itemId);
     final progress = _dl.downloadProgress(widget.itemId);
+    final l = AppLocalizations.of(context)!;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final dlGreen = isDark ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.green.shade700;
@@ -35,7 +191,7 @@ class _DownloadWideButtonState extends State<DownloadWideButton> {
     final Color color;
     if (downloaded) {
       icon = Icons.download_done_rounded;
-      label = 'Saved';
+      label = l.saved;
       color = dlGreen;
     } else if (downloading) {
       icon = Icons.downloading_rounded;
@@ -43,7 +199,7 @@ class _DownloadWideButtonState extends State<DownloadWideButton> {
       color = widget.accent;
     } else {
       icon = Icons.download_outlined;
-      label = 'Download';
+      label = l.download;
       color = Theme.of(context).colorScheme.onSurfaceVariant;
     }
 
@@ -81,24 +237,32 @@ class _DownloadWideButtonState extends State<DownloadWideButton> {
     );
   }
 
-  void _handleTap(BuildContext context) {
+  void _handleTap(BuildContext context) async {
     final auth = context.read<AuthProvider>();
     final api = auth.apiService;
     if (api == null) return;
+    final l = AppLocalizations.of(context)!;
     if (_dl.isDownloaded(widget.itemId)) {
       showDialog(context: context, builder: (ctx) => AlertDialog(
-        title: const Text('Remove download?'),
-        content: const Text('This will be removed from your device.'),
+        title: Text(l.removeDownloadQuestion),
+        content: Text(l.removeDownloadContent),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(onPressed: () { _dl.deleteDownload(widget.itemId); Navigator.pop(ctx); },
-            child: const Text('Remove', style: TextStyle(color: Colors.redAccent))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
+          TextButton(onPressed: () {
+            _dl.deleteDownload(widget.itemId);
+            Navigator.pop(ctx);
+            showOverlayToast(context, l.downloadRemoved, icon: Icons.delete_outline_rounded);
+          },
+            child: Text(l.remove, style: const TextStyle(color: Colors.redAccent))),
         ],
       ));
     } else if (_dl.isDownloading(widget.itemId)) {
       _dl.cancelDownload(widget.itemId);
     } else {
-      _dl.downloadItem(api: api, itemId: widget.itemId, title: widget.title, author: widget.author, coverUrl: widget.coverUrl);
+      final error = await _dl.downloadItem(api: api, itemId: widget.itemId, title: widget.title, author: widget.author, coverUrl: widget.coverUrl, libraryId: context.read<LibraryProvider>().selectedLibraryId);
+      if (error != null && context.mounted) {
+        showOverlayToast(context, error, icon: Icons.error_outline_rounded);
+      }
     }
   }
 }

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import 'author_books_sheet.dart';
 
 class AuthorCard extends StatelessWidget {
   final Map<String, dynamic> author;
@@ -13,22 +15,27 @@ class AuthorCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
     final auth = context.read<AuthProvider>();
     final lib = context.read<LibraryProvider>();
 
-    final name = author['name'] as String? ?? 'Unknown';
+    final name = author['name'] as String? ?? l.unknown;
     final authorId = author['id'] as String? ?? '';
 
     String? imageUrl;
-    if (authorId.isNotEmpty && auth.serverUrl != null && auth.token != null) {
-      imageUrl =
-          '${auth.serverUrl}/api/authors/$authorId/image?width=200&token=${auth.token}';
+    if (authorId.isNotEmpty && auth.apiService != null) {
+      final ts = (author['updatedAt'] as num?)?.toInt();
+      imageUrl = auth.apiService!.getAuthorImageUrl(authorId, updatedAt: ts);
     }
 
     final headers = lib.mediaHeaders;
 
     return InkWell(
-      onTap: () {},
+      onTap: () {
+        if (authorId.isNotEmpty) {
+          showAuthorDetailSheet(context, authorId: authorId, authorName: name);
+        }
+      },
       borderRadius: BorderRadius.circular(16),
       child: Column(
         mainAxisSize: MainAxisSize.min,

@@ -46,49 +46,39 @@ class MetadataOverrideService {
   }
 
   /// Apply overrides to a server item map. Modifies in place and returns it.
-  /// Only fills in fields that are empty/missing on the server item.
   Map<String, dynamic> applyOverrides(
       Map<String, dynamic> item, Map<String, dynamic> override) {
     final media = item['media'] as Map<String, dynamic>? ?? {};
     final metadata =
         Map<String, dynamic>.from(media['metadata'] as Map<String, dynamic>? ?? {});
 
-    // Only override if the server field is empty
-    void fillIfEmpty(String metaKey, String overrideKey) {
-      final current = metadata[metaKey];
+    // Apply override value (always replaces server value)
+    void applyField(String metaKey, String overrideKey) {
       final replacement = override[overrideKey];
-      if (replacement != null &&
-          replacement.toString().isNotEmpty &&
-          (current == null || current.toString().trim().isEmpty)) {
+      if (replacement != null && replacement.toString().isNotEmpty) {
         metadata[metaKey] = replacement;
       }
     }
 
-    fillIfEmpty('title', 'title');
-    fillIfEmpty('authorName', 'author');
-    fillIfEmpty('narratorName', 'narrator');
-    fillIfEmpty('description', 'description');
-    fillIfEmpty('publisher', 'publisher');
-    fillIfEmpty('publishedYear', 'publishedYear');
-    fillIfEmpty('asin', 'asin');
-    fillIfEmpty('isbn', 'isbn');
+    applyField('title', 'title');
+    applyField('authorName', 'author');
+    applyField('narratorName', 'narrator');
+    applyField('description', 'description');
+    applyField('publisher', 'publisher');
+    applyField('publishedYear', 'publishedYear');
+    applyField('asin', 'asin');
+    applyField('isbn', 'isbn');
 
-    // Genres: merge (add missing ones)
+    // Genres
     final overrideGenres = override['genres'] as List<dynamic>?;
     if (overrideGenres != null && overrideGenres.isNotEmpty) {
-      final existing = (metadata['genres'] as List<dynamic>?)?.cast<String>() ?? [];
-      if (existing.isEmpty) {
-        metadata['genres'] = overrideGenres;
-      }
+      metadata['genres'] = overrideGenres;
     }
 
     // Series
     final overrideSeries = override['series'] as List<dynamic>?;
     if (overrideSeries != null && overrideSeries.isNotEmpty) {
-      final existing = metadata['series'] as List<dynamic>? ?? [];
-      if (existing.isEmpty) {
-        metadata['series'] = overrideSeries;
-      }
+      metadata['series'] = overrideSeries;
     }
 
     // Write back

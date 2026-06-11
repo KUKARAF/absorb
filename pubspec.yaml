@@ -1,7 +1,7 @@
 name: absorb
-description: A Material 3 Audiobookshelf client for Android.
+description: An Audiobookshelf Client
 publish_to: 'none'
-version: 1.6.0+25
+version: 1.8.95+161
 
 environment:
   sdk: '>=3.1.0 <4.0.0'
@@ -9,9 +9,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
   
   # Networking
   http: ^1.1.0
+  socket_io_client: ^3.0.2
   
   # State Management
   provider: ^6.1.1
@@ -31,15 +35,27 @@ dependencies:
   # Audio playback
   just_audio:
     path: packages/just_audio
-    
-  audio_service: ^0.18.13
+  just_audio_media_kit: ^2.1.0
+  media_kit: ^1.2.6
+  media_kit_libs_linux: ^1.2.1
+
+  audio_service:
+    path: packages/audio_service
+
+  # CarPlay
+  flutter_carplay: ^1.2.11
   
   # Permissions
   permission_handler: ^12.0.1
-  
+
   # Downloads & offline
   path_provider: ^2.1.1
   connectivity_plus: ^6.0.3
+  # Native background downloads (iOS background URLSession, Android foreground service)
+  background_downloader: ^9.0.0
+
+  # In-app APK install (GitHub flavor updater)
+  open_filex: ^4.5.0
   
   # Shake detection for sleep timer
   sensors_plus: ^4.0.2
@@ -57,13 +73,10 @@ dependencies:
   #OIDC
   crypto: ^3.0.3
   url_launcher: ^6.2.5
-  app_links: ^6.1.1
+  flutter_web_auth_2: ^5.0.1
 
   # Pausing for interruptions
   audio_session: ^0.1.21
-
-  # Open filex to share epub files
-  open_filex: ^4.5.0
 
   # chromecast
   flutter_chrome_cast: ^1.2.6
@@ -71,22 +84,43 @@ dependencies:
   # Log sharing
   share_plus: ^10.0.0
 
+  # Homescreen widget
+  home_widget: ^0.7.0
+
+  # App icon long-press shortcuts (Continue Listening / Downloads)
+  quick_actions: ^1.0.8
+
+  # Splash screen (preserve during init)
+  flutter_native_splash: ^2.4.4
+  vibration: ^3.1.8
+  webview_flutter: ^4.13.1
+  flutter_markdown_plus: ^1.0.7
+  palette_generator: ^0.3.3+7
+
+dependency_overrides:
+  desktop_webview_window:
+    path: packages/desktop_webview_window
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.1
   flutter_launcher_icons: ^0.14.3
-  flutter_native_splash: ^2.4.4
   change_app_package_name: ^1.5.0
   rename_app: ^1.6.5
+  mocktail: ^1.0.4
 
 flutter:
+  generate: true
   uses-material-design: true
   assets:
     - assets/icon/
+    - assets/audio/
 
 flutter_launcher_icons:
   android: true
+  ios: true
+  remove_alpha_ios: true
   image_path: "assets/icon/app_icon.png"
   adaptive_icon_background: "#000000"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
@@ -97,3 +131,4 @@ flutter_native_splash:
   android_12:
     color: "#000000"
     image: "assets/icon/splash_logo.png"
+  ios: true

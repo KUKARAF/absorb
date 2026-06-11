@@ -1,0 +1,79 @@
+app-id: io.github.rafa.absorb
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+
+command: absorb
+
+finish-args:
+  - --share=network          # server communication
+  - --socket=pulseaudio      # audio output (PulseAudio / PipeWire-pulse)
+  - --socket=wayland         # Wayland display
+  - --socket=x11             # X11 fallback
+  - --share=ipc              # shared memory for X11 MIT-SHM
+  - --device=dri             # GPU rendering
+  - --filesystem=home        # download storage
+
+modules:
+  # ── libmpv (audio backend for just_audio_mpv) ──────────────────────────
+  # mpv is not in the Freedesktop 24.08 SDK, so build it as a module.
+  # If you add org.freedesktop.Platform.ffmpeg-full as an extension, you can
+  # rely on its ffmpeg and drop the custom mpv build here.
+  - name: libmpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dbuild-date=false
+      - -Dalsa=disabled
+      - -Dgl=enabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz
+        sha256: "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"
+
+  # ── Flutter SDK ────────────────────────────────────────────────────────
+  # Flatpak builds are network-isolated, so the SDK tarball must be declared
+  # as a source. Update the URL and sha256 to match the version in the nix shell.
+  - name: flutter-sdk
+    buildsystem: simple
+    build-commands:
+      - cp -ra . /usr/lib/flutter
+      - ln -sf /usr/lib/flutter/bin/flutter /usr/bin/flutter
+      - ln -sf /usr/lib/flutter/bin/dart /usr/bin/dart
+    sources:
+      - type: archive
+        url: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.41.0-stable.tar.xz
+        sha256: "368ae5b6993c51861324e704c42d61c4e290fba7213a88fd0e9fec15ded54599"
+
+  # ── Pub package cache ──────────────────────────────────────────────────
+  # Flatpak builds have no network access. All pub packages must be
+  # pre-downloaded and declared here as archive sources.
+  #
+  # Generate this section with:
+  #   flutter pub get
+  #   python3 flatpak-pub-generator.py pubspec.lock
+  # or manually by running `flutter pub cache list` and creating an archive
+  # source for each package's cache entry.
+  #
+  # TODO: replace this comment block with the generated sources.
+
+  # ── Absorb ─────────────────────────────────────────────────────────────
+  - name: absorb
+    buildsystem: simple
+    build-options:
+      env:
+        # Point pub at the pre-vendored cache declared above
+        PUB_CACHE: /run/build/absorb/pub-cache
+    build-commands:
+      - flutter pub get --offline
+      - flutter build linux --release --no-pub
+      - install -Dm755 build/linux/x64/release/bundle/absorb /app/bin/absorb
+      - cp -r build/linux/x64/release/bundle/lib /app/lib
+      - cp -r build/linux/x64/release/bundle/data /app/data
+      - install -Dm644 packaging/io.github.rafa.absorb.desktop
+          /app/share/applications/io.github.rafa.absorb.desktop
+      - install -Dm644 assets/icon/app_icon.png
+          /app/share/icons/hicolor/512x512/apps/io.github.rafa.absorb.png
+    sources:
+      - type: dir
+        path: ..

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../services/api_service.dart';
+import '../services/scoped_prefs.dart';
 import '../widgets/absorb_page_header.dart';
+import '../widgets/rmab_config_sheet.dart';
+import '../l10n/app_localizations.dart';
 import 'admin_users_screen.dart';
 import 'admin_podcasts_screen.dart';
+import 'admin_email_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -18,8 +21,10 @@ class _AdminScreenState extends State<AdminScreen> {
   List<dynamic> _libraries = [];
   List<dynamic> _backups = [];
   List<dynamic> _sessions = [];
-  Map<String, Map<String, dynamic>> _libraryStats = {};
+  final Map<String, Map<String, dynamic>> _libraryStats = {};
   String? _serverVersion;
+  String? _rmabBaseUrl;
+  String? _rmabApiToken;
 
   final Set<String> _scanningLibraries = {};
   final Set<String> _matchingLibraries = {};
@@ -37,11 +42,11 @@ class _AdminScreenState extends State<AdminScreen> {
     final futures = await Future.wait([
       api.getUsers(), api.getOnlineUsers(), api.getLibraries(), api.getBackups(), api.getAllSessions(limit: 10),
     ]);
-    _users = futures[0] as List<dynamic>;
-    _onlineUsers = futures[1] as List<dynamic>;
-    _libraries = futures[2] as List<dynamic>;
-    _backups = futures[3] as List<dynamic>;
-    _sessions = futures[4] as List<dynamic>;
+    _users = futures[0];
+    _onlineUsers = futures[1];
+    _libraries = futures[2];
+    _backups = futures[3];
+    _sessions = futures[4];
     _serverVersion = context.read<AuthProvider>().serverVersion;
 
     for (final lib in _libraries) {
@@ -51,8 +56,13 @@ class _AdminScreenState extends State<AdminScreen> {
         if (stats != null) _libraryStats[id] = stats;
       }
     }
+    _rmabBaseUrl = await ScopedPrefs.getString(kRmabBaseUrlKey);
+    _rmabApiToken = await ScopedPrefs.getString(kRmabApiTokenKey);
     if (mounted) setState(() => _loading = false);
   }
+
+  bool get _hasRmab =>
+      (_rmabBaseUrl ?? '').isNotEmpty && (_rmabApiToken ?? '').isNotEmpty;
 
   bool get _hasPodcastLibrary => _libraries.any((l) => l['mediaType'] == 'podcast');
 
@@ -66,6 +76,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -81,24 +92,24 @@ class _AdminScreenState extends State<AdminScreen> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
                       child: Row(children: [
-                        const Expanded(child: AbsorbPageHeader(title: 'Server Admin', padding: EdgeInsets.zero)),
-                        IconButton(icon: const Icon(Icons.close_rounded, color: Colors.white38), onPressed: () => Navigator.pop(context)),
+                        Expanded(child: AbsorbPageHeader(title: l.adminTitle, padding: EdgeInsets.zero)),
+                        IconButton(icon: Icon(Icons.close_rounded, color: cs.onSurfaceVariant), onPressed: () => Navigator.pop(context)),
                       ]),
                     ),
                     const SizedBox(height: 20),
 
                     // ── Server Overview ──
-                    _section(tt, 'Server'),
+                    _section(cs, tt, l.adminServer),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Container(
                         padding: const EdgeInsets.all(16),
                         decoration: _cardDeco(cs),
                         child: Row(children: [
-                          _stat(tt, cs, Icons.dns_rounded, _serverVersion ?? '–', 'Version'),
-                          _stat(tt, cs, Icons.people_rounded, '${_users.length}', 'Users'),
-                          _stat(tt, cs, Icons.wifi_rounded, '${_onlineUsers.length}', 'Online'),
-                          _stat(tt, cs, Icons.backup_rounded, '${_backups.length}', 'Backups'),
+                          _stat(tt, cs, Icons.dns_rounded, _serverVersion ?? '–', l.adminVersion),
+                          _stat(tt, cs, Icons.people_rounded, '${_users.length}', l.adminUsers),
+                          _stat(tt, cs, Icons.wifi_rounded, '${_onlineUsers.length}', l.adminOnline),
+                          _stat(tt, cs, Icons.backup_rounded, '${_backups.length}', l.adminBackupsLabel),
                         ]),
                       ),
                     ),
@@ -106,22 +117,22 @@ class _AdminScreenState extends State<AdminScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(children: [
-                        Expanded(child: _actionBtn(cs, tt, Icons.backup_rounded, 'Backup', _creatingBackup, _createBackup)),
+                        Expanded(child: _actionBtn(cs, tt, Icons.backup_rounded, l.adminBackup, _creatingBackup, _createBackup)),
                         const SizedBox(width: 10),
-                        Expanded(child: _actionBtn(cs, tt, Icons.cleaning_services_rounded, 'Purge Cache', _purgingCache, _purgeCache)),
+                        Expanded(child: _actionBtn(cs, tt, Icons.cleaning_services_rounded, l.adminPurgeCache, _purgingCache, _purgeCache)),
                       ]),
                     ),
                     const SizedBox(height: 28),
 
                     // ── Manage Buttons ──
-                    _section(tt, 'Manage'),
+                    _section(cs, tt, l.adminManage),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Column(children: [
                         _navButton(cs, tt,
                           icon: Icons.people_rounded,
-                          label: 'Users',
-                          subtitle: '${_users.length} accounts · ${_onlineUsers.length} online',
+                          label: l.adminUsers,
+                          subtitle: l.adminUsersSubtitle(_users.length, _onlineUsers.length),
                           onTap: () async {
                             await Navigator.push(context, MaterialPageRoute(
                               builder: (_) => AdminUsersScreen(users: _users, onlineUsers: _onlineUsers, libraries: _libraries)));
@@ -132,8 +143,8 @@ class _AdminScreenState extends State<AdminScreen> {
                         if (_hasPodcastLibrary)
                           _navButton(cs, tt,
                             icon: Icons.podcasts_rounded,
-                            label: 'Podcasts',
-                            subtitle: 'Search, add & manage shows',
+                            label: l.adminPodcasts,
+                            subtitle: l.adminPodcastsSubtitle,
                             onTap: () {
                               final podLib = _libraries.firstWhere((l) => l['mediaType'] == 'podcast', orElse: () => null);
                               if (podLib != null) {
@@ -142,19 +153,31 @@ class _AdminScreenState extends State<AdminScreen> {
                               }
                             },
                           ),
+                        if (_hasPodcastLibrary) const SizedBox(height: 10),
+                        _navButton(cs, tt,
+                          icon: Icons.email_rounded,
+                          label: l.adminEmail,
+                          subtitle: l.adminEmailSubtitle,
+                          onTap: () {
+                            Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => AdminEmailScreen(users: _users)));
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        if (_hasRmab) _rmabTile(cs, tt) else _rmabAddRow(cs, tt),
                       ]),
                     ),
                     const SizedBox(height: 28),
 
                     // ── Active Sessions ──
                     if (_activeSessions.isNotEmpty) ...[
-                      _section(tt, 'Listening Now'),
+                      _section(cs, tt, l.adminListeningNow),
                       ..._activeSessions.map((s) => _sessionCard(cs, tt, s)),
                       const SizedBox(height: 18),
                     ],
 
                     // ── Libraries ──
-                    _section(tt, 'Libraries'),
+                    _section(cs, tt, l.adminLibraries),
                     ..._libraries.map((lib) => _libraryCard(cs, tt, lib)),
                   ],
                 ),
@@ -165,16 +188,16 @@ class _AdminScreenState extends State<AdminScreen> {
 
   // ─── Shared Widgets ─────────────────────────────────────────
 
-  Widget _section(TextTheme tt, String t) => Padding(
+  Widget _section(ColorScheme cs, TextTheme tt, String t) => Padding(
     padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-    child: Text(t, style: tt.labelLarge?.copyWith(color: Colors.white38, fontWeight: FontWeight.w600, letterSpacing: 0.5)));
+    child: Text(t, style: tt.labelLarge?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontWeight: FontWeight.w600, letterSpacing: 0.5)));
 
   BoxDecoration _cardDeco(ColorScheme cs) => BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(16));
 
   Widget _stat(TextTheme tt, ColorScheme cs, IconData ic, String v, String l) => Expanded(child: Column(children: [
     Icon(ic, size: 18, color: cs.primary.withValues(alpha: 0.6)), const SizedBox(height: 6),
-    Text(v, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: Colors.white)), const SizedBox(height: 2),
-    Text(l, style: tt.labelSmall?.copyWith(color: Colors.white38, fontSize: 10)),
+    Text(v, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)), const SizedBox(height: 2),
+    Text(l, style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 10)),
   ]));
 
   Widget _actionBtn(ColorScheme cs, TextTheme tt, IconData ic, String l, bool loading, VoidCallback onTap) =>
@@ -182,10 +205,10 @@ class _AdminScreenState extends State<AdminScreen> {
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(14)),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        if (loading) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white38))
+        if (loading) SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.onSurfaceVariant.withValues(alpha: 0.5)))
         else Icon(ic, size: 16, color: cs.primary),
         const SizedBox(width: 8),
-        Text(l, style: tt.labelMedium?.copyWith(color: loading ? Colors.white24 : Colors.white70, fontWeight: FontWeight.w600)),
+        Text(l, style: tt.labelMedium?.copyWith(color: loading ? cs.onSurface.withValues(alpha: 0.24) : cs.onSurface.withValues(alpha: 0.7), fontWeight: FontWeight.w600)),
       ])));
 
   Widget _navButton(ColorScheme cs, TextTheme tt, {required IconData icon, required String label, required String subtitle, required VoidCallback onTap}) =>
@@ -195,17 +218,75 @@ class _AdminScreenState extends State<AdminScreen> {
       child: Row(children: [
         Icon(icon, color: cs.primary, size: 22), const SizedBox(width: 14),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: Colors.white)),
-          Text(subtitle, style: tt.bodySmall?.copyWith(color: Colors.white38)),
+          Text(label, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+          Text(subtitle, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
         ])),
-        Icon(Icons.chevron_right_rounded, color: Colors.white.withValues(alpha: 0.15)),
+        Icon(Icons.chevron_right_rounded, color: cs.onSurface.withValues(alpha: 0.15)),
       ])));
+
+  // ─── ReadMeABook Integration ────────────────────────────────
+
+  Widget _rmabTile(ColorScheme cs, TextTheme tt) {
+    final l = AppLocalizations.of(context)!;
+    return GestureDetector(
+      onTap: _openRmabSheet,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: _cardDeco(cs),
+        child: Row(children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Icon(Icons.menu_book_rounded, color: cs.primary, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(l.adminRmab, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600, color: cs.onSurface)),
+            Text(l.adminRmabConnected, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
+          ])),
+          Icon(Icons.chevron_right_rounded, color: cs.onSurface.withValues(alpha: 0.15)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _rmabAddRow(ColorScheme cs, TextTheme tt) {
+    final l = AppLocalizations.of(context)!;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: _openRmabSheet,
+        style: TextButton.styleFrom(
+          foregroundColor: cs.onSurfaceVariant.withValues(alpha: 0.6),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+          minimumSize: const Size(0, 32),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        icon: const Icon(Icons.add_rounded, size: 16),
+        label: Text(l.adminRmabAdd, style: tt.labelMedium),
+      ),
+    );
+  }
+
+  Future<void> _openRmabSheet() async {
+    final l = AppLocalizations.of(context)!;
+    final result =
+        await showRmabConfigSheet(context, isAdminContext: true);
+    if (!mounted || result == null) return;
+    if (result.changed || result.disconnected) {
+      await _loadAll();
+      if (!mounted) return;
+      _msg(result.disconnected
+          ? l.rmabConfigDisconnectedSnackbar
+          : l.rmabConfigSavedSnackbar);
+    }
+  }
 
   // ─── Library Card ───────────────────────────────────────────
 
   Widget _libraryCard(ColorScheme cs, TextTheme tt, dynamic lib) {
+    final l = AppLocalizations.of(context)!;
     final id = lib['id'] as String? ?? '';
-    final name = lib['name'] as String? ?? 'Library';
+    final name = lib['name'] as String? ?? l.libraryFallback;
     final mediaType = lib['mediaType'] as String? ?? 'book';
     final folders = (lib['folders'] as List?)?.length ?? 0;
     final stats = _libraryStats[id];
@@ -222,47 +303,48 @@ class _AdminScreenState extends State<AdminScreen> {
           Row(children: [
             Icon(mediaType == 'podcast' ? Icons.podcasts_rounded : Icons.auto_stories_rounded, size: 20, color: cs.primary),
             const SizedBox(width: 10),
-            Expanded(child: Text(name, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: Colors.white))),
+            Expanded(child: Text(name, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface))),
             Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
               child: Text(mediaType, style: tt.labelSmall?.copyWith(color: cs.primary, fontSize: 10, fontWeight: FontWeight.w600))),
           ]),
           const SizedBox(height: 12),
           Row(children: [
-            _mini(tt, '$totalItems', mediaType == 'podcast' ? 'shows' : 'books'),
-            if (folders > 0) _mini(tt, '$folders', 'folders'),
-            if (totalSize != null) _mini(tt, _fmtB(totalSize.toInt()), 'size'),
-            if (totalDur != null) _mini(tt, _fmtD(totalDur.toDouble()), 'duration'),
+            _mini(cs, tt, '$totalItems', mediaType == 'podcast' ? l.adminLibraryShows : l.adminLibraryBooks),
+            if (folders > 0) _mini(cs, tt, '$folders', l.adminLibraryFolders),
+            if (totalSize != null) _mini(cs, tt, _fmtB(totalSize.toInt()), l.adminLibrarySize),
+            if (totalDur != null) _mini(cs, tt, _fmtD(totalDur.toDouble()), l.adminLibraryDuration),
           ]),
           const SizedBox(height: 12),
           Row(children: [
-            Expanded(child: _libAct(cs, tt, Icons.search_rounded, isScanning ? 'Scanning…' : 'Scan', isScanning, () => _scanLib(id, name))),
+            Expanded(child: _libAct(cs, tt, Icons.search_rounded, isScanning ? l.adminScanning : l.adminScan, isScanning, () => _scanLib(id, name))),
             const SizedBox(width: 8),
-            Expanded(child: _libAct(cs, tt, Icons.auto_fix_high_rounded, isMatching ? 'Matching…' : 'Match All', isMatching, () => _matchLib(id, name))),
+            Expanded(child: _libAct(cs, tt, Icons.auto_fix_high_rounded, isMatching ? l.adminMatching : l.adminMatchAll, isMatching, () => _matchLib(id, name))),
           ]),
         ])));
   }
 
-  Widget _mini(TextTheme tt, String v, String l) => Padding(padding: const EdgeInsets.only(right: 20), child: Column(
+  Widget _mini(ColorScheme cs, TextTheme tt, String v, String l) => Padding(padding: const EdgeInsets.only(right: 20), child: Column(
     crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(v, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Colors.white, fontSize: 13)),
-      Text(l, style: tt.labelSmall?.copyWith(color: Colors.white30, fontSize: 10)),
+      Text(v, style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface, fontSize: 13)),
+      Text(l, style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.4), fontSize: 10)),
     ]));
 
   Widget _libAct(ColorScheme cs, TextTheme tt, IconData ic, String l, bool loading, VoidCallback onTap) =>
     GestureDetector(onTap: loading ? null : onTap, child: Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06))),
+      decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.onSurface.withValues(alpha: 0.06))),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        if (loading) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white38))
+        if (loading) SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.onSurfaceVariant.withValues(alpha: 0.5)))
         else Icon(ic, size: 14, color: cs.primary.withValues(alpha: 0.7)),
         const SizedBox(width: 6),
-        Text(l, style: tt.labelSmall?.copyWith(color: loading ? Colors.white24 : Colors.white54, fontWeight: FontWeight.w600, fontSize: 11)),
+        Text(l, style: tt.labelSmall?.copyWith(color: loading ? cs.onSurface.withValues(alpha: 0.24) : cs.onSurface.withValues(alpha: 0.54), fontWeight: FontWeight.w600, fontSize: 11)),
       ])));
 
   Widget _sessionCard(ColorScheme cs, TextTheme tt, dynamic session) {
-    final displayTitle = session['displayTitle'] as String? ?? 'Unknown';
+    final l = AppLocalizations.of(context)!;
+    final displayTitle = session['displayTitle'] as String? ?? l.unknown;
     final displayAuthor = session['displayAuthor'] as String? ?? '';
     final userName = _userNameForSession(session);
     final currentTime = session['currentTime'] as num? ?? 0;
@@ -278,27 +360,27 @@ class _AdminScreenState extends State<AdminScreen> {
         child: Row(children: [
           Container(width: 8, height: 8, decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isActive ? const Color(0xFF4CAF50) : Colors.white24,
+            color: isActive ? const Color(0xFF4CAF50) : cs.onSurface.withValues(alpha: 0.24),
           )),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(displayTitle, style: tt.bodySmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+            Text(displayTitle, style: tt.bodySmall?.copyWith(color: cs.onSurface, fontWeight: FontWeight.w600),
               maxLines: 1, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2),
             Text(
               [if (userName.isNotEmpty) userName, if (displayAuthor.isNotEmpty) displayAuthor].join(' · '),
-              style: tt.labelSmall?.copyWith(color: Colors.white38, fontSize: 10),
+              style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 10),
               maxLines: 1, overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 6),
             ClipRRect(borderRadius: BorderRadius.circular(2),
               child: LinearProgressIndicator(value: progress.toDouble(),
-                minHeight: 2, backgroundColor: Colors.white.withValues(alpha: 0.06),
-                valueColor: AlwaysStoppedAnimation(isActive ? cs.primary : Colors.white24))),
+                minHeight: 2, backgroundColor: cs.onSurface.withValues(alpha: 0.06),
+                valueColor: AlwaysStoppedAnimation(isActive ? cs.primary : cs.onSurface.withValues(alpha: 0.24)))),
           ])),
           const SizedBox(width: 12),
           Text('${_fmtD(currentTime.toDouble())} / ${_fmtD(duration.toDouble())}',
-            style: tt.labelSmall?.copyWith(color: Colors.white24, fontSize: 9)),
+            style: tt.labelSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.24), fontSize: 9)),
         ])),
     );
   }
@@ -317,35 +399,53 @@ class _AdminScreenState extends State<AdminScreen> {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     setState(() => _scanningLibraries.add(id));
     final ok = await api.scanLibrary(id);
-    if (mounted) { setState(() => _scanningLibraries.remove(id)); _msg(ok ? 'Scan started for $name' : 'Failed to scan $name'); }
+    if (mounted) {
+      final l = AppLocalizations.of(context)!;
+      setState(() => _scanningLibraries.remove(id));
+      _msg(ok ? l.adminScanStarted(name) : l.adminScanFailed(name));
+    }
   }
 
   Future<void> _matchLib(String id, String name) async {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
+    final l = AppLocalizations.of(context)!;
     final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Match All Items?'),
-      content: Text('Match metadata for all items in $name? This can take a while.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Match'))],
+      title: Text(l.adminMatchAllTitle),
+      content: Text(l.adminMatchAllContent(name)),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.adminMatchAction))],
     ));
     if (yes != true) return;
     setState(() => _matchingLibraries.add(id));
     final ok = await api.matchLibrary(id);
-    if (mounted) { setState(() => _matchingLibraries.remove(id)); _msg(ok ? 'Matching started for $name' : 'Failed'); }
+    if (mounted) {
+      final l2 = AppLocalizations.of(context)!;
+      setState(() => _matchingLibraries.remove(id));
+      _msg(ok ? l2.adminMatchingStarted(name) : l2.adminMatchFailed);
+    }
   }
 
   Future<void> _createBackup() async {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     setState(() => _creatingBackup = true);
     final ok = await api.createBackup();
-    if (mounted) { setState(() => _creatingBackup = false); _msg(ok ? 'Backup created' : 'Backup failed'); if (ok) _loadAll(); }
+    if (mounted) {
+      final l = AppLocalizations.of(context)!;
+      setState(() => _creatingBackup = false);
+      _msg(ok ? l.adminBackupCreated : l.adminBackupFailed);
+      if (ok) _loadAll();
+    }
   }
 
   Future<void> _purgeCache() async {
     final api = context.read<AuthProvider>().apiService; if (api == null) return;
     setState(() => _purgingCache = true);
     final ok = await api.purgeCache();
-    if (mounted) { setState(() => _purgingCache = false); _msg(ok ? 'Cache purged' : 'Failed'); }
+    if (mounted) {
+      final l = AppLocalizations.of(context)!;
+      setState(() => _purgingCache = false);
+      _msg(ok ? l.adminCachePurged : l.adminPurgeCacheFailed);
+    }
   }
 
   void _msg(String s) => ScaffoldMessenger.of(context)..clearSnackBars()..showSnackBar(

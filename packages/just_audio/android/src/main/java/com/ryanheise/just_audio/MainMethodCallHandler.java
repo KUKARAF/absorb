@@ -48,6 +48,16 @@ public class MainMethodCallHandler implements MethodCallHandler {
             result.success(null);
             break;
         }
+        case "configureStreamingCache": {
+            Integer sizeMb = call.argument("sizeMb");
+            if (sizeMb != null && sizeMb > 0) {
+                AudioPlayer.configureCache(applicationContext, (long) sizeMb * 1024 * 1024);
+            } else {
+                AudioPlayer.releaseCache();
+            }
+            result.success(null);
+            break;
+        }
         case "disposePlayer": {
             String id = call.argument("id");
             AudioPlayer player = players.get(id);
@@ -63,6 +73,12 @@ public class MainMethodCallHandler implements MethodCallHandler {
             result.success(new HashMap<String, Object>());
             break;
         }
+        case "clearStreamingCache": {
+            AudioPlayer.clearCache();
+            result.success(null);
+            break;
+        }
+
         default:
             result.notImplemented();
             break;

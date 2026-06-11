@@ -1,0 +1,36 @@
+app-id: io.github.rafa.absorb
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: absorb
+
+finish-args:
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  - --filesystem=home
+  - --filesystem=xdg-run/pipewire-0:ro
+
+modules:
+  # Installs the pre-built Flutter bundle.
+  # The entire bundle is kept intact under /app/lib/absorb/ so Flutter can
+  # find lib/ and data/ relative to the binary at runtime.
+  # libmpv and its transitive ffmpeg/codec deps are pre-bundled in
+  # build/linux/x64/release/bundle/lib/ by the CI workflow before this runs.
+  - name: absorb
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib
+      - cp -r build/linux/x64/release/bundle /app/lib/absorb
+      - printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/app/lib/absorb/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\nexec /app/lib/absorb/absorb "$@"\n'
+          | install -Dm755 /dev/stdin /app/bin/absorb
+      - install -Dm644 packaging/io.github.rafa.absorb.desktop
+          /app/share/applications/io.github.rafa.absorb.desktop
+      - install -Dm644 assets/icon/app_icon.png
+          /app/share/icons/hicolor/512x512/apps/io.github.rafa.absorb.png
+    sources:
+      - type: dir
+        path: ..

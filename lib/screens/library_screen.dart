@@ -1,56 +1,61 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:http/http.dart' as http;
 import '../providers/auth_provider.dart';
 import '../providers/library_provider.dart';
+import '../services/api_service.dart';
 import '../services/download_service.dart';
 import '../services/audio_player_service.dart';
 import '../widgets/absorb_page_header.dart';
-import '../widgets/book_detail_sheet.dart';
-import '../widgets/episode_list_sheet.dart';
+import '../widgets/library_search_results.dart';
+import '../main.dart' show oledNotifier;
+import '../widgets/library_sort_filter_sheet.dart';
+import '../widgets/library_books_tab.dart';
+import '../widgets/library_series_tab.dart';
+import '../widgets/library_authors_tab.dart';
+import '../widgets/library_narrators_tab.dart';
+import 'admin_podcasts_screen.dart';
+import 'app_shell.dart';
+import 'upcoming_releases_screen.dart';
+import '../widgets/audible_series_sheet.dart' show showAudibleRegionPicker;
+import '../widgets/offline_status_icon.dart';
+import '../widgets/rmab_config_sheet.dart' show kRmabBaseUrlKey, kRmabApiTokenKey;
+import '../widgets/rmab_search_results_sheet.dart';
+import '../widgets/scroll_reveal.dart';
+import '../services/scoped_prefs.dart';
+import '../l10n/app_localizations.dart';
+
+/// Responsive grid column count based on available width.
+/// Returns 3 on phones, scales up on tablets/iPads.
+int responsiveGridCount(BuildContext context) {
+  final width = MediaQuery.of(context).size.width;
+  return (width / 130).floor().clamp(3, 10);
+}
+
+/// Bottom padding for the library tab grids/lists so the last row clears the
+/// floating tab bar (`Library/Series/Authors/Narrators`) plus the AppShell
+/// `NavigationBar` once both reappear at the end of a scroll. When the bars
+/// hide-on-scroll then snap back, the viewport shrinks but the scroll offset
+/// stays put, so the bottom items end up closer to the pill than steady-state
+/// math would suggest. This value keeps a comfortable gap even in that case.
+const double libraryGridBottomPadding = 180;
 
 // ─── Sort modes ──────────────────────────────────────────────
-enum LibrarySort { recentlyAdded, alphabetical, authorName, publishedYear, duration, random }
+enum LibrarySort { recentlyAdded, alphabetical, authorName, publishedYear, duration, random, totalDuration }
 
 // ─── Filter modes ────────────────────────────────────────────
-enum LibraryFilter { none, inProgress, finished, notStarted, downloaded, hasEbook, genre }
+enum LibraryFilter { none, inProgress, finished, notStarted, downloaded, inASeries, hasEbook, genre, tag }
 
-/// Show a bottom sheet with all books in a series, sorted by sequence.
-/// Can be called from any screen.
-void showSeriesBooksSheet(BuildContext context, {
-  required String seriesName,
-  String? seriesId,
-  List<dynamic> books = const [],
-  String? serverUrl,
-  String? token,
-}) {
-  FocusManager.instance.primaryFocus?.unfocus();
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (_) => DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.4,
-      maxChildSize: 0.9,
-      expand: false,
-      builder: (ctx, scrollController) => _SeriesBooksSheet(
-        seriesName: seriesName,
-        seriesId: seriesId,
-        books: books,
-        serverUrl: serverUrl,
-        token: token,
-        scrollController: scrollController,
-      ),
-    ),
-  );
-}
+/// Series-tab progress filter. Computed client-side from per-book progress
+/// because the ABS server's `?filter=` param doesn't support series-level
+/// progress queries (only book-level). When a filter is active the series
+/// tab fetches all pages upfront so the client-side join is correct.
+enum SeriesFilter { none, inProgress, finished, notStarted }
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -59,10 +64,16 @@ class LibraryScreen extends StatefulWidget {
   State<LibraryScreen> createState() => LibraryScreenState();
 }
 
-class LibraryScreenState extends State<LibraryScreen> {
+class LibraryScreenState extends State<LibraryScreen> with TickerProviderStateMixin {
   // ── Search state ──
   final _searchController = TextEditingController();
   final _focusNode = FocusNode();
+  bool _rmabConfigured = false;
+  /// GlobalKey on the SearchBar so its Element (and the TextField + focus
+  /// inside) survives the tree swap when `_isInSearchMode` flips. Without
+  /// this, typing the first character unmounts the tabbed tree, the
+  /// SearchBar element is destroyed, and the keyboard drops.
+  final _searchBarKey = GlobalKey();
   Timer? _debounce;
 
   /// Whether the search bar has active text.
@@ -73,22 +84,61 @@ class LibraryScreenState extends State<LibraryScreen> {
     _searchController.clear();
     _onSearchChanged('');
     _focusNode.unfocus();
+    _revealDriver.resetToShown();
+  }
+
+  /// Give focus to the search bar (used by the app-icon "Search" shortcut).
+  void focusSearch() {
+    if (!mounted) return;
+    _revealDriver.resetToShown();
+    FocusScope.of(context).requestFocus(_focusNode);
+    // Delay the explicit keyboard-show so focus has time to attach to the
+    // text field and any in-flight navigation (popping Downloads/Bookmarks,
+    // fading into the Library tab) can settle. Without this delay the IME
+    // connection isn't ready yet and TextInput.show is a no-op.
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      if (!_focusNode.hasFocus) {
+        FocusScope.of(context).requestFocus(_focusNode);
+      }
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    });
   }
   List<dynamic> _searchBookResults = [];
   List<dynamic> _searchSeriesResults = [];
   List<dynamic> _searchAuthorResults = [];
+  List<String> _searchNarratorResults = [];
+  List<String> _searchTagResults = [];
+  List<String> _searchGenreResults = [];
+  List<Map<String, dynamic>> _searchEpisodeResults = [];
+  List<String>? _allNarratorsCache;
+  String? _allNarratorsCacheLibraryId;
   bool _isSearching = false;
   bool _hasSearched = false;
   bool get _isInSearchMode => _searchController.text.trim().isNotEmpty;
 
-  // ── Browse state ──
+  // ── Tab state ──
+  TabController? _tabController;
+  int _currentTab = 0;
+
+  // ── Browse state (Library tab) ──
+  bool _collapseSeries = false;
   LibrarySort _sort = LibrarySort.recentlyAdded;
   bool _sortAsc = false; // false = desc (newest/longest first), true = asc
   LibraryFilter _filter = LibraryFilter.none;
   String? _genreFilter;
+  String? _tagFilter;
+
+  /// Set to true the first time the user (or a chip tap via
+  /// AppShell.openLibraryWith*FilterGlobal) explicitly changes the filter.
+  /// `_restoreSortFilter` checks this before overwriting filter state from
+  /// SharedPreferences — fixes the cold-start race where a tag/genre chip
+  /// tap on a freshly opened app got clobbered by the prefs restore that
+  /// runs in postFrame right after the library widget mounts.
+  bool _filterOverriddenByUser = false;
   List<String> _availableGenres = [];
+  List<String> _availableTags = [];
   bool _hideEbookOnly = false;
-  bool _collapseSeries = false;
   final List<Map<String, dynamic>> _items = [];
   bool _isLoadingPage = false;
   bool _hasMore = true;
@@ -100,6 +150,49 @@ class LibraryScreenState extends State<LibraryScreen> {
 
   final _scrollController = ScrollController();
 
+  // ── Series tab state ──
+  final List<Map<String, dynamic>> _seriesItems = [];
+  bool _isLoadingSeriesPage = false;
+  bool _hasMoreSeries = true;
+  int _seriesPage = 0;
+  int _totalSeries = 0;
+  LibrarySort _seriesSort = LibrarySort.alphabetical;
+  bool _seriesSortAsc = true;
+  SeriesFilter _seriesFilter = SeriesFilter.none;
+  final _seriesScrollController = ScrollController();
+
+  // ── Podcast-specific sort (persisted separately) ──
+  LibrarySort _podcastSort = LibrarySort.recentlyAdded;
+  bool _podcastSortAsc = false;
+
+  // ── Authors tab state ──
+  List<Map<String, dynamic>> _authors = [];
+  bool _isLoadingAuthors = false;
+  bool _authorsLoaded = false;
+  LibrarySort _authorSort = LibrarySort.alphabetical;
+  bool _authorSortAsc = true;
+  final _authorsScrollController = ScrollController();
+
+  // ── Narrators tab state ──
+  List<String> _narrators = [];
+  bool _isLoadingNarrators = false;
+  bool _narratorsLoaded = false;
+  LibrarySort _narratorSort = LibrarySort.alphabetical;
+  bool _narratorSortAsc = true;
+  final _narratorsScrollController = ScrollController();
+
+  // ── Cover aspect ratio ──
+  bool _rectangleCovers = false;
+  double get _coverAspectRatio => _rectangleCovers ? 2 / 3 : 1.0;
+
+  // ── Scroll-to-hide bars ──
+  /// Continuous 0..1 reveal: 1 = header + nav fully visible, 0 = both hidden.
+  /// Drives the header SizeTransition, the floating tab bar, and the AppShell
+  /// bottom nav in lockstep.
+  late final ScrollRevealDriver _revealDriver = ScrollRevealDriver(vsync: this);
+  ValueListenable<double> get barsRevealNotifier => _revealDriver.notifier;
+  void resetReveal() => _revealDriver.resetToShown();
+
   /// Called externally (e.g. from AppShell) to focus the search field.
   void requestSearchFocus() {
     _focusNode.requestFocus();
@@ -110,34 +203,115 @@ class LibraryScreenState extends State<LibraryScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
+    // Reveal driver is fed by NotificationListener at the screen level —
+    // works across multiple per-tab scroll controllers in the IndexedStack
+    // without needing to re-attach on every tab switch.
     // Load initial page once the library is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initTabController();
       _tryInitialLoad();
-      final lib = context.read<LibraryProvider>();
-      _lastLibraryId = lib.selectedLibraryId;
-      lib.addListener(_onLibraryProviderChanged);
     });
+    // Tell AppShell we're alive so its bottom-nav listener can attach now
+    // rather than waiting on a postFrame retry that may never re-fire.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AppShell.notifyScreenReady(1);
+    });
+    _loadRmabConfigured();
+  }
+
+  Future<void> _loadRmabConfigured() async {
+    final base = await ScopedPrefs.getString(kRmabBaseUrlKey);
+    final token = await ScopedPrefs.getString(kRmabApiTokenKey);
+    if (!mounted) return;
+    final next =
+        (base ?? '').isNotEmpty && (token ?? '').isNotEmpty;
+    debugPrint('[RMAB] library: _rmabConfigured=$next');
+    if (next != _rmabConfigured) {
+      setState(() => _rmabConfigured = next);
+    }
+  }
+
+  void _initTabController() {
+    final lib = context.read<LibraryProvider>();
+    if (!lib.isPodcastLibrary) {
+      _tabController = TabController(length: 4, vsync: this);
+      _tabController!.addListener(_onTabChanged);
+    }
+  }
+
+  void _onTabChanged() {
+    if (_tabController == null || _tabController!.indexIsChanging) return;
+    final newTab = _tabController!.index;
+    if (newTab == _currentTab) return;
+    setState(() => _currentTab = newTab);
+    // Reset reveal so the SliverAppBar is fully visible after a tab switch.
+    _revealDriver.resetToShown();
+    PlayerSettings.setLibraryTab(newTab);
+    // Lazy load data for the tab
+    if (newTab == 1 && _seriesItems.isEmpty && !_isLoadingSeriesPage) {
+      _loadSeriesPage();
+    } else if (newTab == 2 && !_authorsLoaded && !_isLoadingAuthors) {
+      _loadAuthors();
+    } else if (newTab == 3 && !_narratorsLoaded && !_isLoadingNarrators) {
+      _loadNarrators();
+    }
   }
 
   void _onLibraryProviderChanged() {
+    if (!mounted) return;
     final lib = context.read<LibraryProvider>();
     if (lib.selectedLibraryId != _lastLibraryId && lib.selectedLibraryId != null) {
       _lastLibraryId = lib.selectedLibraryId;
       _loadGeneration++;
+
+      // Rebuild tab controller if library type changed
+      final needsTabs = !lib.isPodcastLibrary;
+      final hasTabs = _tabController != null;
+      if (needsTabs != hasTabs) {
+        _tabController?.removeListener(_onTabChanged);
+        _tabController?.dispose();
+        if (needsTabs) {
+          _tabController = TabController(length: 4, vsync: this);
+          _tabController!.addListener(_onTabChanged);
+        } else {
+          _tabController = null;
+        }
+        _currentTab = 0;
+      }
+
       setState(() {
         _items.clear();
         _page = 0;
         _hasMore = true;
         _isLoadingPage = false;
         _availableGenres = [];
-        // Reset all filters on library switch — filters don't carry across libraries
-        _filter = LibraryFilter.none;
-        _genreFilter = null;
+        _availableTags = [];
+        // Clear series and author data
+        _seriesItems.clear();
+        _seriesPage = 0;
+        _hasMoreSeries = true;
+        _isLoadingSeriesPage = false;
+        _totalSeries = 0;
+        _authors.clear();
+        _authorsLoaded = false;
+        _isLoadingAuthors = false;
+        _narrators.clear();
+        _narratorsLoaded = false;
+        _isLoadingNarrators = false;
+        _allNarratorsCache = null;
+        _allNarratorsCacheLibraryId = null;
+        _searchNarratorResults = [];
+        // New library, so any prior chip-driven override no longer
+        // applies — let `_restoreSortFilter` set the new library's
+        // saved filter freely.
+        _filterOverriddenByUser = false;
       });
-      if (_scrollController.hasClients) _scrollController.jumpTo(0);
-      _loadPage();
-      _loadGenres();
+      _revealDriver.resetToShown();
+      // Restore sort/filter for the new library type, then load
+      _restoreSortFilter().then((_) {
+        if (mounted) _loadPage();
+      });
+      _loadFilterData();
     }
   }
 
@@ -149,12 +323,124 @@ class LibraryScreenState extends State<LibraryScreen> {
     PlayerSettings.getCollapseSeries().then((v) {
       if (mounted) setState(() => _collapseSeries = v);
     });
+    PlayerSettings.getRectangleCovers().then((v) {
+      if (mounted) setState(() => _rectangleCovers = v);
+    });
+    _restoreSortFilter().then((_) {
+      if (!mounted) return;
+      _lastLibraryId = lib.selectedLibraryId;
+      lib.addListener(_onLibraryProviderChanged);
+      if (lib.selectedLibraryId != null) {
+        _loadPage();
+        _loadFilterData();
+      } else {
+        lib.addListener(_onLibraryChanged);
+      }
+    });
     PlayerSettings.settingsChanged.addListener(_onSettingsChanged);
-    if (lib.selectedLibraryId != null) {
-      _loadPage();
-      _loadGenres();
-    } else {
-      lib.addListener(_onLibraryChanged);
+  }
+
+  Future<void> _restoreSortFilter() async {
+    final results = await Future.wait([
+      PlayerSettings.getLibrarySort(),
+      PlayerSettings.getLibrarySortAsc(),
+      PlayerSettings.getLibraryFilter(),
+      PlayerSettings.getLibraryGenreFilter(),
+      PlayerSettings.getSeriesSort(),
+      PlayerSettings.getSeriesSortAsc(),
+      PlayerSettings.getAuthorSort(),
+      PlayerSettings.getAuthorSortAsc(),
+      PlayerSettings.getPodcastSort(),
+      PlayerSettings.getPodcastSortAsc(),
+      PlayerSettings.getLibraryTab(),
+      PlayerSettings.getNarratorSort(),
+      PlayerSettings.getNarratorSortAsc(),
+      PlayerSettings.getLibraryTagFilter(),
+      PlayerSettings.getLibrarySeriesFilter(),
+    ]);
+    if (!mounted) return;
+    final sortName = results[0] as String;
+    final sortAsc = results[1] as bool;
+    final filterName = results[2] as String;
+    final genreFilter = results[3] as String;
+    final seriesSortName = results[4] as String;
+    final seriesSortAsc = results[5] as bool;
+    final authorSortName = results[6] as String;
+    final authorSortAsc = results[7] as bool;
+    final podcastSortName = results[8] as String;
+    final podcastSortAsc = results[9] as bool;
+    final savedTab = results[10] as int;
+    final narratorSortName = results[11] as String;
+    final narratorSortAsc = results[12] as bool;
+    final tagFilter = results[13] as String;
+    final seriesFilterName = results[14] as String;
+    final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
+    setState(() {
+      // Book library sort/filter
+      _sort = LibrarySort.values.firstWhere(
+        (s) => s.name == sortName,
+        orElse: () => LibrarySort.recentlyAdded,
+      );
+      _sortAsc = sortAsc;
+      if (_sort == LibrarySort.random) _randomSeed = Random().nextInt(100000);
+      // Don't restore filter from prefs if the user (typically via a
+      // chip tap from an open detail sheet) already set one during this
+      // session — that race would otherwise undo their selection on cold
+      // start when the library widget is mounting for the first time.
+      if (!_filterOverriddenByUser) {
+        _filter = LibraryFilter.values.firstWhere(
+          (f) => f.name == filterName,
+          orElse: () => LibraryFilter.none,
+        );
+        _genreFilter = genreFilter.isNotEmpty ? genreFilter : null;
+        _tagFilter = tagFilter.isNotEmpty ? tagFilter : null;
+      }
+      _seriesSort = LibrarySort.values.firstWhere(
+        (s) => s.name == seriesSortName,
+        orElse: () => LibrarySort.alphabetical,
+      );
+      _seriesSortAsc = seriesSortAsc;
+      _seriesFilter = SeriesFilter.values.firstWhere(
+        (f) => f.name == seriesFilterName,
+        orElse: () => SeriesFilter.none,
+      );
+      _authorSort = LibrarySort.values.firstWhere(
+        (s) => s.name == authorSortName,
+        orElse: () => LibrarySort.alphabetical,
+      );
+      _authorSortAsc = authorSortAsc;
+      _narratorSort = LibrarySort.values.firstWhere(
+        (s) => s.name == narratorSortName,
+        orElse: () => LibrarySort.alphabetical,
+      );
+      _narratorSortAsc = narratorSortAsc;
+      // Podcast sort
+      _podcastSort = LibrarySort.values.firstWhere(
+        (s) => s.name == podcastSortName,
+        orElse: () => LibrarySort.recentlyAdded,
+      );
+      _podcastSortAsc = podcastSortAsc;
+      // Apply podcast settings if currently on a podcast library
+      if (isPodcast) {
+        _sort = _podcastSort;
+        _sortAsc = _podcastSortAsc;
+        _filter = LibraryFilter.none;
+        _genreFilter = null;
+        _tagFilter = null;
+      }
+      // Restore last active tab (only for book libraries with tabs)
+      if (!isPodcast && savedTab > 0 && savedTab < 4) {
+        _currentTab = savedTab;
+        _tabController?.animateTo(savedTab);
+      }
+    });
+    // Lazy load data for the restored tab
+    if (!isPodcast && savedTab == 1 && _seriesItems.isEmpty && !_isLoadingSeriesPage) {
+      _loadSeriesPage();
+    } else if (!isPodcast && savedTab == 2 && !_authorsLoaded && !_isLoadingAuthors) {
+      _loadAuthors();
+    } else if (!isPodcast && savedTab == 3 && !_narratorsLoaded && !_isLoadingNarrators) {
+      _loadNarrators();
     }
   }
 
@@ -162,10 +448,16 @@ class LibraryScreenState extends State<LibraryScreen> {
     Future.wait([
       PlayerSettings.getHideEbookOnly(),
       PlayerSettings.getCollapseSeries(),
+      PlayerSettings.getRectangleCovers(),
     ]).then((values) {
       final newHideEbook = values[0];
       final newCollapse = values[1];
+      final newRectCovers = values[2];
       if (!mounted) return;
+      final coversChanged = newRectCovers != _rectangleCovers;
+      if (coversChanged) {
+        setState(() => _rectangleCovers = newRectCovers);
+      }
       if (newHideEbook != _hideEbookOnly || newCollapse != _collapseSeries) {
         _loadGeneration++;
         setState(() {
@@ -183,15 +475,16 @@ class LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _onLibraryChanged() {
+    if (!mounted) return;
     final lib = context.read<LibraryProvider>();
     if (lib.selectedLibraryId != null && _items.isEmpty && !_isLoadingPage) {
       lib.removeListener(_onLibraryChanged);
       _loadPage();
-      _loadGenres();
+      _loadFilterData();
     }
   }
 
-  Future<void> _loadGenres() async {
+  Future<void> _loadFilterData() async {
     final auth = context.read<AuthProvider>();
     final lib = context.read<LibraryProvider>();
     final api = auth.apiService;
@@ -199,8 +492,20 @@ class LibraryScreenState extends State<LibraryScreen> {
     final filterData = await api.getLibraryFilterData(lib.selectedLibraryId!);
     if (filterData != null && mounted) {
       final genres = filterData['genres'] as List<dynamic>? ?? [];
+      final tags = filterData['tags'] as List<dynamic>? ?? [];
+      String unwrap(dynamic v) =>
+          v is Map ? (v['name'] as String? ?? '') : v.toString();
       setState(() {
-        _availableGenres = genres.map((g) => g is Map ? (g['name'] as String? ?? '') : g.toString()).where((g) => g.isNotEmpty).toList()..sort();
+        _availableGenres = genres
+            .map(unwrap)
+            .where((g) => g.isNotEmpty)
+            .toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+        _availableTags = tags
+            .map(unwrap)
+            .where((t) => t.isNotEmpty)
+            .toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
       });
     }
   }
@@ -210,7 +515,13 @@ class LibraryScreenState extends State<LibraryScreen> {
     _debounce?.cancel();
     _searchController.dispose();
     _focusNode.dispose();
+    _revealDriver.dispose();
     _scrollController.dispose();
+    _seriesScrollController.dispose();
+    _authorsScrollController.dispose();
+    _narratorsScrollController.dispose();
+    _tabController?.removeListener(_onTabChanged);
+    _tabController?.dispose();
     PlayerSettings.settingsChanged.removeListener(_onSettingsChanged);
     try {
       final lib = context.read<LibraryProvider>();
@@ -220,16 +531,18 @@ class LibraryScreenState extends State<LibraryScreen> {
     super.dispose();
   }
 
-  // ── Scroll-based pagination ──
-  void _onScroll() {
-    if (_isInSearchMode) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 400) {
-      _loadPage();
-    }
-  }
+  // Pagination is now triggered by the NotificationListener inside each tab
+  // widget, which calls back into _loadPage / _loadSeriesPage when the user
+  // approaches the bottom of the visible scroll view.
 
-  // ── Load a page of items ──
+  // ABS filter format: <group>.<base64(value)>. Same encoding ApiService
+  // uses for getBooksByAuthor.
+  String _absFilter(String group, String value) =>
+      '$group.${base64Encode(utf8.encode(value))}';
+
+  // ══════════════════════════════════════════════════════════════
+  // LIBRARY TAB - Load a page of items
+  // ══════════════════════════════════════════════════════════════
   Future<void> _loadPage() async {
     if (_isLoadingPage || !_hasMore) return;
     setState(() => _isLoadingPage = true);
@@ -238,8 +551,14 @@ class LibraryScreenState extends State<LibraryScreen> {
     final auth = context.read<AuthProvider>();
     final lib = context.read<LibraryProvider>();
     final api = auth.apiService;
-    if (api == null || lib.selectedLibraryId == null) {
+    if (lib.selectedLibraryId == null) {
       setState(() => _isLoadingPage = false);
+      return;
+    }
+
+    // Offline fallback: show downloaded items instead of hitting the API
+    if (api == null || lib.isOffline) {
+      _loadOfflinePage(lib);
       return;
     }
 
@@ -255,6 +574,7 @@ class LibraryScreenState extends State<LibraryScreen> {
       case LibrarySort.publishedYear:
         sort = 'media.metadata.publishedYear'; desc = _sortAsc ? 0 : 1; break;
       case LibrarySort.duration:
+      case LibrarySort.totalDuration:
         sort = 'media.duration'; desc = _sortAsc ? 0 : 1; break;
       case LibrarySort.random:
         sort = 'addedAt'; desc = 1; break;
@@ -262,65 +582,431 @@ class LibraryScreenState extends State<LibraryScreen> {
 
     String? filter;
     if (_filter == LibraryFilter.inProgress) {
-      filter = 'progress.${base64Encode(utf8.encode('in-progress'))}';
+      filter = _absFilter('progress', 'in-progress');
     } else if (_filter == LibraryFilter.finished) {
-      filter = 'progress.${base64Encode(utf8.encode('finished'))}';
+      filter = _absFilter('progress', 'finished');
     } else if (_filter == LibraryFilter.notStarted) {
-      filter = 'progress.${base64Encode(utf8.encode('not-started'))}';
+      filter = _absFilter('progress', 'not-started');
     } else if (_filter == LibraryFilter.hasEbook) {
-      filter = 'ebooks.${base64Encode(utf8.encode('ebook'))}';
+      filter = _absFilter('ebooks', 'ebook');
     } else if (_filter == LibraryFilter.genre && _genreFilter != null) {
-      filter = 'genres.${base64Encode(utf8.encode(_genreFilter!))}';
+      filter = _absFilter('genres', _genreFilter!);
+    } else if (_filter == LibraryFilter.tag && _tagFilter != null) {
+      filter = _absFilter('tags', _tagFilter!);
     }
     // Downloaded filter is client-side — handled after loading
 
     final useClientFilter = _filter == LibraryFilter.downloaded;
-    final limit = (_sort == LibrarySort.random || useClientFilter) ? 1000 : _pageSize;
+    final fetchAll = _sort == LibrarySort.random || useClientFilter;
 
-    final result = await api.getLibraryItems(
-      lib.selectedLibraryId!,
-      page: (_sort == LibrarySort.random || useClientFilter) ? 0 : _page,
-      limit: limit,
-      sort: sort,
-      desc: desc,
-      filter: filter,
-      collapseSeries: _collapseSeries && !useClientFilter && !lib.isPodcastLibrary,
-    );
-
-    if (result != null && mounted && gen == _loadGeneration) {
-      final results = (result['results'] as List<dynamic>?) ?? [];
-      final total = (result['total'] as int?) ?? 0;
-      setState(() {
-        _totalItems = total;
+    if (fetchAll) {
+      // Paginate through ALL items for client-side filters / random sort
+      const fetchLimit = 500;
+      int fetchPage = 0;
+      int total = 0;
+      while (mounted && gen == _loadGeneration) {
+        final result = await api.getLibraryItems(
+          lib.selectedLibraryId!,
+          page: fetchPage,
+          limit: fetchLimit,
+          sort: sort,
+          desc: desc,
+          filter: filter,
+          collapseSeries: _collapseSeries && !useClientFilter && !lib.isPodcastLibrary,
+        );
+        if (result == null || !mounted || gen != _loadGeneration) break;
+        final results = (result['results'] as List<dynamic>?) ?? [];
+        total = (result['total'] as int?) ?? 0;
         for (final r in results) {
           if (r is Map<String, dynamic>) {
-            // Client-side downloaded filter
-            if (_filter == LibraryFilter.downloaded) {
-              final id = r['id'] as String? ?? '';
-              if (!DownloadService().isDownloaded(id)) continue;
+            final id = r['id'] as String?;
+            final ts = r['updatedAt'] as num?;
+            if (id != null && ts != null) lib.registerUpdatedAt(id, ts.toInt());
+            if (id != null) {
+              final coverPath = (r['media'] as Map<String, dynamic>?)?['coverPath'] as String?;
+              lib.registerHasCover(id, coverPath != null && coverPath.isNotEmpty);
             }
+            if (useClientFilter && !DownloadService().isDownloaded(id ?? '')) continue;
             if (_hideEbookOnly && PlayerSettings.isEbookOnly(r)) continue;
             _items.add(r);
           }
         }
-        if (_sort == LibrarySort.random) {
-          _items.shuffle(Random(_randomSeed));
+        fetchPage++;
+        if (fetchPage * fetchLimit >= total) break;
+      }
+      if (mounted && gen == _loadGeneration) {
+        setState(() {
+          _totalItems = total;
+          if (_sort == LibrarySort.random) _items.shuffle(Random(_randomSeed));
           _hasMore = false;
-        } else if (useClientFilter) {
-          _hasMore = false; // All loaded and filtered at once
-        } else {
+          _isLoadingPage = false;
+        });
+      }
+    } else {
+      final result = await api.getLibraryItems(
+        lib.selectedLibraryId!,
+        page: _page,
+        limit: _pageSize,
+        sort: sort,
+        desc: desc,
+        filter: filter,
+        collapseSeries: _collapseSeries && !lib.isPodcastLibrary,
+      );
+
+      if (result != null && mounted && gen == _loadGeneration) {
+        final results = (result['results'] as List<dynamic>?) ?? [];
+        final total = (result['total'] as int?) ?? 0;
+        setState(() {
+          _totalItems = total;
+          for (final r in results) {
+            if (r is Map<String, dynamic>) {
+              final id = r['id'] as String?;
+              final ts = r['updatedAt'] as num?;
+              if (id != null && ts != null) lib.registerUpdatedAt(id, ts.toInt());
+              if (id != null) {
+                final coverPath = (r['media'] as Map<String, dynamic>?)?['coverPath'] as String?;
+                lib.registerHasCover(id, coverPath != null && coverPath.isNotEmpty);
+              }
+              if (_hideEbookOnly && PlayerSettings.isEbookOnly(r)) continue;
+              _items.add(r);
+            }
+          }
           _page++;
-          _hasMore = _items.length < total;
-        }
-        _isLoadingPage = false;
-      });
-    } else if (mounted && gen == _loadGeneration) {
-      setState(() => _isLoadingPage = false);
+          // Compare raw server results to page size, not filtered _items to total.
+          // Client-side filters (e.g. hide-ebook-only) reduce _items below total,
+          // which would leave _hasMore permanently true and the loader spinning.
+          _hasMore = results.length >= _pageSize;
+          debugPrint('[LibPage] page=${_page - 1} results=${results.length} pageSize=$_pageSize filtered=${_items.length} total=$total hideEbook=$_hideEbookOnly hasMore=$_hasMore');
+          _isLoadingPage = false;
+        });
+      } else if (mounted && gen == _loadGeneration) {
+        setState(() => _isLoadingPage = false);
+      }
     }
+  }
+
+  /// Offline fallback: populate the grid from downloaded items.
+  void _loadOfflinePage(LibraryProvider lib) {
+    final l = AppLocalizations.of(context)!;
+    final isPodcast = lib.isPodcastLibrary;
+    final downloads = DownloadService().downloadedItems
+        .where((dl) => (dl.itemId.length > 36) == isPodcast)
+        .toList();
+
+    final items = <Map<String, dynamic>>[];
+    for (final dl in downloads) {
+      double duration = 0;
+      List<dynamic> chapters = [];
+      if (dl.sessionData != null) {
+        try {
+          final session = jsonDecode(dl.sessionData!) as Map<String, dynamic>;
+          duration = (session['duration'] as num?)?.toDouble() ?? 0;
+          chapters = session['chapters'] as List<dynamic>? ?? [];
+        } catch (_) {}
+      }
+      items.add({
+        'id': dl.itemId,
+        'media': {
+          'metadata': {
+            'title': dl.title ?? l.libraryScreenUnknownTitle,
+            'authorName': dl.author ?? '',
+          },
+          'duration': duration,
+          'chapters': chapters,
+        },
+      });
+    }
+
+    // Sort alphabetically by title for a clean offline view
+    items.sort((a, b) {
+      final ta = ((a['media'] as Map)['metadata'] as Map)['title'] as String;
+      final tb = ((b['media'] as Map)['metadata'] as Map)['title'] as String;
+      return ta.toLowerCase().compareTo(tb.toLowerCase());
+    });
+
+    setState(() {
+      _items.clear();
+      _items.addAll(items);
+      _totalItems = items.length;
+      _hasMore = false;
+      _isLoadingPage = false;
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // SERIES TAB - Load a page of series
+  // ══════════════════════════════════════════════════════════════
+  /// Whether [series] matches [filter] based on per-book progress aggregated
+  /// from [LibraryProvider]. Used by the series tab's client-side filter
+  /// (the ABS server doesn't support series-level progress filters).
+  bool _seriesMatchesFilter(
+      Map<String, dynamic> series, SeriesFilter filter, LibraryProvider lib) {
+    if (filter == SeriesFilter.none) return true;
+    final books = series['books'] as List<dynamic>? ?? const [];
+    if (books.isEmpty) return false;
+
+    var finishedCount = 0;
+    var startedCount = 0;
+    for (final b in books) {
+      if (b is! Map<String, dynamic>) continue;
+      final id = b['id'] as String?;
+      if (id == null || id.isEmpty) continue;
+      final pd = lib.getProgressData(id);
+      final isFinished = pd?['isFinished'] == true;
+      final progress = lib.getProgress(id);
+      if (isFinished) {
+        finishedCount++;
+        startedCount++;
+      } else if (progress > 0.001) {
+        startedCount++;
+      }
+    }
+
+    return switch (filter) {
+      SeriesFilter.finished => finishedCount == books.length,
+      SeriesFilter.notStarted => startedCount == 0,
+      SeriesFilter.inProgress =>
+        startedCount > 0 && finishedCount < books.length,
+      SeriesFilter.none => true,
+    };
+  }
+
+  Future<void> _loadSeriesPage() async {
+    if (_isLoadingSeriesPage) return;
+    if (_seriesFilter == SeriesFilter.none && !_hasMoreSeries) return;
+    setState(() => _isLoadingSeriesPage = true);
+
+    final auth = context.read<AuthProvider>();
+    final lib = context.read<LibraryProvider>();
+    final api = auth.apiService;
+    if (api == null || lib.selectedLibraryId == null) {
+      setState(() => _isLoadingSeriesPage = false);
+      return;
+    }
+
+    String sort;
+    switch (_seriesSort) {
+      case LibrarySort.alphabetical:
+        sort = 'name'; break;
+      case LibrarySort.recentlyAdded:
+        sort = 'addedAt'; break;
+      case LibrarySort.totalDuration:
+        sort = 'numBooks'; break;
+      default:
+        sort = 'name'; break;
+    }
+
+    // ── Filtered mode: paginate the same way as the unfiltered path, but
+    // apply the client-side filter to each page and only append matches.
+    // hasMore is driven by the unfiltered server total so pagination stops
+    // when we've actually exhausted the source. Auto-refire when matches
+    // are sparse so the user doesn't see an empty list on libraries where
+    // the filter only hits a few series per page.
+    if (_seriesFilter != SeriesFilter.none) {
+      const filteredPageSize = 100;
+      final result = await api.getLibrarySeries(
+        lib.selectedLibraryId!,
+        page: _seriesPage,
+        limit: filteredPageSize,
+        sort: sort,
+        desc: _seriesSortAsc ? 0 : 1,
+      );
+      if (!mounted) return;
+      if (result == null) {
+        setState(() => _isLoadingSeriesPage = false);
+        return;
+      }
+      final results = (result['results'] as List<dynamic>?) ?? [];
+      final unfilteredTotal = (result['total'] as int?) ?? 0;
+      final matching = results
+          .whereType<Map<String, dynamic>>()
+          .where((s) => _seriesMatchesFilter(s, _seriesFilter, lib))
+          .toList();
+      setState(() {
+        _seriesItems.addAll(matching);
+        _seriesPage++;
+        // hasMore = there's still source data left, regardless of how many
+        // pages matched.
+        _hasMoreSeries = (_seriesPage * filteredPageSize) < unfilteredTotal &&
+            results.isNotEmpty;
+        // The visible count is what the user sees; track it for the InfoRow.
+        _totalSeries = _seriesItems.length;
+        _isLoadingSeriesPage = false;
+      });
+      // Filter sparsity guard: if the user just activated this filter and
+      // we don't have enough visible results to fill the screen, keep
+      // pulling pages until we either have ~20 matches or run out.
+      if (_hasMoreSeries && _seriesItems.length < 20) {
+        Future.microtask(_loadSeriesPage);
+      }
+      return;
+    }
+
+    // For large libraries (250+ series), serve cached data on first load
+    final cacheKey = '${lib.selectedLibraryId}:$sort:${_seriesSortAsc ? 0 : 1}';
+    if (_seriesPage == 0 && _seriesItems.isEmpty) {
+      final cached = lib.getSeriesTabCache(cacheKey);
+      if (cached != null) {
+        final cachedTotal = (cached['total'] as int?) ?? 0;
+        if (cachedTotal >= 250) {
+          final items = (cached['items'] as List<Map<String, dynamic>>?) ?? [];
+          if (items.isNotEmpty && mounted) {
+            setState(() {
+              _seriesItems.addAll(items);
+              _totalSeries = cachedTotal;
+              _seriesPage = (items.length / 50).ceil();
+              _hasMoreSeries = items.length < cachedTotal;
+              _isLoadingSeriesPage = false;
+            });
+            // Refresh in background
+            _refreshSeriesInBackground(api, lib, sort, cacheKey);
+            return;
+          }
+        }
+      }
+    }
+
+    final result = await api.getLibrarySeries(
+      lib.selectedLibraryId!,
+      page: _seriesPage,
+      limit: 50,
+      sort: sort,
+      desc: _seriesSortAsc ? 0 : 1,
+    );
+
+    if (result != null && mounted) {
+      final results = (result['results'] as List<dynamic>?) ?? [];
+      final total = (result['total'] as int?) ?? 0;
+      setState(() {
+        _totalSeries = total;
+        for (final r in results) {
+          if (r is Map<String, dynamic>) {
+            _seriesItems.add(r);
+          }
+        }
+        _seriesPage++;
+        _hasMoreSeries = _seriesItems.length < total;
+        _isLoadingSeriesPage = false;
+      });
+      // Update cache
+      if (total >= 250) {
+        lib.setSeriesTabCache(cacheKey, List<Map<String, dynamic>>.from(_seriesItems), total);
+      }
+    } else if (mounted) {
+      setState(() => _isLoadingSeriesPage = false);
+    }
+  }
+
+  Future<void> _refreshSeriesInBackground(ApiService api, LibraryProvider lib, String sort, String cacheKey) async {
+    final allItems = <Map<String, dynamic>>[];
+    int page = 0;
+    int total = 0;
+    while (true) {
+      final result = await api.getLibrarySeries(
+        lib.selectedLibraryId!,
+        page: page,
+        limit: 50,
+        sort: sort,
+        desc: _seriesSortAsc ? 0 : 1,
+      );
+      if (result == null) break;
+      final results = (result['results'] as List<dynamic>?) ?? [];
+      total = (result['total'] as int?) ?? 0;
+      for (final r in results) {
+        if (r is Map<String, dynamic>) allItems.add(r);
+      }
+      if (allItems.length >= total || results.isEmpty) break;
+      page++;
+    }
+    if (allItems.isNotEmpty && mounted) {
+      lib.setSeriesTabCache(cacheKey, allItems, total);
+      setState(() {
+        _seriesItems.clear();
+        _seriesItems.addAll(allItems);
+        _totalSeries = total;
+        _seriesPage = (allItems.length / 50).ceil();
+        _hasMoreSeries = allItems.length < total;
+      });
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // AUTHORS TAB - Load all authors
+  // ══════════════════════════════════════════════════════════════
+  Future<void> _loadAuthors() async {
+    if (_isLoadingAuthors) return;
+    setState(() => _isLoadingAuthors = true);
+
+    final auth = context.read<AuthProvider>();
+    final lib = context.read<LibraryProvider>();
+    final api = auth.apiService;
+    if (api == null || lib.selectedLibraryId == null) {
+      setState(() { _isLoadingAuthors = false; _authorsLoaded = true; });
+      return;
+    }
+
+    final authors = await api.getLibraryAuthors(lib.selectedLibraryId!);
+    if (mounted) {
+      setState(() {
+        _authors = authors;
+        _sortAuthors();
+        _isLoadingAuthors = false;
+        _authorsLoaded = true;
+      });
+    }
+  }
+
+  void _sortAuthors() {
+    _authors.sort((a, b) {
+      if (_authorSort == LibrarySort.totalDuration) {
+        final aCount = a['numBooks'] as int? ?? 0;
+        final bCount = b['numBooks'] as int? ?? 0;
+        return _authorSortAsc ? aCount.compareTo(bCount) : bCount.compareTo(aCount);
+      }
+      final aName = (a['name'] as String? ?? '').toLowerCase();
+      final bName = (b['name'] as String? ?? '').toLowerCase();
+      return _authorSortAsc ? aName.compareTo(bName) : bName.compareTo(aName);
+    });
+  }
+
+  Future<void> _loadNarrators() async {
+    if (_isLoadingNarrators) return;
+    setState(() => _isLoadingNarrators = true);
+
+    final auth = context.read<AuthProvider>();
+    final lib = context.read<LibraryProvider>();
+    final api = auth.apiService;
+    if (api == null || lib.selectedLibraryId == null) {
+      setState(() { _isLoadingNarrators = false; _narratorsLoaded = true; });
+      return;
+    }
+
+    final narrators = await api.getLibraryNarrators(lib.selectedLibraryId!);
+    if (mounted) {
+      setState(() {
+        _narrators = narrators;
+        _sortNarrators();
+        _isLoadingNarrators = false;
+        _narratorsLoaded = true;
+      });
+    }
+  }
+
+  void _sortNarrators() {
+    _narrators.sort((a, b) {
+      final aLower = a.toLowerCase();
+      final bLower = b.toLowerCase();
+      return _narratorSortAsc ? aLower.compareTo(bLower) : bLower.compareTo(aLower);
+    });
   }
 
   // ── Change sort and reload ──
   void _changeSort(LibrarySort newSort) {
+    if (_currentTab == 1) { _changeSeriesSort(newSort); return; }
+    if (_currentTab == 2) { _changeAuthorSort(newSort); return; }
+    if (_currentTab == 3) { _changeNarratorSort(newSort); return; }
+
+    final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
     if (newSort == _sort) {
       // Tapping the same sort toggles direction (except Random)
       if (newSort == LibrarySort.random) return;
@@ -331,6 +1017,12 @@ class LibraryScreenState extends State<LibraryScreen> {
         _hasMore = true;
         _isLoadingPage = false;
       });
+      if (isPodcast) {
+        _podcastSortAsc = _sortAsc;
+        PlayerSettings.setPodcastSortAsc(_sortAsc);
+      } else {
+        PlayerSettings.setLibrarySortAsc(_sortAsc);
+      }
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
       _loadPage();
       return;
@@ -347,35 +1039,160 @@ class LibraryScreenState extends State<LibraryScreen> {
         _randomSeed = Random().nextInt(100000);
       }
     });
+    if (isPodcast) {
+      _podcastSort = _sort;
+      _podcastSortAsc = _sortAsc;
+      PlayerSettings.setPodcastSort(_sort.name);
+      PlayerSettings.setPodcastSortAsc(_sortAsc);
+    } else {
+      PlayerSettings.setLibrarySort(_sort.name);
+      PlayerSettings.setLibrarySortAsc(_sortAsc);
+    }
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
     _loadPage();
   }
 
+  void _changeSeriesSort(LibrarySort newSort) {
+    if (newSort == _seriesSort) {
+      setState(() { _seriesSortAsc = !_seriesSortAsc; });
+    } else {
+      setState(() {
+        _seriesSort = newSort;
+        _seriesSortAsc = newSort == LibrarySort.alphabetical;
+      });
+    }
+    setState(() {
+      _seriesItems.clear();
+      _seriesPage = 0;
+      _hasMoreSeries = true;
+      _isLoadingSeriesPage = false;
+    });
+    PlayerSettings.setSeriesSort(_seriesSort.name);
+    PlayerSettings.setSeriesSortAsc(_seriesSortAsc);
+    if (_seriesScrollController.hasClients) _seriesScrollController.jumpTo(0);
+    _loadSeriesPage();
+  }
+
+  void _changeAuthorSort(LibrarySort newSort) {
+    if (newSort == _authorSort) {
+      setState(() { _authorSortAsc = !_authorSortAsc; });
+    } else {
+      setState(() {
+        _authorSort = newSort;
+        _authorSortAsc = newSort == LibrarySort.alphabetical;
+      });
+    }
+    PlayerSettings.setAuthorSort(_authorSort.name);
+    PlayerSettings.setAuthorSortAsc(_authorSortAsc);
+    setState(() => _sortAuthors());
+    if (_authorsScrollController.hasClients) _authorsScrollController.jumpTo(0);
+  }
+
+  void _changeNarratorSort(LibrarySort newSort) {
+    if (newSort == _narratorSort) {
+      setState(() { _narratorSortAsc = !_narratorSortAsc; });
+    } else {
+      setState(() {
+        _narratorSort = newSort;
+        _narratorSortAsc = true;
+      });
+    }
+    PlayerSettings.setNarratorSort(_narratorSort.name);
+    PlayerSettings.setNarratorSortAsc(_narratorSortAsc);
+    setState(() => _sortNarrators());
+    if (_narratorsScrollController.hasClients) _narratorsScrollController.jumpTo(0);
+  }
+
+  /// Switch to the Books sub-tab (if needed) and apply a tag filter. Used by
+  /// AppShell.openLibraryWithTagFilterGlobal so a tag chip tapped from the
+  /// book detail sheet drops the user into the matching library view.
+  void applyTagFilter(String tag) {
+    if (_currentTab != 0 && _tabController != null) {
+      _tabController!.animateTo(0);
+    }
+    _changeFilter(LibraryFilter.tag, tag: tag);
+  }
+
+  /// Switch to the Books sub-tab (if needed) and apply a genre filter.
+  /// Mirrors [applyTagFilter] for genre chips tapped from book detail.
+  void applyGenreFilter(String genre) {
+    if (_currentTab != 0 && _tabController != null) {
+      _tabController!.animateTo(0);
+    }
+    _changeFilter(LibraryFilter.genre, genre: genre);
+  }
+
+  /// Change the Series tab's client-side progress filter and reload.
+  void _changeSeriesFilter(SeriesFilter newFilter) {
+    final effective =
+        newFilter == _seriesFilter ? SeriesFilter.none : newFilter;
+    if (effective == _seriesFilter) return;
+    setState(() {
+      _seriesFilter = effective;
+      _seriesItems.clear();
+      _seriesPage = 0;
+      _hasMoreSeries = true;
+      _isLoadingSeriesPage = false;
+    });
+    PlayerSettings.setLibrarySeriesFilter(_seriesFilter.name);
+    if (_seriesScrollController.hasClients) _seriesScrollController.jumpTo(0);
+    _loadSeriesPage();
+  }
+
   // ── Change filter and reload ──
-  void _changeFilter(LibraryFilter newFilter, {String? genre}) {
-    final effective = (newFilter == _filter && genre == _genreFilter) ? LibraryFilter.none : newFilter;
-    if (effective == _filter && genre == _genreFilter) return;
+  void _changeFilter(LibraryFilter newFilter, {String? genre, String? tag}) {
+    final sameAsCurrent = newFilter == _filter &&
+        genre == _genreFilter &&
+        tag == _tagFilter;
+    final effective = sameAsCurrent ? LibraryFilter.none : newFilter;
+    if (effective == _filter && genre == _genreFilter && tag == _tagFilter) return;
+    final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
     _loadGeneration++;
     setState(() {
       _filter = effective;
       _genreFilter = effective == LibraryFilter.genre ? genre : null;
+      _tagFilter = effective == LibraryFilter.tag ? tag : null;
       _items.clear();
       _page = 0;
       _hasMore = true;
       _isLoadingPage = false;
+      _filterOverriddenByUser = true;
     });
+    if (!isPodcast) {
+      PlayerSettings.setLibraryFilter(_filter.name);
+      PlayerSettings.setLibraryGenreFilter(_genreFilter);
+      PlayerSettings.setLibraryTagFilter(_tagFilter);
+    }
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
     _loadPage();
+  }
+
+  void _applyTagFilter(String tag) {
+    clearSearch();
+    _tabController?.animateTo(0);
+    _changeFilter(LibraryFilter.tag, tag: tag);
+  }
+
+  void _applyGenreFilter(String genre) {
+    clearSearch();
+    _tabController?.animateTo(0);
+    _changeFilter(LibraryFilter.genre, genre: genre);
   }
 
   // ── Search ──
   void _onSearchChanged(String query) {
     _debounce?.cancel();
+    // Always show bars when entering/exiting search
+    _revealDriver.resetToShown();
     if (query.trim().isEmpty) {
       setState(() {
         _searchBookResults = [];
         _searchSeriesResults = [];
         _searchAuthorResults = [];
+        _searchNarratorResults = [];
+        _searchTagResults = [];
+        _searchGenreResults = [];
+        _searchEpisodeResults = [];
         _hasSearched = false;
         _isSearching = false;
       });
@@ -394,21 +1211,48 @@ class LibraryScreenState extends State<LibraryScreen> {
 
     setState(() => _isSearching = true);
 
+    final isPodcast = lib.isPodcastLibrary;
     final result = await api.searchLibrary(lib.selectedLibraryId!, query);
     if (result != null && mounted) {
       setState(() {
-        _searchBookResults = (result['book'] as List<dynamic>?) ?? [];
-        if (_hideEbookOnly) {
-          _searchBookResults = _searchBookResults.where((r) {
-            final item = r['libraryItem'] as Map<String, dynamic>? ?? r as Map<String, dynamic>;
-            return !PlayerSettings.isEbookOnly(item);
-          }).toList();
+        if (isPodcast) {
+          _searchBookResults = (result['podcast'] as List<dynamic>?) ?? [];
+        } else {
+          _searchBookResults = (result['book'] as List<dynamic>?) ?? [];
+          if (_hideEbookOnly) {
+            _searchBookResults = _searchBookResults.where((r) {
+              final item = r['libraryItem'] as Map<String, dynamic>? ?? r as Map<String, dynamic>;
+              return !PlayerSettings.isEbookOnly(item);
+            }).toList();
+          }
         }
         _searchSeriesResults = (result['series'] as List<dynamic>?) ?? [];
         _searchAuthorResults = (result['authors'] as List<dynamic>?) ?? [];
+        if (!isPodcast) {
+          final q = query.toLowerCase();
+          _searchTagResults = _availableTags
+              .where((t) => t.toLowerCase().contains(q))
+              .toList();
+          _searchGenreResults = _availableGenres
+              .where((g) => g.toLowerCase().contains(q))
+              .toList();
+        } else {
+          _searchTagResults = [];
+          _searchGenreResults = [];
+        }
         _isSearching = false;
         _hasSearched = true;
       });
+
+      // Client-side narrator filter (ABS search endpoint doesn't return narrators)
+      if (!isPodcast) {
+        _searchNarrators(query, lib.selectedLibraryId!, api);
+      }
+
+      // For podcast libraries, also search episode titles client-side
+      if (isPodcast) {
+        _searchEpisodes(query, lib.selectedLibraryId!, api);
+      }
     } else if (mounted) {
       setState(() {
         _isSearching = false;
@@ -417,7 +1261,66 @@ class LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  Future<void> _searchNarrators(String query, String libraryId, dynamic api) async {
+    final lowerQuery = query.toLowerCase();
+    if (_allNarratorsCache == null || _allNarratorsCacheLibraryId != libraryId) {
+      final all = await api.getLibraryNarrators(libraryId);
+      _allNarratorsCache = (all as List).cast<String>();
+      _allNarratorsCacheLibraryId = libraryId;
+    }
+    final matches = _allNarratorsCache!
+        .where((n) => n.toLowerCase().contains(lowerQuery))
+        .toList();
+    if (mounted && _searchController.text.trim().toLowerCase() == lowerQuery) {
+      setState(() => _searchNarratorResults = matches);
+    }
+  }
+
+  List<Map<String, dynamic>>? _cachedShowsWithEpisodes;
+  String? _cachedShowsLibraryId;
+
+  Future<void> _searchEpisodes(String query, String libraryId, dynamic api) async {
+    final lowerQuery = query.toLowerCase();
+
+    // Cache all shows with episodes so subsequent searches are instant
+    if (_cachedShowsWithEpisodes == null || _cachedShowsLibraryId != libraryId) {
+      final items = await api.getLibraryItems(libraryId, limit: 100);
+      if (items == null || !mounted) return;
+      final results = items['results'] as List<dynamic>? ?? [];
+
+      final shows = <Map<String, dynamic>>[];
+      final futures = <Future>[];
+      for (final r in results) {
+        final show = (r['libraryItem'] ?? r) as Map<String, dynamic>;
+        final showId = show['id'] as String?;
+        if (showId == null) continue;
+        futures.add(api.getLibraryItem(showId).then((fullItem) {
+          if (fullItem != null) shows.add(fullItem);
+        }));
+      }
+      await Future.wait(futures);
+      _cachedShowsWithEpisodes = shows;
+      _cachedShowsLibraryId = libraryId;
+    }
+
+    final episodeMatches = <Map<String, dynamic>>[];
+    for (final show in _cachedShowsWithEpisodes!) {
+      final media = show['media'] as Map<String, dynamic>? ?? {};
+      final episodes = media['episodes'] as List<dynamic>? ?? [];
+      for (final ep in episodes) {
+        final title = (ep['title'] as String? ?? '').toLowerCase();
+        if (title.contains(lowerQuery)) {
+          episodeMatches.add({'show': show, 'episode': ep});
+        }
+      }
+    }
+    if (mounted && _searchController.text.trim().toLowerCase() == lowerQuery) {
+      setState(() => _searchEpisodeResults = episodeMatches);
+    }
+  }
+
   void _showLibraryPicker(BuildContext context, ColorScheme cs, TextTheme tt, List<dynamic> allLibraries, LibraryProvider lib) {
+    final l = AppLocalizations.of(context)!;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -440,7 +1343,7 @@ class LibraryScreenState extends State<LibraryScreen> {
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text('Select Library', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+                child: Text(l.selectLibrary, style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
               ),
               const SizedBox(height: 12),
               Flexible(
@@ -451,7 +1354,7 @@ class LibraryScreenState extends State<LibraryScreen> {
                   itemBuilder: (_, i) {
                     final library = allLibraries[i] as Map<String, dynamic>;
                     final id = library['id'] as String;
-                    final name = library['name'] as String? ?? 'Library';
+                    final name = library['name'] as String? ?? l.libraryFallback;
                     final mediaType = library['mediaType'] as String? ?? 'book';
                     final isSelected = id == lib.selectedLibraryId;
                     return ListTile(
@@ -477,54 +1380,127 @@ class LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  String get _sortLabel => switch (_sort) {
-    LibrarySort.recentlyAdded => 'Date Added',
-    LibrarySort.alphabetical => 'Title',
-    LibrarySort.authorName => 'Author',
-    LibrarySort.publishedYear => 'Year',
-    LibrarySort.duration => 'Duration',
-    LibrarySort.random => 'Random',
+  String _seriesFilterLabelOf(AppLocalizations l) => switch (_seriesFilter) {
+    SeriesFilter.inProgress => l.inProgress,
+    SeriesFilter.finished => l.filterFinished,
+    SeriesFilter.notStarted => l.notStarted,
+    SeriesFilter.none => '',
   };
 
-  String get _filterLabel => switch (_filter) {
-    LibraryFilter.inProgress => 'In Progress',
-    LibraryFilter.finished => 'Finished',
-    LibraryFilter.notStarted => 'Not Started',
-    LibraryFilter.downloaded => 'Downloaded',
-    LibraryFilter.hasEbook => 'eBooks',
-    LibraryFilter.genre => _genreFilter ?? 'Genre',
+  String _filterLabelOf(AppLocalizations l) => switch (_filter) {
+    LibraryFilter.inProgress => l.inProgress,
+    LibraryFilter.finished => l.filterFinished,
+    LibraryFilter.notStarted => l.notStarted,
+    LibraryFilter.downloaded => l.downloaded,
+    LibraryFilter.inASeries => l.libraryTabSeries,
+    LibraryFilter.hasEbook => l.hasEbook,
+    LibraryFilter.genre => _genreFilter ?? l.genre,
+    LibraryFilter.tag => _tagFilter ?? l.tag,
     LibraryFilter.none => '',
   };
 
   void _showSortFilterSheet(BuildContext context, ColorScheme cs, TextTheme tt, {int initialTab = 0}) {
+    final LibraryTab tab;
+    final LibrarySort currentSort;
+    final bool currentSortAsc;
+    switch (_currentTab) {
+      case 1:
+        tab = LibraryTab.series;
+        currentSort = _seriesSort;
+        currentSortAsc = _seriesSortAsc;
+        break;
+      case 2:
+        tab = LibraryTab.authors;
+        currentSort = _authorSort;
+        currentSortAsc = _authorSortAsc;
+        break;
+      case 3:
+        tab = LibraryTab.narrators;
+        currentSort = _narratorSort;
+        currentSortAsc = _narratorSortAsc;
+        break;
+      default:
+        tab = LibraryTab.library;
+        currentSort = _sort;
+        currentSortAsc = _sortAsc;
+        break;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _SortFilterSheet(
-        currentSort: _sort,
-        sortAsc: _sortAsc,
+      builder: (ctx) => SortFilterSheet(
+        currentSort: currentSort,
+        sortAsc: currentSortAsc,
         currentFilter: _filter,
         genreFilter: _genreFilter,
+        tagFilter: _tagFilter,
         availableGenres: _availableGenres,
+        availableTags: _availableTags,
         initialTab: initialTab,
         cs: cs, tt: tt,
+        libraryTab: tab,
         onSortChanged: (sort) { Navigator.pop(ctx); _changeSort(sort); },
         onSortDirectionToggled: () {
-          setState(() { _sortAsc = !_sortAsc; _items.clear(); _page = 0; _hasMore = true; _isLoadingPage = false; });
-          if (_scrollController.hasClients) _scrollController.jumpTo(0);
-          _loadPage();
+          if (_currentTab == 1) {
+            setState(() { _seriesSortAsc = !_seriesSortAsc; _seriesItems.clear(); _seriesPage = 0; _hasMoreSeries = true; _isLoadingSeriesPage = false; });
+            PlayerSettings.setSeriesSortAsc(_seriesSortAsc);
+            if (_seriesScrollController.hasClients) _seriesScrollController.jumpTo(0);
+            _loadSeriesPage();
+          } else if (_currentTab == 2) {
+            setState(() { _authorSortAsc = !_authorSortAsc; _sortAuthors(); });
+            PlayerSettings.setAuthorSortAsc(_authorSortAsc);
+            if (_authorsScrollController.hasClients) _authorsScrollController.jumpTo(0);
+          } else if (_currentTab == 3) {
+            setState(() { _narratorSortAsc = !_narratorSortAsc; _sortNarrators(); });
+            PlayerSettings.setNarratorSortAsc(_narratorSortAsc);
+            if (_narratorsScrollController.hasClients) _narratorsScrollController.jumpTo(0);
+          } else {
+            setState(() { _sortAsc = !_sortAsc; _items.clear(); _page = 0; _hasMore = true; _isLoadingPage = false; });
+            final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
+            if (isPodcast) {
+              _podcastSortAsc = _sortAsc;
+              PlayerSettings.setPodcastSortAsc(_sortAsc);
+            } else {
+              PlayerSettings.setLibrarySortAsc(_sortAsc);
+            }
+            if (_scrollController.hasClients) _scrollController.jumpTo(0);
+            _loadPage();
+          }
           Navigator.pop(ctx);
         },
-        onFilterChanged: (filter, {String? genre}) { Navigator.pop(ctx); _changeFilter(filter, genre: genre); },
+        onFilterChanged: (filter, {String? genre, String? tag}) {
+          Navigator.pop(ctx);
+          _changeFilter(filter, genre: genre, tag: tag);
+        },
         onClearFilter: () { Navigator.pop(ctx); _changeFilter(LibraryFilter.none); },
         collapseSeries: _collapseSeries,
         onCollapseSeriesChanged: (value) {
-          Navigator.pop(ctx);
+          _loadGeneration++;
+          setState(() {
+            _collapseSeries = value;
+            _items.clear();
+            _page = 0;
+            _hasMore = true;
+            _isLoadingPage = false;
+          });
           PlayerSettings.setCollapseSeries(value);
+          if (_scrollController.hasClients) _scrollController.jumpTo(0);
+          _loadPage();
         },
         isPodcastLibrary: context.read<LibraryProvider>().isPodcastLibrary,
+        onUpcomingReleases: tab == LibraryTab.series ? () {
+          Navigator.pop(ctx);
+          _openUpcomingReleases();
+        } : null,
+        currentSeriesFilter: _seriesFilter,
+        onSeriesFilterChanged: tab == LibraryTab.series
+            ? (sf) {
+                Navigator.pop(ctx);
+                _changeSeriesFilter(sf);
+              }
+            : null,
       ),
     );
   }
@@ -533,194 +1509,543 @@ class LibraryScreenState extends State<LibraryScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final lib = context.watch<LibraryProvider>();
-    final allLibraries = lib.libraries;
-    final hasMultipleLibraries = allLibraries.length > 1;
-    final libraryName = lib.selectedLibrary?['name'] as String? ?? 'Library';
+    final l = AppLocalizations.of(context)!;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final lowerFade = Color.lerp(cs.surface, scaffoldBg, 0.55) ?? scaffoldBg;
+    // Watch LibraryProvider so this screen rebuilds when the active library
+    // or its data changes; the actual lib object is consumed inside
+    // _buildHeaderSliver via context.watch.
+    context.watch<LibraryProvider>();
+    final hasTabs = _tabController != null && !_isInSearchMode;
 
     return Scaffold(
-      floatingActionButton: _isInSearchMode ? null : ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: GestureDetector(
-            onTap: () => _showSortFilterSheet(context, cs, tt),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: cs.surface.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(_filter != LibraryFilter.none ? Icons.filter_list_rounded : Icons.tune_rounded, size: 16, color: cs.primary),
-                  const SizedBox(width: 6),
-                  Text(
-                    _filter != LibraryFilter.none ? 'Sort & Filter ●' : 'Sort & Filter',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.primary),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      body: SafeArea(
-        child: Column(
-          children: [
-            AbsorbPageHeader(
-              title: 'Library',
-              actions: hasMultipleLibraries ? [
-                GestureDetector(
-                  onTap: () => _showLibraryPicker(context, cs, tt, allLibraries, lib),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: cs.onSurface.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(lib.isPodcastLibrary ? Icons.podcasts_rounded : Icons.auto_stories_rounded, size: 14, color: cs.onSurfaceVariant),
-                        const SizedBox(width: 6),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 140),
-                          child: Text(libraryName, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant),
-                            overflow: TextOverflow.ellipsis, maxLines: 1),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.unfold_more_rounded, size: 14, color: cs.onSurfaceVariant),
+      backgroundColor: scaffoldBg,
+      body: Stack(
+        children: [
+          if (!oledNotifier.value)
+            OverflowBox(
+              maxHeight: MediaQuery.of(context).size.height,
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height,
+                width: double.infinity,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: const [0.0, 0.22, 0.72, 1.0],
+                      colors: [
+                        cs.primary.withValues(alpha: 0.06),
+                        cs.surface,
+                        lowerFade,
+                        scaffoldBg,
                       ],
                     ),
                   ),
                 ),
-              ] : null,
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: SearchBar(
-                controller: _searchController,
-                focusNode: _focusNode,
-                hintText: 'Search books, series, and authors...',
-                leading: const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Icon(Icons.search_rounded),
-                ),
-                trailing: [
-                  if (_searchController.text.isNotEmpty)
-                    IconButton(
-                      icon: const Icon(Icons.clear_rounded),
-                      onPressed: () {
-                        _searchController.clear();
-                        _onSearchChanged('');
-                        _focusNode.unfocus();
-                      },
-                    ),
-                ],
-                onChanged: _onSearchChanged,
-                padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
               ),
             ),
-
-            if (!_isInSearchMode)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => _showSortFilterSheet(context, cs, tt, initialTab: 0),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: cs.primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.sort_rounded, size: 14, color: cs.primary),
-                            const SizedBox(width: 4),
-                            Text(_sortLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.primary)),
-                            const SizedBox(width: 2),
-                            if (_sort != LibrarySort.random)
-                              Icon(_sortAsc ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 12, color: cs.primary),
-                          ],
-                        ),
-                      ),
+          SafeArea(
+            // Per-tab CustomScrollView with its own SliverAppBar(floating, snap)
+            // for the header. No NestedScrollView coordinator in the scroll
+            // path, which makes scrolling noticeably smoother. The reveal
+            // driver is fed by a single NotificationListener at this level so
+            // the bottom nav stays in sync regardless of which tab is active.
+            child: Stack(
+              children: [
+                NotificationListener<ScrollNotification>(
+                  onNotification: (n) {
+                    if (n is ScrollUpdateNotification) {
+                      _revealDriver.noteScroll(
+                          n.scrollDelta ?? 0, n.metrics.pixels);
+                    } else if (n is ScrollEndNotification) {
+                      _revealDriver.settle();
+                    }
+                    return false;
+                  },
+                  child: Builder(
+                    builder: (ctx) {
+                      return _isInSearchMode
+                          ? _buildSearchResults(cs, tt, l,
+                              _buildHeaderSliver(context, useSharedFocus: true))
+                          : hasTabs
+                              ? _buildTabbedContent(cs, tt)
+                              : _buildGrid(_buildHeaderSliver(context,
+                                  useSharedFocus: true));
+                    },
+                  ),
+                ),
+                if (hasTabs && !_isInSearchMode)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 12,
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _revealDriver.notifier,
+                      // Translate only; skip the Opacity saveLayer that was
+                      // forcing a per-frame re-raster of the BackdropFilter
+                      // pill. Skip painting entirely once basically hidden.
+                      builder: (_, reveal, child) {
+                        if (reveal < 0.02) return const SizedBox.shrink();
+                        return IgnorePointer(
+                          ignoring: reveal < 0.5,
+                          child: Transform.translate(
+                            offset: Offset(0, (1 - reveal) * 80),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: RepaintBoundary(child: _buildFloatingTabBar(cs)),
                     ),
-                    if (_filter != LibraryFilter.none) ...[
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: GestureDetector(
-                          onTap: () => _showSortFilterSheet(context, cs, tt, initialTab: 1),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: cs.tertiary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.filter_list_rounded, size: 14, color: cs.tertiary),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(_filterLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.tertiary), overflow: TextOverflow.ellipsis, maxLines: 1),
-                                ),
-                                const SizedBox(width: 4),
-                                GestureDetector(
-                                  onTap: () => _changeFilter(LibraryFilter.none),
-                                  child: Icon(Icons.close_rounded, size: 14, color: cs.tertiary),
-                                ),
-                              ],
-                            ),
+                  ),
+                if (!hasTabs && !_isInSearchMode)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 12,
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _revealDriver.notifier,
+                      builder: (_, reveal, child) {
+                        if (reveal < 0.02) return const SizedBox.shrink();
+                        return IgnorePointer(
+                          ignoring: reveal < 0.5,
+                          child: Transform.translate(
+                            offset: Offset(0, (1 - reveal) * 80),
+                            child: child,
                           ),
-                        ),
-                      ),
-                    ],
-                    if (_collapseSeries) ...[
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => PlayerSettings.setCollapseSeries(false),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: cs.secondary.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
+                        );
+                      },
+                      child: RepaintBoundary(
+                        child: Center(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.auto_stories_rounded, size: 14, color: cs.secondary),
-                              const SizedBox(width: 4),
-                              Text('Series', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.secondary)),
-                              const SizedBox(width: 4),
-                              Icon(Icons.close_rounded, size: 14, color: cs.secondary),
+                              _buildFloatingSortButton(cs, tt),
+                              if (context.read<AuthProvider>().isAdmin) ...[
+                                const SizedBox(width: 8),
+                                _buildFloatingManageButton(cs),
+                              ],
                             ],
                           ),
                         ),
                       ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build the floating SliverAppBar header that goes at the top of each
+  /// tab's CustomScrollView. Each tab in the IndexedStack gets its own
+  /// instance — when [useSharedFocus] is true, the SearchBar inside binds to
+  /// the screen-level [_focusNode] (so the active tab is the one that
+  /// receives focus from taps and the Search app shortcut). Inactive tabs
+  /// get a fresh internal FocusNode per SearchBar so they don't fight over
+  /// the shared one.
+  Widget _buildHeaderSliver(BuildContext context,
+      {required bool useSharedFocus}) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final l = AppLocalizations.of(context)!;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final lowerFade = Color.lerp(cs.surface, scaffoldBg, 0.55) ?? scaffoldBg;
+    final lib = context.watch<LibraryProvider>();
+    final allLibraries = lib.libraries;
+    final hasMultipleLibraries = allLibraries.length > 1;
+    final libraryName =
+        lib.selectedLibrary?['name'] as String? ?? l.libraryFallback;
+    final topInset = MediaQuery.of(context).padding.top;
+    final screenH = MediaQuery.of(context).size.height;
+    final headerBackground = oledNotifier.value
+        ? const ColoredBox(color: Colors.black)
+        : ClipRect(
+            child: OverflowBox(
+              maxHeight: screenH,
+              minHeight: 0,
+              alignment: Alignment.topCenter,
+              child: Transform.translate(
+                offset: Offset(0, -topInset),
+                child: SizedBox(
+                  height: screenH,
+                  width: double.infinity,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: scaffoldBg,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        stops: const [0.0, 0.22, 0.72, 1.0],
+                        colors: [
+                          cs.primary.withValues(alpha: 0.06),
+                          cs.surface,
+                          lowerFade,
+                          scaffoldBg,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+    return SliverAppBar(
+                        floating: true,
+                        snap: true,
+                        // primary: false disables Material's automatic status
+                        // bar padding so the header doesn't get inset twice
+                        // (we already wrap the whole NestedScrollView in
+                        // SafeArea above).
+                        primary: false,
+                        toolbarHeight: _isInSearchMode
+                            ? 156
+                            : ((_filter != LibraryFilter.none ||
+                                    _seriesFilter != SeriesFilter.none)
+                                ? 196
+                                : 184),
+                        backgroundColor: scaffoldBg,
+                        surfaceTintColor: Colors.transparent,
+                        elevation: 0,
+                        scrolledUnderElevation: 0,
+                        automaticallyImplyLeading: false,
+                        flexibleSpace: ClipRect(
+                          child: Stack(
+                            children: [
+                              Positioned.fill(child: headerBackground),
+                              Column(mainAxisSize: MainAxisSize.min, children: [
+                AbsorbPageHeader(
+                  title: l.libraryTitle,
+                  trailing: OfflineStatusIcon(
+                    onTapWhenOnline: () {
+                      lib.setManualOffline(true);
+                      final dl = DownloadService();
+                      final player = AudioPlayerService();
+                      final itemId = player.currentItemId;
+                      final epId = player.currentEpisodeId;
+                      final dlKey = epId != null && itemId != null
+                          ? '$itemId-$epId'
+                          : itemId;
+                      if (dlKey == null || !dl.isDownloaded(dlKey)) {
+                        player.stop();
+                      }
+                    },
+                  ),
+                  actions: hasMultipleLibraries ? [
+                    GestureDetector(
+                      onTap: () => _showLibraryPicker(context, cs, tt, allLibraries, lib),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: cs.onSurface.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
+                        ),
+                        child: SizedBox(
+                          height: 20,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(lib.isPodcastLibrary ? Icons.podcasts_rounded : Icons.auto_stories_rounded, size: 18, color: cs.onSurfaceVariant),
+                              const SizedBox(width: 6),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 140),
+                                child: Text(libraryName, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant),
+                                  overflow: TextOverflow.ellipsis, maxLines: 1),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.unfold_more_rounded, size: 18, color: cs.onSurfaceVariant),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ] : null,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: SearchBar(
+                    // Same GlobalKey on whichever SearchBar gets the shared
+                    // focus, so when _isInSearchMode toggles and the tree
+                    // swaps from tabbed -> search results, Flutter re-parents
+                    // the existing Element instead of destroying and
+                    // recreating it. Keeps focus + keyboard alive.
+                    key: useSharedFocus ? _searchBarKey : null,
+                    controller: _searchController,
+                    // Only the active tab's SearchBar binds to the screen-
+                    // level focus node. Inactive tabs' SearchBars use their
+                    // own internal focus so multiple instances in the
+                    // IndexedStack don't fight over the same FocusNode (the
+                    // bug that left tap-to-focus dead until you switched
+                    // libraries to force a state reset).
+                    focusNode: useSharedFocus ? _focusNode : null,
+                    hintText: lib.isPodcastLibrary
+                        ? l.librarySearchShowsHint
+                        : l.librarySearchBooksHint,
+                    leading: const Padding(
+                      padding: EdgeInsets.only(left: 8),
+                      child: Icon(Icons.search_rounded),
+                    ),
+                    trailing: [
+                      if (_searchController.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                            _focusNode.unfocus();
+                          },
+                        ),
                     ],
-                    const Spacer(),
-                    Text('${_items.length}${_totalItems > 0 ? '/$_totalItems' : ''} ${_collapseSeries ? 'items' : 'books'}',
-                      style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
+                    onChanged: _onSearchChanged,
+                    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+                    side: WidgetStatePropertyAll(
+                      BorderSide(color: cs.onSurface.withValues(alpha: 0.08)),
+                    ),
+                  ),
+                ),
+                // Item count + filter badge row
+                if (!_isInSearchMode)
+                  _buildInfoRow(cs, tt, l),
+                ]),
+            ],
+          ),
+        ),
+    );
+  }
+
+  Widget _buildFloatingTabBar(ColorScheme cs) {
+    final l = AppLocalizations.of(context)!;
+    final labels = [l.libraryTabLibrary, l.libraryTabSeries, l.libraryTabAuthors, l.libraryTabNarrators];
+    return Center(child: ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: cs.surface.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(labels.length, (i) {
+              final active = _currentTab == i;
+              return GestureDetector(
+                onTap: () {
+                  if (active) {
+                    _showSortFilterSheet(context, cs, Theme.of(context).textTheme);
+                  } else {
+                    _tabController?.animateTo(i);
+                  }
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  padding: EdgeInsets.symmetric(horizontal: active ? 14 : 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: active ? cs.primary.withValues(alpha: 0.15) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        labels[i],
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                          color: active ? cs.primary : cs.onSurfaceVariant,
+                        ),
+                      ),
+                      if (active) ...[
+                        const SizedBox(width: 4),
+                        Icon(Icons.sort_rounded, size: 14, color: cs.primary),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    ));
+  }
+
+
+  Future<void> _openUpcomingReleases() async {
+    final saved = await PlayerSettings.getAudibleRegion();
+    if (saved.isEmpty) {
+      if (!mounted) return;
+      final chosen = await showAudibleRegionPicker(context, currentRegion: '');
+      if (chosen == null || !mounted) return;
+      await PlayerSettings.setAudibleRegion(chosen);
+    }
+    if (!mounted) return;
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => const UpcomingReleasesScreen(),
+    ));
+  }
+
+  Widget _buildFloatingSortButton(ColorScheme cs, TextTheme tt) {
+    return GestureDetector(
+      onTap: () => _showSortFilterSheet(context, cs, tt),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+            decoration: BoxDecoration(
+              color: cs.surface.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  AppLocalizations.of(context)!.sort,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: cs.primary,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.sort_rounded, size: 14, color: cs.primary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingManageButton(ColorScheme cs) {
+    return GestureDetector(
+      onTap: () {
+        final lib = context.read<LibraryProvider>().selectedLibrary;
+        if (lib != null) {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => AdminPodcastsScreen(library: lib)));
+        }
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: cs.surface.withValues(alpha: 0.6),
+              shape: BoxShape.circle,
+              border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+            ),
+            child: Icon(Icons.settings_rounded, size: 16, color: cs.primary),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(ColorScheme cs, TextTheme tt, AppLocalizations l) {
+    String countText;
+    switch (_currentTab) {
+      case 1:
+        countText = l.librarySeriesCount(_totalSeries);
+        break;
+      case 2:
+        countText = l.libraryAuthorsCount(_authors.length);
+        break;
+      case 3:
+        countText = l.libraryNarratorsCount(_narrators.length);
+        break;
+      default:
+        countText = l.libraryBooksCount(_items.length, _totalItems);
+        break;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Row(
+        children: [
+          if (_currentTab == 0 && _filter != LibraryFilter.none) ...[
+            GestureDetector(
+              onTap: () => _changeFilter(LibraryFilter.none),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: cs.tertiary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.filter_list_rounded, size: 14, color: cs.tertiary),
+                    const SizedBox(width: 4),
+                    Text(_filterLabelOf(l), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.tertiary),
+                        overflow: TextOverflow.ellipsis, maxLines: 1),
+                    const SizedBox(width: 4),
+                    Icon(Icons.close_rounded, size: 14, color: cs.tertiary),
                   ],
                 ),
               ),
-
-            Expanded(
-              child: _isInSearchMode
-                  ? _buildSearchResults(cs, tt)
-                  : _buildGrid(cs, tt),
             ),
           ],
-        ),
+          if (_currentTab == 1 && _seriesFilter != SeriesFilter.none) ...[
+            GestureDetector(
+              onTap: () => _changeSeriesFilter(SeriesFilter.none),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: cs.tertiary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.filter_list_rounded, size: 14, color: cs.tertiary),
+                    const SizedBox(width: 4),
+                    Text(_seriesFilterLabelOf(l), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.tertiary),
+                        overflow: TextOverflow.ellipsis, maxLines: 1),
+                    const SizedBox(width: 4),
+                    Icon(Icons.close_rounded, size: 14, color: cs.tertiary),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const Spacer(),
+          Text(countText,
+            style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
+        ],
       ),
+    );
+  }
+
+  Widget _buildTabbedContent(ColorScheme cs, TextTheme tt) {
+    // IndexedStack preserves each tab's scroll position when switching tabs.
+    // Each tab gets its own SliverAppBar instance built fresh by
+    // _buildHeaderSliver — only the active tab passes useSharedFocus: true so
+    // the SearchBar inside binds to the screen-level _focusNode. Inactive
+    // tabs' SearchBars use their own internal focus, avoiding the multi-bind
+    // bug that left the search bar unresponsive on first tap.
+    Widget headerFor(int i) =>
+        _buildHeaderSliver(context, useSharedFocus: i == _currentTab);
+    return IndexedStack(
+      index: _currentTab,
+      children: [
+        _buildGrid(headerFor(0)),
+        _buildSeriesGrid(headerFor(1)),
+        _buildAuthorsGrid(headerFor(2)),
+        _buildNarratorsGrid(headerFor(3)),
+      ],
     );
   }
 
@@ -739,118 +2064,170 @@ class LibraryScreenState extends State<LibraryScreen> {
     await _loadPage();
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // BROWSE GRID
-  // ═══════════════════════════════════════════════════════════════
-  Widget _buildGrid(ColorScheme cs, TextTheme tt) {
-    if (_items.isEmpty && _isLoadingPage) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_items.isEmpty && !_isLoadingPage) {
-      final filterMsg = switch (_filter) {
-        LibraryFilter.inProgress => 'No books in progress',
-        LibraryFilter.finished => 'No finished books',
-        LibraryFilter.notStarted => 'All books have been started',
-        LibraryFilter.downloaded => 'No downloaded books',
-        LibraryFilter.hasEbook => 'No books with eBooks',
-        LibraryFilter.genre => 'No books in "${_genreFilter ?? 'genre'}"',
-        LibraryFilter.none => 'No books found',
-      };
-      return RefreshIndicator(
-        onRefresh: _refreshAll,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverFillRemaining(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.library_books_outlined,
-                        size: 56, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
-                    const SizedBox(height: 12),
-                    Text(filterMsg,
-                        style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
-                    if (_filter != LibraryFilter.none) ...[
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: () => _changeFilter(LibraryFilter.none),
-                        child: Text('Clear filter',
-                            style: tt.bodySmall?.copyWith(color: cs.primary)),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+  Future<void> _refreshSeries() async {
+    setState(() {
+      _seriesItems.clear();
+      _seriesPage = 0;
+      _hasMoreSeries = true;
+      _isLoadingSeriesPage = false;
+    });
+    await _loadSeriesPage();
+  }
 
-    return RefreshIndicator(
+  Future<void> _refreshAuthors() async {
+    setState(() {
+      _authors.clear();
+      _authorsLoaded = false;
+      _isLoadingAuthors = false;
+    });
+    await _loadAuthors();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // LIBRARY TAB - BROWSE GRID
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildGrid(Widget headerSliver) {
+    return LibraryBooksTab(
+      items: _items,
+      isLoadingPage: _isLoadingPage,
+      hasMore: _hasMore,
+      filter: _filter,
+      genreFilter: _genreFilter,
+      tagFilter: _tagFilter,
+      rectangleCovers: _rectangleCovers,
+      coverAspectRatio: _coverAspectRatio,
       onRefresh: _refreshAll,
-      child: GridView.builder(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          childAspectRatio: 0.68,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-        ),
-      itemCount: _items.length + (_hasMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index >= _items.length) {
-          // Loading indicator at the end
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        }
-        final item = _items[index];
-        if (item.containsKey('collapsedSeries')) {
-          return _GridSeriesTile(item: item);
-        }
-        return _GridBookTile(item: item);
-      },
-    ),
+      onClearFilter: () => _changeFilter(LibraryFilter.none),
+      headerSliver: headerSliver,
+      scrollController: _scrollController,
+      onLoadMore: _loadPage,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SERIES TAB - GRID
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildSeriesGrid(Widget headerSliver) {
+    return LibrarySeriesTab(
+      seriesItems: _seriesItems,
+      isLoadingSeriesPage: _isLoadingSeriesPage,
+      hasMoreSeries: _hasMoreSeries,
+      rectangleCovers: _rectangleCovers,
+      coverAspectRatio: _coverAspectRatio,
+      onRefresh: _refreshSeries,
+      headerSliver: headerSliver,
+      scrollController: _seriesScrollController,
+      onLoadMore: _loadSeriesPage,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // AUTHORS TAB - GRID
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildAuthorsGrid(Widget headerSliver) {
+    return LibraryAuthorsTab(
+      authors: _authors,
+      isLoadingAuthors: _isLoadingAuthors,
+      authorsLoaded: _authorsLoaded,
+      onRefresh: _refreshAuthors,
+      headerSliver: headerSliver,
+      scrollController: _authorsScrollController,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // NARRATORS TAB - GRID
+  // ═══════════════════════════════════════════════════════════════
+  Future<void> _refreshNarrators() async {
+    setState(() {
+      _narrators.clear();
+      _narratorsLoaded = false;
+      _isLoadingNarrators = false;
+    });
+    await _loadNarrators();
+  }
+
+  Widget _buildNarratorsGrid(Widget headerSliver) {
+    return LibraryNarratorsTab(
+      narrators: _narrators,
+      isLoading: _isLoadingNarrators,
+      loaded: _narratorsLoaded,
+      onRefresh: _refreshNarrators,
+      headerSliver: headerSliver,
+      scrollController: _narratorsScrollController,
     );
   }
 
   // ═══════════════════════════════════════════════════════════════
   // SEARCH RESULTS
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildSearchResults(ColorScheme cs, TextTheme tt) {
+  Widget _buildSearchResults(
+      ColorScheme cs, TextTheme tt, AppLocalizations l, Widget headerSliver) {
+    final injector = headerSliver;
     if (_isSearching) {
-      return const Center(child: CircularProgressIndicator());
+      return CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          injector,
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ],
+      );
     }
     if (!_hasSearched) {
-      return const SizedBox.shrink();
+      return CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [injector, const SliverToBoxAdapter(child: SizedBox.shrink())],
+      );
     }
-    if (_searchBookResults.isEmpty && _searchSeriesResults.isEmpty && _searchAuthorResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.search_off_rounded, size: 48, color: cs.onSurfaceVariant),
-            const SizedBox(height: 12),
-            Text('No results found',
-                style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
-          ],
-        ),
+    if (_searchBookResults.isEmpty && _searchSeriesResults.isEmpty && _searchAuthorResults.isEmpty && _searchNarratorResults.isEmpty && _searchEpisodeResults.isEmpty && _searchTagResults.isEmpty && _searchGenreResults.isEmpty) {
+      final libProv = context.read<LibraryProvider>();
+      final showRmabCta = _rmabConfigured && !libProv.isPodcastLibrary;
+      return CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          injector,
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.search_off_rounded, size: 48, color: cs.onSurfaceVariant),
+                  const SizedBox(height: 12),
+                  Text(l.libraryNoResults,
+                      style: tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
+                  if (showRmabCta) ...[
+                    const SizedBox(height: 20),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.menu_book_rounded, size: 18),
+                      label: Text(l.rmabRequestCta),
+                      onPressed: () {
+                        final q = _searchController.text.trim();
+                        debugPrint(
+                            '[RMAB] library CTA tapped (query="$q")');
+                        showRmabSearchResultsSheet(
+                          context,
+                          initialQuery: q,
+                        );
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
       );
     }
 
     final auth = context.read<AuthProvider>();
+    final isPodcast = context.read<LibraryProvider>().isPodcastLibrary;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-      children: [
-        // ─── BOOKS (only title matches) ───
+    final children = <Widget>[
+        // ─── BOOKS / SHOWS (only title matches) ───
         if (_searchBookResults.isNotEmpty) ...[
           ...() {
             final query = _searchController.text.trim().toLowerCase();
@@ -865,14 +2242,14 @@ class LibraryScreenState extends State<LibraryScreen> {
             return <Widget>[
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-                child: Text('Books',
+                child: Text(isPodcast ? l.librarySearchShows : l.librarySearchBooks,
                     style: tt.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600, color: cs.primary)),
               ),
               ...titleMatches.map((result) {
                 final item =
                     result['libraryItem'] as Map<String, dynamic>? ?? {};
-                return _BookResultTile(
+                return BookResultTile(
                   item: item,
                   serverUrl: auth.serverUrl,
                   token: auth.token,
@@ -882,12 +2259,31 @@ class LibraryScreenState extends State<LibraryScreen> {
           }(),
         ],
 
+        // ─── EPISODES ───
+        if (_searchEpisodeResults.isNotEmpty) ...[
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+                4, _searchBookResults.isNotEmpty ? 20 : 8, 4, 8),
+            child: Text(l.librarySearchEpisodes,
+                style: tt.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600, color: cs.primary)),
+          ),
+          ..._searchEpisodeResults.map((result) {
+            return EpisodeResultTile(
+              show: result['show']!,
+              episode: result['episode']!,
+              serverUrl: auth.serverUrl,
+              token: auth.token,
+            );
+          }),
+        ],
+
         // ─── SERIES ───
         if (_searchSeriesResults.isNotEmpty) ...[
           Padding(
             padding: EdgeInsets.fromLTRB(
                 4, _searchBookResults.isNotEmpty ? 20 : 8, 4, 8),
-            child: Text('Series',
+            child: Text(l.librarySearchSeries,
                 style: tt.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600, color: cs.primary)),
           ),
@@ -895,7 +2291,7 @@ class LibraryScreenState extends State<LibraryScreen> {
             final seriesData =
                 result['series'] as Map<String, dynamic>? ?? {};
             final books = result['books'] as List<dynamic>? ?? [];
-            return _SeriesResultCard(
+            return SeriesResultCard(
               series: seriesData,
               books: books,
               serverUrl: auth.serverUrl,
@@ -909,1590 +2305,142 @@ class LibraryScreenState extends State<LibraryScreen> {
           Padding(
             padding: EdgeInsets.fromLTRB(
                 4, (_searchBookResults.isNotEmpty || _searchSeriesResults.isNotEmpty) ? 20 : 8, 4, 8),
-            child: Text('Authors',
+            child: Text(l.librarySearchAuthors,
                 style: tt.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600, color: cs.primary)),
           ),
           ..._searchAuthorResults.map((result) {
             final authorData =
                 result['author'] as Map<String, dynamic>? ?? result as Map<String, dynamic>;
-            return _AuthorResultTile(
+            return AuthorResultTile(
               author: authorData,
               serverUrl: auth.serverUrl,
               token: auth.token,
             );
           }),
         ],
-      ],
-    );
-  }
-}
 
-// ═══════════════════════════════════════════════════════════════
-// Sort & Filter bottom sheet with tabs
-// ═══════════════════════════════════════════════════════════════
-class _SortFilterSheet extends StatefulWidget {
-  final LibrarySort currentSort;
-  final bool sortAsc;
-  final LibraryFilter currentFilter;
-  final String? genreFilter;
-  final List<String> availableGenres;
-  final int initialTab;
-  final ColorScheme cs;
-  final TextTheme tt;
-  final void Function(LibrarySort) onSortChanged;
-  final VoidCallback onSortDirectionToggled;
-  final void Function(LibraryFilter, {String? genre}) onFilterChanged;
-  final VoidCallback onClearFilter;
-  final bool collapseSeries;
-  final ValueChanged<bool> onCollapseSeriesChanged;
-  final bool isPodcastLibrary;
-
-  const _SortFilterSheet({
-    required this.currentSort, required this.sortAsc,
-    required this.currentFilter, this.genreFilter,
-    required this.availableGenres, required this.initialTab,
-    required this.cs, required this.tt,
-    required this.onSortChanged, required this.onSortDirectionToggled,
-    required this.onFilterChanged, required this.onClearFilter,
-    required this.collapseSeries, required this.onCollapseSeriesChanged,
-    required this.isPodcastLibrary,
-  });
-
-  @override
-  State<_SortFilterSheet> createState() => _SortFilterSheetState();
-}
-
-class _SortFilterSheetState extends State<_SortFilterSheet> with SingleTickerProviderStateMixin {
-  late TabController _tabCtrl;
-  bool _genreExpanded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this, initialIndex: widget.initialTab);
-    if (widget.currentFilter == LibraryFilter.genre) _genreExpanded = true;
-  }
-
-  @override
-  void dispose() { _tabCtrl.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = widget.cs;
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 12),
-          Center(child: Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: cs.onSurfaceVariant.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 16),
-          TabBar(
-            controller: _tabCtrl,
-            labelColor: cs.primary, unselectedLabelColor: cs.onSurfaceVariant,
-            indicatorColor: cs.primary, indicatorSize: TabBarIndicatorSize.label,
-            dividerColor: Colors.transparent,
-            tabs: [
-              Tab(child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.sort_rounded, size: 18), const SizedBox(width: 6), const Text('Sort')])),
-              Tab(child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.filter_list_rounded, size: 18), const SizedBox(width: 6),
-                Text(widget.currentFilter != LibraryFilter.none ? 'Filter ●' : 'Filter')])),
-            ],
+        // ─── NARRATORS ───
+        if (_searchNarratorResults.isNotEmpty) ...[
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+                4, (_searchBookResults.isNotEmpty || _searchSeriesResults.isNotEmpty || _searchAuthorResults.isNotEmpty) ? 20 : 8, 4, 8),
+            child: Text(l.libraryTabNarrators,
+                style: tt.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600, color: cs.primary)),
           ),
-          SizedBox(
-            height: _genreExpanded ? 420 : (widget.isPodcastLibrary ? 320 : 380),
-            child: TabBarView(controller: _tabCtrl, children: [
-              _buildSortTab(cs), _buildFilterTab(cs)]),
-          ),
-          SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 8),
+          ..._searchNarratorResults.map((name) => NarratorResultTile(name: name)),
         ],
-      ),
-    );
-  }
 
-  Widget _buildSortTab(ColorScheme cs) {
-    final sorts = <(LibrarySort, String, IconData)>[
-      (LibrarySort.recentlyAdded, 'Date Added', Icons.schedule_rounded),
-      (LibrarySort.alphabetical, 'Title', Icons.sort_by_alpha_rounded),
-      (LibrarySort.authorName, 'Author', Icons.person_rounded),
-      (LibrarySort.publishedYear, 'Published Year', Icons.calendar_today_rounded),
-      (LibrarySort.duration, 'Duration', Icons.timelapse_rounded),
-      (LibrarySort.random, 'Random', Icons.shuffle_rounded),
-    ];
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      children: [
-        ...sorts.map((s) {
-          final (sort, label, icon) = s;
-          final selected = sort == widget.currentSort;
-          return _SheetOption(
-            icon: icon, label: label, selected: selected, selectedColor: cs.primary,
-            trailing: selected && sort != LibrarySort.random
-                ? GestureDetector(
-                    onTap: widget.onSortDirectionToggled,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(widget.sortAsc ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, size: 14, color: cs.primary),
-                        const SizedBox(width: 4),
-                        Text(widget.sortAsc ? 'ASC' : 'DESC', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.primary)),
-                      ]),
-                    ),
-                  ) : null,
-            onTap: () => widget.onSortChanged(sort),
-          );
-        }),
-        if (!widget.isPodcastLibrary) ...[
-          const SizedBox(height: 8),
-          Divider(color: cs.outlineVariant.withValues(alpha: 0.3), height: 1),
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () => widget.onCollapseSeriesChanged(!widget.collapseSeries),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              margin: const EdgeInsets.only(bottom: 4),
-              decoration: BoxDecoration(
-                color: widget.collapseSeries ? cs.secondary.withValues(alpha: 0.12) : Colors.transparent,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(children: [
-                Icon(Icons.auto_stories_rounded, size: 20,
-                  color: widget.collapseSeries ? cs.secondary : cs.onSurfaceVariant),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text('Collapse Series', style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: widget.collapseSeries ? FontWeight.w600 : FontWeight.w400,
-                    color: widget.collapseSeries ? cs.secondary : cs.onSurface)),
-                ),
-                Switch(
-                  value: widget.collapseSeries,
-                  onChanged: widget.onCollapseSeriesChanged,
-                  activeThumbColor: cs.secondary,
-                ),
-              ]),
+        // ─── GENRES ───
+        if (_searchGenreResults.isNotEmpty) ...[
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+                4,
+                (_searchBookResults.isNotEmpty ||
+                        _searchSeriesResults.isNotEmpty ||
+                        _searchAuthorResults.isNotEmpty ||
+                        _searchNarratorResults.isNotEmpty)
+                    ? 20
+                    : 8,
+                4,
+                8),
+            child: Text(l.librarySearchGenres,
+                style: tt.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600, color: cs.primary)),
+          ),
+          ..._searchGenreResults.map((name) => GenreResultTile(
+                name: name,
+                onTap: () => _applyGenreFilter(name),
+              )),
+        ],
+
+        // ─── TAGS ───
+        if (_searchTagResults.isNotEmpty) ...[
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+                4,
+                (_searchBookResults.isNotEmpty ||
+                        _searchSeriesResults.isNotEmpty ||
+                        _searchAuthorResults.isNotEmpty ||
+                        _searchNarratorResults.isNotEmpty ||
+                        _searchGenreResults.isNotEmpty)
+                    ? 20
+                    : 8,
+                4,
+                8),
+            child: Text(l.librarySearchTags,
+                style: tt.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600, color: cs.primary)),
+          ),
+          ..._searchTagResults.map((name) => TagResultTile(
+                name: name,
+                onTap: () => _applyTagFilter(name),
+              )),
+        ],
+        // ─── RMAB FOOTER (when results exist + RMAB configured) ───
+        if (_rmabConfigured && !isPodcast) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 28),
+            child: Divider(color: cs.outlineVariant.withValues(alpha: 0.4)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+            child: Text(
+              l.rmabSearchFooterPrompt,
+              style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
             ),
           ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildFilterTab(ColorScheme cs) {
-    final filters = <(LibraryFilter, String, IconData)>[
-      (LibraryFilter.inProgress, 'In Progress', Icons.play_circle_outline_rounded),
-      (LibraryFilter.finished, 'Finished', Icons.check_circle_outline_rounded),
-      (LibraryFilter.notStarted, 'Not Started', Icons.circle_outlined),
-      (LibraryFilter.downloaded, 'Downloaded', Icons.download_done_rounded),
-      (LibraryFilter.hasEbook, 'eBooks', Icons.menu_book_rounded),
-    ];
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      children: [
-        if (widget.currentFilter != LibraryFilter.none)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: GestureDetector(
-              onTap: widget.onClearFilter,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(color: cs.errorContainer.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(14)),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () {
+                final q = _searchController.text.trim();
+                debugPrint(
+                    '[RMAB] library footer CTA tapped (query="$q")');
+                showRmabSearchResultsSheet(
+                  context,
+                  initialQuery: q,
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 4, vertical: 12),
                 child: Row(children: [
-                  Icon(Icons.clear_rounded, size: 18, color: cs.error),
-                  const SizedBox(width: 10),
-                  Text('Clear Filter', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: cs.error)),
+                  Icon(Icons.menu_book_rounded,
+                      size: 20, color: cs.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      l.rmabSearchFooterCta(
+                          _searchController.text.trim()),
+                      style: tt.bodyMedium?.copyWith(
+                          color: cs.primary,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Icon(Icons.arrow_forward_rounded,
+                      size: 18, color: cs.primary),
                 ]),
               ),
             ),
           ),
-        ...filters.map((f) {
-          final (filter, label, icon) = f;
-          return _SheetOption(
-            icon: icon, label: label,
-            selected: filter == widget.currentFilter, selectedColor: cs.tertiary,
-            onTap: () => widget.onFilterChanged(filter),
-          );
-        }),
-        _SheetOption(
-          icon: Icons.category_rounded,
-          label: 'Genre',
-          selected: widget.currentFilter == LibraryFilter.genre,
-          selectedColor: cs.tertiary,
-          trailing: Icon(_genreExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 20, color: cs.onSurfaceVariant),
-          onTap: () => setState(() => _genreExpanded = !_genreExpanded),
-        ),
-        if (_genreExpanded)
-          Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: widget.availableGenres.isEmpty
-                ? Padding(padding: const EdgeInsets.all(12),
-                    child: Text('No genres found', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)))
-                : Column(children: widget.availableGenres.map((genre) {
-                    final selected = widget.currentFilter == LibraryFilter.genre && widget.genreFilter == genre;
-                    return _SheetOption(
-                      icon: Icons.label_outline_rounded, label: genre,
-                      selected: selected, selectedColor: cs.tertiary,
-                      compact: true, marquee: true,
-                      onTap: () => widget.onFilterChanged(LibraryFilter.genre, genre: genre),
-                    );
-                  }).toList()),
-          ),
-      ],
-    );
-  }
-}
-
-class _SheetOption extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final Color selectedColor;
-  final Widget? trailing;
-  final VoidCallback onTap;
-  final bool compact;
-  final bool marquee;
-
-  const _SheetOption({
-    required this.icon, required this.label, required this.selected,
-    required this.selectedColor, this.trailing, required this.onTap,
-    this.compact = false, this.marquee = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final vPad = compact ? 8.0 : 10.0;
-    final fontSize = compact ? 13.0 : 14.0;
-    final iconSize = compact ? 18.0 : 20.0;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 14, vertical: vPad),
-        margin: EdgeInsets.only(bottom: compact ? 2 : 4),
-        decoration: BoxDecoration(
-          color: selected ? selectedColor.withValues(alpha: 0.12) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(children: [
-          Icon(icon, size: iconSize, color: selected ? selectedColor : cs.onSurfaceVariant),
-          const SizedBox(width: 12),
-          Expanded(
-            child: marquee
-                ? _MarqueeText(text: label, style: TextStyle(
-                    fontSize: fontSize,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    color: selected ? selectedColor : cs.onSurface))
-                : Text(label, style: TextStyle(
-                    fontSize: fontSize,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    color: selected ? selectedColor : cs.onSurface)),
-          ),
-          if (trailing != null) trailing!,
-          if (selected && trailing == null)
-            Icon(Icons.check_rounded, size: 18, color: selectedColor),
-        ]),
-      ),
-    );
-  }
-}
-
-class _MarqueeText extends StatefulWidget {
-  final String text;
-  final TextStyle style;
-  const _MarqueeText({required this.text, required this.style});
-  @override
-  State<_MarqueeText> createState() => _MarqueeTextState();
-}
-
-class _MarqueeTextState extends State<_MarqueeText> {
-  late final ScrollController _sc;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _sc = ScrollController();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAndScroll());
-  }
-
-  void _checkAndScroll() {
-    if (!_sc.hasClients || _sc.position.maxScrollExtent <= 0) return;
-    _timer?.cancel();
-    _timer = Timer(const Duration(seconds: 1), () {
-      if (!mounted || !_sc.hasClients) return;
-      final max = _sc.position.maxScrollExtent;
-      _sc.animateTo(max, duration: Duration(milliseconds: (max * 30).round().clamp(1000, 5000)), curve: Curves.linear).then((_) {
-        if (!mounted) return;
-        Future.delayed(const Duration(seconds: 1), () {
-          if (!mounted || !_sc.hasClients) return;
-          _sc.animateTo(0, duration: const Duration(milliseconds: 500), curve: Curves.easeOut).then((_) {
-            if (mounted) _checkAndScroll();
-          });
-        });
-      });
-    });
-  }
-
-  @override
-  void dispose() { _timer?.cancel(); _sc.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      controller: _sc, scrollDirection: Axis.horizontal,
-      physics: const NeverScrollableScrollPhysics(),
-      child: Text(widget.text, style: widget.style, maxLines: 1),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Grid book tile (cover + title + author)
-// ═══════════════════════════════════════════════════════════════
-class _GridBookTile extends StatefulWidget {
-  final Map<String, dynamic> item;
-
-  const _GridBookTile({required this.item});
-
-  @override
-  State<_GridBookTile> createState() => _GridBookTileState();
-}
-
-class _GridBookTileState extends State<_GridBookTile> {
-  final _dl = DownloadService();
-
-  @override
-  void initState() {
-    super.initState();
-    _dl.addListener(_rebuild);
-  }
-
-  @override
-  void dispose() {
-    _dl.removeListener(_rebuild);
-    super.dispose();
-  }
-
-  void _rebuild() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final lib = context.watch<LibraryProvider>();
-
-    final itemId = widget.item['id'] as String? ?? '';
-    final media = widget.item['media'] as Map<String, dynamic>? ?? {};
-    final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-    final title = metadata['title'] as String? ?? 'Unknown';
-    final author = metadata['authorName'] as String? ?? '';
-    final coverUrl = lib.getCoverUrl(itemId);
-    final progress = lib.getProgress(itemId);
-    final isDownloaded = _dl.isDownloaded(itemId);
-    final isFinished = lib.getProgressData(itemId)?['isFinished'] == true;
-
-    return GestureDetector(
-      onTap: () {
-        if (itemId.isNotEmpty) {
-          if (lib.isPodcastLibrary) {
-            EpisodeListSheet.show(context, widget.item);
-          } else {
-            showBookDetailSheet(context, itemId);
-          }
-        }
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Cover — 1:1 square
-          AspectRatio(
-            aspectRatio: 1,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Cover image
-                  coverUrl != null
-                      ? coverUrl.startsWith('/')
-                          ? Image.file(File(coverUrl), fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => _placeholder(cs))
-                          : CachedNetworkImage(
-                              imageUrl: coverUrl,
-                              fit: BoxFit.cover,
-                              httpHeaders: lib.mediaHeaders,
-                              placeholder: (_, __) => _placeholder(cs),
-                              errorWidget: (_, __, ___) => _placeholder(cs),
-                            )
-                      : _placeholder(cs),
-
-                  // Progress bar at bottom of cover
-                  if (progress > 0 && !isFinished)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: LinearProgressIndicator(
-                        value: progress.clamp(0.0, 1.0),
-                        minHeight: 3,
-                        backgroundColor: Colors.black38,
-                        valueColor: AlwaysStoppedAnimation(cs.primary),
-                      ),
-                    ),
-
-                  // ── Banners ──
-                  if (isFinished || isDownloaded)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 3),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              Colors.black.withValues(alpha: 0.85),
-                              Colors.black.withValues(alpha: 0.0),
-                            ],
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (isFinished) ...[
-                              Icon(Icons.check_circle_rounded,
-                                  size: 10, color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700),
-                              const SizedBox(width: 3),
-                              Text('Done',
-                                  style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w600,
-                                      color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700)),
-                            ],
-                            if (isFinished && isDownloaded)
-                              const SizedBox(width: 6),
-                            if (isDownloaded) ...[
-                              Icon(Icons.download_done_rounded,
-                                  size: 10, color: cs.primary),
-                              const SizedBox(width: 3),
-                              Text('Saved',
-                                  style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w600,
-                                      color: cs.primary)),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 5),
-          // Title
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: tt.labelSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: cs.onSurface,
-              fontSize: 11,
-            ),
-          ),
-          // Author
-          if (author.isNotEmpty)
-            Text(
-              author,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: tt.labelSmall?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontSize: 10,
-              ),
-            ),
         ],
-      ),
-    );
-  }
+    ];
 
-  Widget _placeholder(ColorScheme cs) {
-    return Container(
-      color: cs.surfaceContainerHighest,
-      child: Center(
-        child: Icon(Icons.headphones_rounded,
-            size: 24, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Grid series tile (collapsed series in browse grid)
-// ═══════════════════════════════════════════════════════════════
-class _GridSeriesTile extends StatelessWidget {
-  final Map<String, dynamic> item;
-  const _GridSeriesTile({required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final lib = context.watch<LibraryProvider>();
-    final auth = context.read<AuthProvider>();
-
-    final itemId = item['id'] as String? ?? '';
-    final collapsedSeries = item['collapsedSeries'] as Map<String, dynamic>? ?? {};
-    final seriesName = collapsedSeries['name'] as String? ?? 'Unknown Series';
-    final seriesId = collapsedSeries['id'] as String? ?? '';
-    final numBooks = collapsedSeries['numBooks'] as int? ?? 0;
-    final media = item['media'] as Map<String, dynamic>? ?? {};
-    final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-    final author = metadata['authorName'] as String? ?? '';
-    final coverUrl = lib.getCoverUrl(itemId);
-
-    return GestureDetector(
-      onTap: () {
-        if (seriesId.isNotEmpty) {
-          showSeriesBooksSheet(
-            context,
-            seriesName: seriesName,
-            seriesId: seriesId,
-            books: const [],
-            serverUrl: auth.serverUrl,
-            token: auth.token,
-          );
-        }
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AspectRatio(
-            aspectRatio: 1,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Cover image (first book in series)
-                  coverUrl != null
-                      ? coverUrl.startsWith('/')
-                          ? Image.file(File(coverUrl), fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => _placeholder(cs))
-                          : CachedNetworkImage(
-                              imageUrl: coverUrl,
-                              fit: BoxFit.cover,
-                              httpHeaders: lib.mediaHeaders,
-                              placeholder: (_, __) => _placeholder(cs),
-                              errorWidget: (_, __, ___) => _placeholder(cs),
-                            )
-                      : _placeholder(cs),
-
-                  // Book count badge — top-right
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: cs.primaryContainer,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.auto_stories_rounded, size: 11, color: cs.onPrimaryContainer),
-                          const SizedBox(width: 3),
-                          Text('$numBooks',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                              color: cs.onPrimaryContainer)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 5),
-          // Series name
-          Text(
-            seriesName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: tt.labelSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: cs.onSurface,
-              fontSize: 11,
-            ),
-          ),
-          // Author
-          if (author.isNotEmpty)
-            Text(
-              author,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: tt.labelSmall?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontSize: 10,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _placeholder(ColorScheme cs) {
-    return Container(
-      color: cs.surfaceContainerHighest,
-      child: Center(
-        child: Icon(Icons.auto_stories_rounded,
-            size: 24, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Author result tile
-// ═══════════════════════════════════════════════════════════════
-class _AuthorResultTile extends StatelessWidget {
-  final Map<String, dynamic> author;
-  final String? serverUrl;
-  final String? token;
-
-  const _AuthorResultTile({
-    required this.author,
-    required this.serverUrl,
-    required this.token,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    final name = author['name'] as String? ?? 'Unknown';
-    final authorId = author['id'] as String? ?? '';
-    final numBooks = author['numBooks'] as int?;
-
-    String? imageUrl;
-    if (authorId.isNotEmpty && serverUrl != null && token != null) {
-      final cleanUrl = serverUrl!.endsWith('/')
-          ? serverUrl!.substring(0, serverUrl!.length - 1)
-          : serverUrl!;
-      imageUrl =
-          '$cleanUrl/api/authors/$authorId/image?width=200&token=$token';
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Card(
-        elevation: 0,
-        color: cs.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => _showAuthorBooks(context, authorId, name),
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                // Author avatar
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: cs.secondaryContainer,
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: imageUrl != null
-                      ? CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.cover,
-                          httpHeaders: context.read<LibraryProvider>().mediaHeaders,
-                          placeholder: (_, __) => _ph(cs),
-                          errorWidget: (_, __, ___) => _ph(cs),
-                        )
-                      : _ph(cs),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: tt.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: cs.onSurface)),
-                      if (numBooks != null)
-                        Text(
-                            '$numBooks book${numBooks != 1 ? 's' : ''}',
-                            style: tt.bodySmall
-                                ?.copyWith(color: cs.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right_rounded,
-                    color: cs.onSurfaceVariant, size: 20),
-              ],
-            ),
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        injector,
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate(children),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _ph(ColorScheme cs) {
-    return Center(
-      child: Icon(Icons.person_rounded,
-          size: 22, color: cs.onSecondaryContainer.withValues(alpha: 0.5)),
-    );
-  }
-
-  void _showAuthorBooks(
-      BuildContext context, String authorId, String authorName) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    final auth = context.read<AuthProvider>();
-    final lib = context.read<LibraryProvider>();
-    final api = auth.apiService;
-    if (api == null || lib.selectedLibraryId == null) return;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (ctx, scrollController) => _AuthorBooksSheet(
-          libraryId: lib.selectedLibraryId!,
-          authorId: authorId,
-          authorName: authorName,
-          serverUrl: auth.serverUrl,
-          token: auth.token,
-          scrollController: scrollController,
-        ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Author books bottom sheet
-// ═══════════════════════════════════════════════════════════════
-class _AuthorBooksSheet extends StatefulWidget {
-  final String libraryId;
-  final String authorId;
-  final String authorName;
-  final String? serverUrl;
-  final String? token;
-  final ScrollController scrollController;
-
-  const _AuthorBooksSheet({
-    required this.libraryId,
-    required this.authorId,
-    required this.authorName,
-    required this.serverUrl,
-    required this.token,
-    required this.scrollController,
-  });
-
-  @override
-  State<_AuthorBooksSheet> createState() => _AuthorBooksSheetState();
-}
-
-class _AuthorBooksSheetState extends State<_AuthorBooksSheet> {
-  List<Map<String, dynamic>> _books = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadBooks();
-  }
-
-  Future<void> _loadBooks() async {
-    final auth = context.read<AuthProvider>();
-    final api = auth.apiService;
-    if (api == null) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
-    }
-
-    try {
-      // Use audiobookshelf filter: authors.<base64(authorId)>
-      final filterValue = base64Encode(utf8.encode(widget.authorId));
-      final cleanUrl = (auth.serverUrl ?? '').endsWith('/')
-          ? auth.serverUrl!.substring(0, auth.serverUrl!.length - 1)
-          : auth.serverUrl!;
-      final url =
-          '$cleanUrl/api/libraries/${widget.libraryId}/items'
-          '?filter=authors.$filterValue&sort=media.metadata.title&limit=200&collapseseries=0';
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Authorization': 'Bearer ${auth.token}',
-        },
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200 && mounted) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final results = (data['results'] as List<dynamic>?) ?? [];
-        setState(() {
-          _books = results.whereType<Map<String, dynamic>>().toList();
-          _isLoading = false;
-        });
-      } else if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-          child: Row(
-            children: [
-              Icon(Icons.person_rounded, size: 20, color: cs.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(widget.authorName,
-                    style: tt.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w600)),
-              ),
-            ],
-          ),
-        ),
-        if (_isLoading)
-          const Expanded(
-              child: Center(child: CircularProgressIndicator()))
-        else if (_books.isEmpty)
-          Expanded(
-            child: Center(
-              child: Text('No books found',
-                  style: tt.bodyLarge
-                      ?.copyWith(color: cs.onSurfaceVariant)),
-            ),
-          )
-        else
-          Expanded(
-            child: ListView.builder(
-              controller: widget.scrollController,
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).viewPadding.bottom),
-              itemCount: _books.length,
-              itemBuilder: (context, index) {
-                return _BookResultTile(
-                  item: _books[index],
-                  serverUrl: widget.serverUrl,
-                  token: widget.token,
-                );
-              },
-            ),
-          ),
       ],
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Search result tiles (carried over from old search_screen)
-// ═══════════════════════════════════════════════════════════════
-class _BookResultTile extends StatelessWidget {
-  final Map<String, dynamic> item;
-  final String? serverUrl;
-  final String? token;
-
-  const _BookResultTile({
-    required this.item,
-    required this.serverUrl,
-    required this.token,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    final itemId = item['id'] as String?;
-    final media = item['media'] as Map<String, dynamic>? ?? {};
-    final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-    final title = metadata['title'] as String? ?? 'Unknown';
-    final authorName = metadata['authorName'] as String? ?? '';
-
-    String? coverUrl;
-    if (itemId != null && serverUrl != null && token != null) {
-      final cleanUrl = serverUrl!.endsWith('/')
-          ? serverUrl!.substring(0, serverUrl!.length - 1)
-          : serverUrl!;
-      coverUrl = '$cleanUrl/api/items/$itemId/cover?width=200&token=$token';
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Card(
-        elevation: 0,
-        color: cs.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () {
-            FocusManager.instance.primaryFocus?.unfocus();
-            if (itemId != null) {
-              final lib = context.read<LibraryProvider>();
-              if (lib.isPodcastLibrary) {
-                EpisodeListSheet.show(context, item);
-              } else {
-                showBookDetailSheet(context, itemId);
-              }
-            }
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 56,
-                height: 56,
-                child: coverUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: coverUrl,
-                        fit: BoxFit.cover,
-                        httpHeaders: context.read<LibraryProvider>().mediaHeaders,
-                        placeholder: (_, __) => _ph(cs),
-                        errorWidget: (_, __, ___) => _ph(cs),
-                      )
-                    : _ph(cs),
-              ),
-              Expanded(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: tt.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: cs.onSurface)),
-                      if (authorName.isNotEmpty)
-                        Text(authorName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: tt.bodySmall
-                                ?.copyWith(color: cs.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Icon(Icons.chevron_right_rounded,
-                    color: cs.onSurfaceVariant, size: 20),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _ph(ColorScheme cs) {
-    return Container(
-      color: cs.surfaceContainerHighest,
-      child: Icon(Icons.headphones_rounded,
-          size: 20, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
-    );
-  }
-}
-
-class _SeriesResultCard extends StatelessWidget {
-  final Map<String, dynamic> series;
-  final List<dynamic> books;
-  final String? serverUrl;
-  final String? token;
-
-  const _SeriesResultCard({
-    required this.series,
-    required this.books,
-    required this.serverUrl,
-    required this.token,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final seriesName = series['name'] as String? ?? 'Unknown Series';
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Card(
-        elevation: 0,
-        color: cs.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => _showSeriesBooks(context, seriesName),
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: cs.secondaryContainer,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Center(
-                    child: Icon(Icons.auto_stories_rounded,
-                        size: 22, color: cs.onSecondaryContainer.withValues(alpha: 0.7)),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(seriesName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: tt.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: cs.onSurface)),
-                      Text(
-                          '${books.length} book${books.length != 1 ? 's' : ''}',
-                          style: tt.bodySmall
-                              ?.copyWith(color: cs.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right_rounded,
-                    color: cs.onSurfaceVariant, size: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showSeriesBooks(BuildContext context, String seriesName) {
-    showSeriesBooksSheet(
-      context,
-      seriesName: seriesName,
-      seriesId: series['id'] as String?,
-      books: books,
-      serverUrl: serverUrl,
-      token: token,
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Series books bottom sheet
-// ═══════════════════════════════════════════════════════════════
-class _SeriesBooksSheet extends StatefulWidget {
-  final String seriesName;
-  final String? seriesId;
-  final List<dynamic> books;
-  final String? serverUrl;
-  final String? token;
-  final ScrollController scrollController;
-
-  const _SeriesBooksSheet({
-    required this.seriesName,
-    this.seriesId,
-    required this.books,
-    required this.serverUrl,
-    required this.token,
-    required this.scrollController,
-  });
-
-  @override
-  State<_SeriesBooksSheet> createState() => _SeriesBooksSheetState();
-}
-
-class _SeriesBooksSheetState extends State<_SeriesBooksSheet> {
-  List<Map<String, dynamic>> _books = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    // Use passed books as initial data
-    _books = _unwrapBooks(widget.books);
-    _sortBooks();
-    if (_books.isNotEmpty) _isLoading = false;
-    // Fetch full data from API for proper sequence info
-    _fetchFromApi();
-  }
-
-  /// Unwrap ABS format: { libraryItem: {...}, sequence: "1" }
-  /// Move sequence to top level of the item for consistent access.
-  List<Map<String, dynamic>> _unwrapBooks(List<dynamic> raw) {
-    final result = <Map<String, dynamic>>[];
-    for (final b in raw) {
-      if (b is! Map<String, dynamic>) continue;
-      if (b.containsKey('libraryItem') && b['libraryItem'] is Map<String, dynamic>) {
-        final item = Map<String, dynamic>.from(b['libraryItem'] as Map<String, dynamic>);
-        if (b['sequence'] != null) item['sequence'] = b['sequence'];
-        result.add(item);
-      } else {
-        result.add(Map<String, dynamic>.from(b));
-      }
-    }
-    return result;
-  }
-
-  void _sortBooks() {
-    _books.sort((a, b) {
-      final seqA = _getSequence(a);
-      final seqB = _getSequence(b);
-      if (seqA == null && seqB == null) return 0;
-      if (seqA == null) return 1;
-      if (seqB == null) return -1;
-      return seqA.compareTo(seqB);
-    });
-  }
-
-  double? _getSequence(Map<String, dynamic> book) {
-    // Top-level sequence (from unwrapping)
-    final seq = book['sequence'];
-    if (seq != null) {
-      final v = double.tryParse(seq.toString());
-      if (v != null) return v;
-    }
-    // Nested in metadata.series
-    final media = book['media'] as Map<String, dynamic>? ?? {};
-    final metadata = media['metadata'] as Map<String, dynamic>? ?? {};
-    final seriesRaw = metadata['series'];
-    if (seriesRaw is List) {
-      for (final s in seriesRaw) {
-        if (s is Map<String, dynamic>) {
-          final v = s['sequence'];
-          if (v != null) {
-            final d = double.tryParse(v.toString());
-            if (d != null) return d;
-          }
-        }
-      }
-    } else if (seriesRaw is Map<String, dynamic>) {
-      final v = seriesRaw['sequence'];
-      if (v != null) {
-        final d = double.tryParse(v.toString());
-        if (d != null) return d;
-      }
-    }
-    final fallback = metadata['seriesSequence'];
-    if (fallback != null) return double.tryParse(fallback.toString());
-    return null;
-  }
-
-  String? _getSequenceString(Map<String, dynamic> book) {
-    final v = _getSequence(book);
-    if (v == null) return null;
-    // Show as int if whole number, otherwise decimal
-    return v == v.roundToDouble() ? v.toInt().toString() : v.toString();
-  }
-
-  Future<void> _fetchFromApi() async {
-    final seriesId = widget.seriesId;
-    if (seriesId == null || seriesId.isEmpty) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
-    }
-    final auth = context.read<AuthProvider>();
-    final api = auth.apiService;
-    if (api == null) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
-    }
-    final lib = context.read<LibraryProvider>();
-    final data = await api.getSeries(seriesId, libraryId: lib.selectedLibraryId);
-    if (data != null && mounted) {
-      final rawBooks = data['books'] ?? data['libraryItems'] ?? [];
-      if (rawBooks is List && rawBooks.isNotEmpty) {
-        final fetched = _unwrapBooks(rawBooks);
-        setState(() {
-          _books = fetched;
-          _sortBooks();
-          _isLoading = false;
-        });
-        return;
-      }
-    }
-    if (mounted) setState(() => _isLoading = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final lib = context.watch<LibraryProvider>();
-
-    // Calculate time-weighted series progress across all books
-    double totalDuration = 0;
-    double listenedDuration = 0;
-    for (final book in _books) {
-      final bookId = book['id'] as String? ?? '';
-      final media = book['media'] as Map<String, dynamic>? ?? {};
-      final dur = (media['duration'] is num) ? (media['duration'] as num).toDouble() : 0.0;
-      final prog = lib.getProgress(bookId);
-      totalDuration += dur;
-      listenedDuration += dur * prog;
-    }
-    final seriesProgress = totalDuration > 0 ? (listenedDuration / totalDuration).clamp(0.0, 1.0) : 0.0;
-    final seriesPercent = (seriesProgress * 100).round();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
-          child: Row(
-            children: [
-              Icon(Icons.auto_stories_rounded, size: 20, color: cs.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(widget.seriesName,
-                    style: tt.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w600)),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(24, 0, 24, seriesProgress > 0 ? 4 : 12),
-          child: Text(
-            '${_books.length} book${_books.length != 1 ? 's' : ''} in this series',
-            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-          ),
-        ),
-        if (seriesProgress > 0)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: LinearProgressIndicator(
-                      value: seriesProgress,
-                      minHeight: 4,
-                      backgroundColor: cs.surfaceContainerHighest,
-                      valueColor: AlwaysStoppedAnimation(cs.primary),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  '$seriesPercent% complete',
-                  style: tt.labelSmall?.copyWith(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        if (_isLoading && _books.isEmpty)
-          const Expanded(
-              child: Center(child: CircularProgressIndicator()))
-        else if (_books.isEmpty)
-          Expanded(
-            child: Center(
-              child: Text('No books found',
-                  style: tt.bodyLarge
-                      ?.copyWith(color: cs.onSurfaceVariant)),
-            ),
-          )
-        else
-          Expanded(
-            child: ListView.builder(
-              controller: widget.scrollController,
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.of(context).viewPadding.bottom),
-              itemCount: _books.length,
-              itemBuilder: (context, index) {
-                final book = _books[index];
-                final bookId = book['id'] as String? ?? '';
-                final media = book['media'] as Map<String, dynamic>? ?? {};
-                final metadata =
-                    media['metadata'] as Map<String, dynamic>? ?? {};
-                final bookTitle = metadata['title'] as String? ?? 'Unknown';
-                final authorName = metadata['authorName'] as String? ?? '';
-                final sequence = _getSequenceString(book);
-                final duration = (media['duration'] is num)
-                    ? (media['duration'] as num).toDouble()
-                    : 0.0;
-
-                final progress = lib.getProgress(bookId);
-                final isFinished = lib.getProgressData(bookId)?['isFinished'] == true;
-                final isDownloaded = DownloadService().isDownloaded(bookId);
-
-                String? coverUrl;
-                if (bookId.isNotEmpty &&
-                    widget.serverUrl != null &&
-                    widget.token != null) {
-                  final cleanUrl = widget.serverUrl!.endsWith('/')
-                      ? widget.serverUrl!
-                          .substring(0, widget.serverUrl!.length - 1)
-                      : widget.serverUrl!;
-                  coverUrl =
-                      '$cleanUrl/api/items/$bookId/cover?width=400&token=${widget.token}';
-                }
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Card(
-                    elevation: 0,
-                    color: cs.surfaceContainerHigh,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: () {
-                        if (bookId.isNotEmpty) {
-                          if (lib.isPodcastLibrary) {
-                            EpisodeListSheet.show(context, book);
-                          } else {
-                            showBookDetailSheet(context, bookId);
-                          }
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(14),
-                      child: Row(
-                        children: [
-                          // Square cover with sequence badge + status badges
-                          SizedBox(
-                            width: 80,
-                            height: 80,
-                            child: Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: coverUrl != null
-                                      ? CachedNetworkImage(
-                                          imageUrl: coverUrl,
-                                          fit: BoxFit.cover,
-                                          httpHeaders: context.read<LibraryProvider>().mediaHeaders,
-                                          placeholder: (_, __) =>
-                                              _placeholder(cs),
-                                          errorWidget: (_, __, ___) =>
-                                              _placeholder(cs),
-                                        )
-                                      : _placeholder(cs),
-                                ),
-                                if (sequence != null && sequence.isNotEmpty)
-                                  Positioned(
-                                    top: 4,
-                                    left: 4,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: cs.primary,
-                                        borderRadius:
-                                            BorderRadius.circular(8),
-                                        boxShadow: [
-                                          BoxShadow(
-                                              color: Colors.black
-                                                  .withValues(alpha: 0.3),
-                                              blurRadius: 4)
-                                        ],
-                                      ),
-                                      child: Text('#$sequence',
-                                          style: TextStyle(
-                                              color: cs.onPrimary,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w800)),
-                                    ),
-                                  ),
-                                // Downloaded badge (top-right)
-                                if (isDownloaded)
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(3),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black54,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Icon(Icons.download_done_rounded,
-                                          size: 12, color: cs.primary),
-                                    ),
-                                  ),
-                                // Progress bar at bottom
-                                if (progress > 0 && !isFinished)
-                                  Positioned(
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 0,
-                                    child: LinearProgressIndicator(
-                                      value: progress.clamp(0.0, 1.0),
-                                      minHeight: 3,
-                                      backgroundColor: Colors.black38,
-                                      valueColor: AlwaysStoppedAnimation(cs.primary),
-                                    ),
-                                  ),
-                                // Finished overlay
-                                if (isFinished)
-                                  Positioned(
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 0,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 4, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.bottomCenter,
-                                          end: Alignment.topCenter,
-                                          colors: [
-                                            Colors.black.withValues(alpha: 0.85),
-                                            Colors.black.withValues(alpha: 0.0),
-                                          ],
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.check_circle_rounded,
-                                              size: 10, color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700),
-                                          const SizedBox(width: 3),
-                                          Text('Done',
-                                              style: TextStyle(
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent[400] : Colors.green.shade700)),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          // Info
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 10),
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
-                                children: [
-                                  if (sequence != null &&
-                                      sequence.isNotEmpty)
-                                    Text('Book $sequence',
-                                        style: tt.labelSmall?.copyWith(
-                                            color: cs.primary,
-                                            fontWeight: FontWeight.w600)),
-                                  Text(bookTitle,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: tt.titleSmall?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          color: cs.onSurface)),
-                                  if (authorName.isNotEmpty) ...[
-                                    const SizedBox(height: 2),
-                                    Text(authorName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: tt.bodySmall?.copyWith(
-                                            color: cs.onSurfaceVariant)),
-                                  ],
-                                  if (duration > 0) ...[
-                                    const SizedBox(height: 2),
-                                    Row(
-                                      children: [
-                                        Text(_formatDuration(duration),
-                                            style: tt.labelSmall?.copyWith(
-                                                color: cs.onSurfaceVariant)),
-                                        if (progress > 0 && !isFinished) ...[
-                                          const SizedBox(width: 8),
-                                          Text('${(progress * 100).round()}%',
-                                              style: tt.labelSmall?.copyWith(
-                                                  color: cs.primary,
-                                                  fontWeight: FontWeight.w600)),
-                                        ],
-                                      ],
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: Icon(Icons.chevron_right_rounded,
-                                color: cs.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _placeholder(ColorScheme cs) {
-    return Container(
-      color: cs.surfaceContainerHighest,
-      child: Center(
-        child: Icon(Icons.headphones_rounded,
-            size: 24, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
-      ),
-    );
-  }
-
-  String _formatDuration(double seconds) {
-    final h = (seconds / 3600).floor();
-    final m = ((seconds % 3600) / 60).floor();
-    if (h > 0) return '${h}h ${m}m';
-    return '${m}m';
-  }
-}

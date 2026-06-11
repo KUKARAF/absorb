@@ -1,6 +1,8 @@
 package com.ryanheise.just_audio;
 
 import android.content.Context;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.media.audiofx.AudioEffect;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.LoudnessEnhancer;
@@ -50,6 +52,13 @@ import androidx.media3.exoplayer.trackselection.TrackSelectionArray;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.cache.Cache;
+import androidx.media3.datasource.cache.CacheDataSink;
+import androidx.media3.datasource.cache.CacheDataSource;
+
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor;
+import androidx.media3.datasource.cache.SimpleCache;
+import androidx.media3.database.StandaloneDatabaseProvider;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.Util;
 import io.flutter.Log;
@@ -60,6 +69,7 @@ import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -74,6 +84,51 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     static final String TAG = "AudioPlayer";
 
     private static Random random = new Random();
+
+    // Streaming cache — shared across all player instances
+    private static SimpleCache sCache;
+    private static File sCacheDir;
+
+    @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
+    static synchronized void configureCache(Context context, long maxBytes) {
+        if (maxBytes <= 0) {
+            releaseCache();
+            return;
+        }
+        File baseDir = context.getExternalCacheDir();
+        if (baseDir == null || !baseDir.exists() || !baseDir.canWrite()) {
+            baseDir = context.getCacheDir();
+        }
+        File cacheDir = new File(baseDir, "streaming_cache");
+        // Already initialized at this location — skip
+        if (sCache != null && cacheDir.equals(sCacheDir)) return;
+        releaseCache();
+        sCacheDir = cacheDir;
+        sCache = new SimpleCache(
+            cacheDir,
+            new LeastRecentlyUsedCacheEvictor(maxBytes),
+            new StandaloneDatabaseProvider(context));
+        Log.d(TAG, "Streaming cache enabled: " + (maxBytes / 1024 / 1024) + " MB at " + cacheDir);
+    }
+
+    @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
+    static synchronized void releaseCache() {
+        if (sCache != null) {
+            try { sCache.release(); } catch (Exception e) { /* ignore */ }
+            sCache = null;
+            sCacheDir = null;
+        }
+    }
+
+    @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
+    static synchronized void clearCache() {
+        if (sCache != null) {
+            for (String key : new java.util.HashSet<>(sCache.getKeys())) {
+                sCache.removeResource(key);
+            }
+            Log.d(TAG, "Streaming cache cleared");
+        }
+    }
 
     private final Context context;
     private final MethodChannel methodChannel;
@@ -105,6 +160,8 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     private Map<String, Object> pendingPlaybackEvent;
 
     private ExoPlayer player;
+    private androidx.media3.common.audio.ChannelMixingAudioProcessor monoProcessor;
+    private static androidx.media3.common.audio.ChannelMixingAudioProcessor sMonoProcessor;
     private Integer audioSessionId;
     private MediaSource mediaSource;
     private Integer currentIndex;
@@ -123,13 +180,13 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             }
             switch (player.getPlaybackState()) {
             case Player.STATE_BUFFERING:
-                handler.postDelayed(this, 200);
+                handler.postDelayed(this, 500);
                 break;
             case Player.STATE_READY:
                 if (player.getPlayWhenReady()) {
-                    handler.postDelayed(this, 500);
+                    handler.postDelayed(this, 2000);
                 } else {
-                    handler.postDelayed(this, 1000);
+                    handler.postDelayed(this, 5000);
                 }
                 break;
             default:
@@ -167,7 +224,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                     .setPrioritizeTimeOverSizeThresholds((Boolean)loadControlMap.get("prioritizeTimeOverSizeThresholds"))
                     .setBackBuffer((int)((getLong(loadControlMap.get("backBufferDuration")))/1000), false);
                 if (loadControlMap.get("targetBufferBytes") != null) {
-                    builder.setTargetBufferBytes((Integer)loadControlMap.get("targetBufferBytes"));
+                    builder.setTargetBufferBytes((int)(long)(getLong(loadControlMap.get("targetBufferBytes"))));
                 }
                 loadControl = builder.build();
             }
@@ -451,6 +508,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 setSkipSilenceEnabled((Boolean) call.argument("enabled"));
                 result.success(new HashMap<String, Object>());
                 break;
+            case "setMono":
+                setMonoEnabled((Boolean) call.argument("enabled"));
+                result.success(new HashMap<String, Object>());
+                break;
             case "setLoopMode":
                 setLoopMode((Integer) call.argument("loopMode"));
                 result.success(new HashMap<String, Object>());
@@ -472,6 +533,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             case "setPreferredPeakBitRate":
                 result.success(new HashMap<String, Object>());
                 break;
+
             case "seek":
                 Long position = getLong(call.argument("position"));
                 Integer index = call.argument("index");
@@ -497,6 +559,23 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 break;
             case "setAndroidAudioAttributes":
                 setAudioAttributes(call.argument("contentType"), call.argument("flags"), call.argument("usage"));
+                result.success(new HashMap<String, Object>());
+                break;
+            case "setPreferredAudioDevice":
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && player != null) {
+                    Integer deviceId = call.argument("deviceId");
+                    if (deviceId == null || deviceId == 0) {
+                        player.setPreferredAudioDevice(null);
+                    } else {
+                        AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+                        AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+                        AudioDeviceInfo target = null;
+                        for (AudioDeviceInfo d : devices) {
+                            if (d.getId() == deviceId) { target = d; break; }
+                        }
+                        player.setPreferredAudioDevice(target);
+                    }
+                }
                 result.success(new HashMap<String, Object>());
                 break;
             case "audioEffectSetEnabled":
@@ -720,6 +799,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         audioEffectsMap.clear();
     }
 
+    @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
     private DataSource.Factory buildDataSourceFactory(Map<?, ?> headers) {
         final Map<String, String> stringHeaders = castToStringMap(headers);
         String userAgent = null;
@@ -734,11 +814,26 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
         DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
-            .setAllowCrossProtocolRedirects(true);
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(30000)
+            .setReadTimeoutMs(30000);
         if (stringHeaders != null && stringHeaders.size() > 0) {
             httpDataSourceFactory.setDefaultRequestProperties(stringHeaders);
         }
-        return new DefaultDataSource.Factory(context, httpDataSourceFactory);
+        DataSource.Factory baseFactory = new DefaultDataSource.Factory(context, httpDataSourceFactory);
+
+        // Wrap with disk cache if enabled
+        if (sCache != null) {
+            return new CacheDataSource.Factory()
+                .setCache(sCache)
+                .setUpstreamDataSourceFactory(baseFactory)
+                .setCacheWriteDataSinkFactory(
+                    new CacheDataSink.Factory()
+                        .setCache(sCache)
+                        .setFragmentSize(CacheDataSink.DEFAULT_FRAGMENT_SIZE))
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);
+        }
+        return baseFactory;
     }
 
     private void load(final MediaSource mediaSource, final long initialPosition, final Integer initialIndex, final Result result) {
@@ -770,17 +865,92 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     private void ensurePlayerInitialized() {
         if (player == null) {
             androidx.media3.common.audio.SonicAudioProcessor sonicAudioProcessor = new androidx.media3.common.audio.SonicAudioProcessor();
+            monoProcessor = new androidx.media3.common.audio.ChannelMixingAudioProcessor();
+            // Set identity matrix so audio passes through by default
+            monoProcessor.putChannelMixingMatrix(
+                new androidx.media3.common.audio.ChannelMixingMatrix(2, 2, new float[]{1f, 0f, 0f, 1f}));
+            // Upmix mono sources to stereo so Android AudioTrack handles them reliably
+            monoProcessor.putChannelMixingMatrix(
+                new androidx.media3.common.audio.ChannelMixingMatrix(1, 2, new float[]{1f, 1f}));
+            // Downmix 5.1 surround (6ch) to stereo so devices that can't output
+            // multi-channel PCM don't crash. Standard ITU-R BS.775 coefficients:
+            // L = FL + 0.707*FC + 0.707*SL + 0.5*LFE
+            // R = FR + 0.707*FC + 0.707*SR + 0.5*LFE
+            // Channel order: FL, FR, FC, LFE, SL, SR
+            monoProcessor.putChannelMixingMatrix(
+                new androidx.media3.common.audio.ChannelMixingMatrix(6, 2, new float[]{
+                    1.0f, 0.0f,   // FL  -> L, R
+                    0.0f, 1.0f,   // FR  -> L, R
+                    0.707f, 0.707f, // FC -> L, R
+                    0.5f, 0.5f,   // LFE -> L, R
+                    0.707f, 0.0f, // SL  -> L, R
+                    0.0f, 0.707f  // SR  -> L, R
+                }));
+            // Downmix 7.1 surround (8ch) to stereo
+            // Channel order: FL, FR, FC, LFE, SL, SR, BL, BR
+            monoProcessor.putChannelMixingMatrix(
+                new androidx.media3.common.audio.ChannelMixingMatrix(8, 2, new float[]{
+                    1.0f, 0.0f,   // FL  -> L, R
+                    0.0f, 1.0f,   // FR  -> L, R
+                    0.707f, 0.707f, // FC -> L, R
+                    0.5f, 0.5f,   // LFE -> L, R
+                    0.707f, 0.0f, // SL  -> L, R
+                    0.0f, 0.707f, // SR  -> L, R
+                    0.5f, 0.0f,   // BL  -> L, R
+                    0.0f, 0.5f    // BR  -> L, R
+                }));
+            // Downmix Dolby Atmos 5.1.4 (10ch) to stereo. Hit when the
+            // Samsung Dolby E-AC-3 decoder mid-stream-upmixes a 5.1 base to
+            // add 4 height channels. Buffer order follows the channel mask
+            // bit order reported by c2.dolby.eac3.decoder (LSB first):
+            // FL, FR, FC, LFE, BL, BR, TFL, TFR, TBL, TBR
+            monoProcessor.putChannelMixingMatrix(
+                new androidx.media3.common.audio.ChannelMixingMatrix(10, 2, new float[]{
+                    1.0f, 0.0f,   // FL  -> L, R
+                    0.0f, 1.0f,   // FR  -> L, R
+                    0.707f, 0.707f, // FC -> L, R
+                    0.5f, 0.5f,   // LFE -> L, R
+                    0.707f, 0.0f, // BL  -> L, R
+                    0.0f, 0.707f, // BR  -> L, R
+                    0.5f, 0.0f,   // TFL -> L, R (height, -6 dB)
+                    0.0f, 0.5f,   // TFR -> L, R
+                    0.354f, 0.0f, // TBL -> L, R (rear height, -9 dB)
+                    0.0f, 0.354f  // TBR -> L, R
+                }));
+            // Downmix Dolby Atmos 7.1.4 (12ch) to stereo. This is the most
+            // common Atmos bed layout and is what Samsung's Dolby decoder
+            // produces for E-AC-3 JOC content after its CCodecWatchDolbyAtmos
+            // watcher upgrades the decoder from 5.1 to full Atmos output.
+            // Buffer order (mask-bit LSB first):
+            // FL, FR, FC, LFE, BL, BR, SL, SR, TFL, TFR, TBL, TBR
+            monoProcessor.putChannelMixingMatrix(
+                new androidx.media3.common.audio.ChannelMixingMatrix(12, 2, new float[]{
+                    1.0f, 0.0f,   // FL  -> L, R
+                    0.0f, 1.0f,   // FR  -> L, R
+                    0.707f, 0.707f, // FC -> L, R
+                    0.5f, 0.5f,   // LFE -> L, R
+                    0.5f, 0.0f,   // BL  -> L, R
+                    0.0f, 0.5f,   // BR  -> L, R
+                    0.707f, 0.0f, // SL  -> L, R
+                    0.0f, 0.707f, // SR  -> L, R
+                    0.5f, 0.0f,   // TFL -> L, R (height, -6 dB)
+                    0.0f, 0.5f,   // TFR -> L, R
+                    0.354f, 0.0f, // TBL -> L, R (rear height, -9 dB)
+                    0.0f, 0.354f  // TBR -> L, R
+                }));
+            sMonoProcessor = monoProcessor;
+            MonoController.register(AudioPlayer::setMonoEnabled);
             RenderersFactory renderersFactory = new DefaultRenderersFactory(context) {
                 @Override
                 protected AudioSink buildAudioSink(
                         Context context,
                         boolean enableFloatOutput,
                         boolean enableAudioTrackPlaybackParams) {
-                    Log.i(TAG, "PATCH ACTIVE: buildAudioSink with SonicAudioProcessor, AudioTrack speed DISABLED");
+                    Log.i(TAG, "PATCH ACTIVE: buildAudioSink with SonicAudioProcessor + MonoProcessor, AudioTrack speed DISABLED");
                     return new DefaultAudioSink.Builder(context)
                         .setEnableFloatOutput(enableFloatOutput)
                         .setEnableAudioTrackPlaybackParams(false)
-                        .setAudioProcessors(new androidx.media3.common.audio.AudioProcessor[]{sonicAudioProcessor})
+                        .setAudioProcessors(new androidx.media3.common.audio.AudioProcessor[]{sonicAudioProcessor, monoProcessor})
                         .build();
                 }
             };
@@ -792,6 +962,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 builder.setLivePlaybackSpeedControl(livePlaybackSpeedControl);
             }
             player = builder.build();
+            final ExoPlayer p = player;
+            OutputDeviceController.register(device -> {
+                if (p != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    p.setPreferredAudioDevice(device);
+                }
+            });
             // player.setTrackSelectionParameters(
             //     player.getTrackSelectionParameters()
             //         .buildUpon()
@@ -1005,6 +1181,22 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
     public void setSkipSilenceEnabled(final boolean enabled) {
         player.setSkipSilenceEnabled(enabled);
+    }
+
+    private static void setMonoEnabled(final boolean enabled) {
+        if (sMonoProcessor == null) return;
+        if (enabled) {
+            // Mix both stereo input channels equally into both output channels
+            sMonoProcessor.putChannelMixingMatrix(
+                new androidx.media3.common.audio.ChannelMixingMatrix(2, 2, new float[]{0.5f, 0.5f, 0.5f, 0.5f}));
+        } else {
+            // Identity matrix - passthrough
+            sMonoProcessor.putChannelMixingMatrix(
+                new androidx.media3.common.audio.ChannelMixingMatrix(2, 2, new float[]{1f, 0f, 0f, 1f}));
+        }
+        // Always keep mono source upmix matrix regardless of mode
+        sMonoProcessor.putChannelMixingMatrix(
+            new androidx.media3.common.audio.ChannelMixingMatrix(1, 2, new float[]{1f, 1f}));
     }
 
     public void setLoopMode(final int mode) {
